@@ -1,5 +1,0 @@
-/* KARDASHEV design system — global entry point.
-   Consumers link this one file. Imports only. */
-@import url("./tokens/typography.css");
-@import url("./tokens/colors.css");
-@import url("./tokens/spacing.css");

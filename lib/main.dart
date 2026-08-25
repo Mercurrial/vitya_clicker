@@ -1,32 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'ui/screens/game_screen.dart';
-import 'ui/theme/kardashev_tokens.dart';
-
 void main() {
-  runApp(const ProviderScope(child: KardashevApp()));
+  runApp(const ProviderScope(child: VityaApp()));
 }
 
-class KardashevApp extends StatelessWidget {
-  const KardashevApp({super.key});
+/// Placeholder shell. The game UI is being rebuilt for the "Витя гонит"
+/// concept; the idle engine under lib/engine + lib/models stays.
+class VityaApp extends StatelessWidget {
+  const VityaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KARDASHEV',
+      title: 'Витя гонит',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: KColors.voidBg,
-        fontFamily: KType.sansFamily,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: KColors.accent,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      home: const Scaffold(
+        body: Center(child: Text('Витя разогревает аппарат…')),
       ),
-      home: const GameScreen(),
     );
   }
 }
