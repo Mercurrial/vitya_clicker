@@ -1,0 +1,25 @@
+<!-- @dsCard group="Type" viewport="700x210" name="UI text scale" subtitle="IBM Plex Sans — tier, tabs, names, descriptions." -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--void); font-family: var(--font-ui); padding: var(--space-5);
+         display: flex; flex-direction: column; gap: var(--space-3); }
+  .tier { font-size: var(--type-tier-size); font-weight: var(--type-tier-weight);
+          letter-spacing: var(--type-tier-tracking); text-transform: uppercase; color: var(--text-mid); }
+  .tab { font-size: var(--type-tab-size); font-weight: var(--type-tab-weight);
+         letter-spacing: var(--type-tab-tracking); text-transform: uppercase; color: var(--accent); }
+  .name { font-size: var(--type-name-size); font-weight: var(--type-name-weight); color: var(--text-hi); }
+  .desc { font-size: var(--type-desc-size); font-weight: var(--type-desc-weight); color: var(--text-mid); }
+  .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); margin-left: 10px; }
+</style>
+</head>
+<body>
+  <div class="tier">KARDASHEV &middot; TYPE I <span class="lbl">11 / 600 / 0.18em</span></div>
+  <div class="tab">GENERATORS <span class="lbl">14 / 600 / 0.04em / upper</span></div>
+  <div class="name">Antimatter Loop <span class="lbl">15 / 600</span></div>
+  <div class="desc">Annihilation cells convert stored mass into raw energy. <span class="lbl">12 / 400 / mid</span></div>
+</body>
+</html>

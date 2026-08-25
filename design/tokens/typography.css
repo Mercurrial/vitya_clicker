@@ -1,0 +1,48 @@
+/* KARDASHEV — Typography tokens
+   UI: IBM Plex Sans (400/500/600).
+   Numbers / counters / prices: IBM Plex Mono, tabular-nums everywhere. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-ui:   "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+  /* Tier label — small, tracked, uppercase */
+  --type-tier-size: 11px;
+  --type-tier-weight: 600;
+  --type-tier-tracking: 0.18em;
+
+  /* Hero energy counter (mono) */
+  --type-hero-size: 44px;
+  --type-hero-weight: 700;
+  --type-hero-tracking: -0.02em;
+
+  /* Stat chips — J/s & J/tap (mono) */
+  --type-stat-size: 13px;
+  --type-stat-weight: 500;
+
+  /* Tab labels — uppercase tracked */
+  --type-tab-size: 14px;
+  --type-tab-weight: 600;
+  --type-tab-tracking: 0.04em;
+
+  /* Generator / card name */
+  --type-name-size: 15px;
+  --type-name-weight: 600;
+
+  /* Description */
+  --type-desc-size: 12px;
+  --type-desc-weight: 400;
+
+  /* Price (mono) */
+  --type-price-size: 14px;
+  --type-price-weight: 600;
+}
+
+/* Apply tabular figures wherever digits appear */
+.km-mono,
+[class*="km-num"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

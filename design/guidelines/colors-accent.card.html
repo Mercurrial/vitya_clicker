@@ -1,0 +1,26 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Accent & CTA" subtitle="Plasma cyan = energy/active. Amber = affordable only. Use sparingly." -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--void); font-family: var(--font-ui); }
+  .row { display: flex; gap: var(--space-3); padding: var(--space-5); }
+  .sw { flex: 1; border-radius: var(--radius-card); height: 88px; border: 1px solid var(--glass-border);
+        display: flex; flex-direction: column; justify-content: flex-end; padding: var(--space-3); box-sizing: border-box; }
+  .name { font-size: 12px; font-weight: 600; color: rgba(10,13,20,0.85); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: rgba(10,13,20,0.6); margin-top: 2px; }
+  .dark .name { color: var(--text-hi); }
+  .dark .hex { color: var(--text-mid); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw" style="background: var(--accent); box-shadow: 0 0 40px var(--accent-glow)"><div class="name">accent</div><div class="hex">#34E2D6</div></div>
+    <div class="sw" style="background: var(--accent-dim)"><div class="name">accent-dim</div><div class="hex">#1FB6AC</div></div>
+    <div class="sw" style="background: var(--cta); box-shadow: 0 0 40px var(--cta-glow)"><div class="name">cta</div><div class="hex">amber gradient</div></div>
+    <div class="sw" style="background: var(--cta-solid)"><div class="name">cta-solid</div><div class="hex">#FFB020</div></div>
+  </div>
+</body>
+</html>
