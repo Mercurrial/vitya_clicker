@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'ui/screens/garage_screen.dart';
+import 'ui/theme/garage.dart';
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ProviderScope(child: VityaApp()));
 }
 
-/// Placeholder shell. The game UI is being rebuilt for the "Витя гонит"
-/// concept; the idle engine under lib/engine + lib/models stays.
 class VityaApp extends StatelessWidget {
   const VityaApp({super.key});
 
@@ -15,9 +17,15 @@ class VityaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Витя гонит',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: GColors.bg,
+        fontFamily: GType.uiFamily,
+        useMaterial3: true,
+      ),
       home: const Scaffold(
-        body: Center(child: Text('Витя разогревает аппарат…')),
+        backgroundColor: GColors.bg,
+        body: GarageScreen(),
       ),
     );
   }
