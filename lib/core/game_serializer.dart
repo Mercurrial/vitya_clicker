@@ -10,6 +10,8 @@
 /// числа, любая правка баланса ломала бы сохранения.
 library;
 
+import '../content/achievements.dart';
+import '../models/achievements_state.dart';
 import '../models/clicker_state.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -35,6 +37,7 @@ class GameSerializer {
         for (final u in s.upgrades.items)
           if (u.purchased) u.id,
       ],
+      'achievements': s.achievements.unlocked.toList(),
       'wisdom': s.prestige.wisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
@@ -62,9 +65,15 @@ class GameSerializer {
       for (final u in upgrades) u.copyWith(purchased: bought.contains(u.id)),
     ];
 
+    // Неизвестные идентификаторы отсеиваем: контент меняется, сейв не должен
+    // тащить достижения, которых больше нет.
+    final known = {for (final a in kAllAchievements) a.id};
+    final unlocked = _asStringSet(json['achievements']).intersection(known);
+
     final base = GameState.initial(
       initialGenerators: gens,
       initialUpgrades: ups,
+      achievements: AchievementsState(unlocked: unlocked),
       prestige: PrestigeState(
         wisdom: _asInt(json['wisdom']),
         totalEverEarned: _asDouble(json['lifetime']),

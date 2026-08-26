@@ -68,14 +68,16 @@ class Production {
     Generator g,
     GeneratorsState gens,
     UpgradesState ups,
-    PrestigeState prestige,
-  ) {
+    PrestigeState prestige, [
+    double achievementMultiplier = 1.0,
+  ]) {
     if (g.ownedCount == 0) return 0.0;
     var out = g.ownedCount * g.baseProduction;
     out *= milestoneMultiplier(g.ownedCount);
     out *= ups.generatorMultiplier(g.id);
     out *= _synergyMultiplier(g, gens, ups);
     out *= prestige.globalMultiplier;
+    out *= achievementMultiplier;
     return out;
   }
 
@@ -83,11 +85,12 @@ class Production {
   static double mlPerSecond(
     GeneratorsState gens,
     UpgradesState ups,
-    PrestigeState prestige,
-  ) {
+    PrestigeState prestige, [
+    double achievementMultiplier = 1.0,
+  ]) {
     var sum = 0.0;
     for (final g in gens.items) {
-      sum += generatorOutput(g, gens, ups, prestige);
+      sum += generatorOutput(g, gens, ups, prestige, achievementMultiplier);
     }
     return sum;
   }

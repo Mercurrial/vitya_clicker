@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../engine/production.dart';
+import 'achievements_state.dart';
 import 'clicker_state.dart';
 import 'generator.dart';
 import 'generators_state.dart';
@@ -16,6 +17,7 @@ class GameState extends Equatable {
   final GeneratorsState generators;
   final UpgradesState upgrades;
   final PrestigeState prestige;
+  final AchievementsState achievements;
   final DateTime lastUpdateTime;
 
   /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
@@ -28,6 +30,7 @@ class GameState extends Equatable {
     required this.generators,
     required this.upgrades,
     required this.prestige,
+    required this.achievements,
     required this.lastUpdateTime,
     required this.mlPerSecond,
   });
@@ -36,6 +39,7 @@ class GameState extends Equatable {
     required List<Generator> initialGenerators,
     List<Upgrade>? initialUpgrades,
     PrestigeState prestige = const PrestigeState(),
+    AchievementsState achievements = const AchievementsState(),
     DateTime? lastUpdateTime,
   }) {
     final gens = GeneratorsState(items: List.unmodifiable(initialGenerators));
@@ -48,8 +52,9 @@ class GameState extends Equatable {
       generators: gens,
       upgrades: ups,
       prestige: prestige,
+      achievements: achievements,
       lastUpdateTime: lastUpdateTime ?? DateTime.now(),
-      mlPerSecond: Production.mlPerSecond(gens, ups, prestige),
+      mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
   }
 
@@ -59,15 +64,20 @@ class GameState extends Equatable {
     GeneratorsState? generators,
     UpgradesState? upgrades,
     PrestigeState? prestige,
+    AchievementsState? achievements,
     DateTime? lastUpdateTime,
   }) {
     final nextGens = generators ?? this.generators;
     final nextUps = upgrades ?? this.upgrades;
     final nextPrestige = prestige ?? this.prestige;
+    final nextAch = achievements ?? this.achievements;
 
-    final recompute = generators != null || upgrades != null || prestige != null;
+    final recompute = generators != null ||
+        upgrades != null ||
+        prestige != null ||
+        achievements != null;
     final nextRate = recompute
-        ? Production.mlPerSecond(nextGens, nextUps, nextPrestige)
+        ? Production.mlPerSecond(nextGens, nextUps, nextPrestige, nextAch.multiplier)
         : mlPerSecond;
 
     return GameState(
@@ -76,6 +86,7 @@ class GameState extends Equatable {
       generators: nextGens,
       upgrades: nextUps,
       prestige: nextPrestige,
+      achievements: nextAch,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       mlPerSecond: nextRate,
     );
@@ -100,8 +111,10 @@ class GameState extends Equatable {
   ///
   /// Основная ценность тапа всё равно не тут, а в жаре — он множит весь поток.
   double get tapYield {
-    final flat =
-        clicker.baseTapPower * upgrades.tapMultiplier * prestige.globalMultiplier;
+    final flat = clicker.baseTapPower *
+        upgrades.tapMultiplier *
+        prestige.globalMultiplier *
+        achievements.multiplier;
     final share = mlPerSecond * Production.tapSeconds;
     return flat > share ? flat : share;
   }
@@ -113,6 +126,7 @@ class GameState extends Equatable {
         generators,
         upgrades,
         prestige,
+        achievements,
         lastUpdateTime,
         mlPerSecond,
       ];

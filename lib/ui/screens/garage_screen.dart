@@ -3,9 +3,11 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../content/achievements.dart';
 import '../../core/formatters.dart';
 import '../../engine/market.dart';
 import '../../engine/production.dart';
+import '../../models/achievement.dart';
 import '../../models/prestige_state.dart';
 import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
@@ -19,6 +21,68 @@ import '../widgets/shop.dart';
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
 /// разъезжаются на пол-экрана и верстка ломается.
 const double _kPhoneWidth = 460;
+
+/// Режим «купить максимум».
+const int kBuyMax = -1;
+
+/// Сколько штук берём за одно нажатие: 1, 10, 100 или максимум.
+final buyAmountProvider = StateProvider<int>((ref) => 1);
+
+/// Переключатель количества. Появляется только после достижения, которое его
+/// открывает: автоматизация в жанре зарабатывается, а не выдаётся.
+class _BuyAmountSelector extends ConsumerWidget {
+  final int mode;
+  const _BuyAmountSelector({required this.mode});
+
+  static const _options = [
+    (1, '×1'),
+    (10, '×10'),
+    (100, '×100'),
+    (kBuyMax, 'МАКС'),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: GColors.wellBg,
+        borderRadius: BorderRadius.circular(GR.pill),
+      ),
+      child: Row(
+        children: [
+          for (final (value, label) in _options)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(buyAmountProvider.notifier).state = value;
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: value == mode ? GColors.copper : null,
+                    borderRadius: BorderRadius.circular(GR.pill),
+                  ),
+                  child: Text(
+                    label,
+                    style: GType.num(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      color: value == mode ? GColors.textHi : GColors.textMid,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class GarageScreen extends ConsumerStatefulWidget {
   const GarageScreen({super.key});
@@ -160,6 +224,141 @@ VityaEra _eraFor(double lifetime) {
   if (lifetime < 1e5) return VityaEra.start;
   if (lifetime < 1e9) return VityaEra.work;
   return VityaEra.boss;
+}
+
+/// Вкладка «Цели» — достижения сеткой рядов.
+///
+/// Открытое достижение множит производство, а **полностью закрытый ряд — ещё
+/// раз и заметно сильнее**. Из-за этого ряд хочется добить, и список галочек
+/// превращается в систему прогресса. Подсказки у закрытых работают встроенным
+/// гидом: игрок всегда видит, что делать дальше.
+class _GoalsTab extends ConsumerWidget {
+  const _GoalsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ach = ref.watch(gameProvider.select((s) => s.achievements));
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),
+      children: [
+        _Panel(
+          child: Column(
+            children: [
+              Text('ОБЩИЙ МНОЖИТЕЛЬ', style: GType.label()),
+              Text(
+                Fmt.mult(ach.multiplier),
+                style: GType.num(
+                  size: 30,
+                  weight: FontWeight.w700,
+                  color: GColors.amber,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${ach.count} из ${kAllAchievements.length} · '
+                'рядов закрыто ${ach.completedRows} из ${kAchievementRows.length}',
+                style: GType.num(size: 11, color: GColors.textMid),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: GS.s3),
+        for (final row in kAchievementRows) ...[
+          _AchievementRowView(row: row, unlocked: ach.unlocked),
+          const SizedBox(height: GS.s3),
+        ],
+      ],
+    );
+  }
+}
+
+class _AchievementRowView extends StatelessWidget {
+  final AchievementRow row;
+  final Set<String> unlocked;
+
+  const _AchievementRowView({required this.row, required this.unlocked});
+
+  @override
+  Widget build(BuildContext context) {
+    final done = row.items.every((a) => unlocked.contains(a.id));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(row.title.toUpperCase(), style: GType.label()),
+            const SizedBox(width: GS.s2),
+            Text(
+              done ? 'ряд закрыт · ${Fmt.mult(kRowMultiplier)}' : 'ряд: ${Fmt.mult(kRowMultiplier)}',
+              style: GType.num(
+                size: 10,
+                color: done ? GColors.green : GColors.textLo,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: GS.s2),
+        Row(
+          children: [
+            for (final a in row.items) ...[
+              Expanded(child: _AchievementCell(a: a, done: unlocked.contains(a.id))),
+              if (a != row.items.last) const SizedBox(width: GS.s2),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AchievementCell extends StatelessWidget {
+  final Achievement a;
+  final bool done;
+
+  const _AchievementCell({required this.a, required this.done});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: done ? a.name : a.hint,
+      textStyle: GType.ui(size: 12, color: GColors.textHi),
+      decoration: BoxDecoration(
+        color: GColors.surface3,
+        borderRadius: BorderRadius.circular(GR.button),
+      ),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: done ? GColors.copperDim : GColors.wellBg,
+            borderRadius: BorderRadius.circular(GR.button),
+            border: Border.all(
+              color: done ? GColors.amber : GColors.border,
+            ),
+            boxShadow: done
+                ? const [BoxShadow(color: GColors.amberGlow, blurRadius: 10)]
+                : null,
+          ),
+          child: Text(
+            done ? a.name : a.hint,
+            textAlign: TextAlign.center,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: GType.ui(
+              size: 9,
+              weight: done ? FontWeight.w700 : FontWeight.w400,
+              color: done ? GColors.textHi : GColors.textLo,
+              height: 1.15,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Вкладка «Витя»: похмелье, итоги и сброс.
@@ -739,6 +938,7 @@ class _Shelf extends StatelessWidget {
             child: switch (tab) {
               0 => const _StillsTab(),
               1 => const _UpgradesTab(),
+              2 => const _GoalsTab(),
               _ => const _VityaTab(),
             },
           ),
@@ -753,7 +953,7 @@ class _Tabs extends StatelessWidget {
   final ValueChanged<int> onChanged;
   const _Tabs({required this.index, required this.onChanged});
 
-  static const _labels = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ВИТЯ'];
+  static const _labels = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ЦЕЛИ', 'ВИТЯ'];
 
   @override
   Widget build(BuildContext context) {
@@ -781,7 +981,9 @@ class _Tabs extends StatelessWidget {
                   ),
                   child: Text(
                     _labels[i],
+                    // Четыре вкладки на телефоне — подпись должна влезать.
                     style: GType.tab().copyWith(
+                      fontSize: 11,
                       color: i == index ? GColors.textHi : GColors.textMid,
                     ),
                   ),
@@ -819,25 +1021,57 @@ class _StillsTab extends ConsumerWidget {
       }
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),
-      itemCount: visible.length,
-      separatorBuilder: (_, __) => const SizedBox(height: GS.s2),
-      itemBuilder: (context, k) {
-        final i = visible[k];
-        final g = gens[i];
-        final open = unlocked(i);
-        final cost = engine.generatorCost(g);
-        return StillRow(
-          name: g.name,
-          owned: g.ownedCount,
-          output: Production.generatorOutput(g, state.generators, state.upgrades, state.prestige),
-          cost: cost,
-          affordable: open && money >= cost,
-          locked: !open,
-          onBuy: () => ref.read(gameProvider.notifier).buyGenerator(g.id),
-        );
-      },
+    final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
+    final mode = ref.watch(buyAmountProvider);
+
+    return Column(
+      children: [
+        if (bulk)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, 0),
+            child: _BuyAmountSelector(mode: mode),
+          ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),
+            itemCount: visible.length,
+            separatorBuilder: (_, __) => const SizedBox(height: GS.s2),
+            itemBuilder: (context, k) {
+              final i = visible[k];
+              final g = gens[i];
+              final open = unlocked(i);
+
+              // Сколько уйдёт за одно нажатие в текущем режиме.
+              final wanted = (!bulk || mode == 1)
+                  ? 1
+                  : (mode == kBuyMax ? engine.affordableCount(state, g) : mode);
+              final count = wanted < 1 ? 1 : wanted;
+              final cost = count > 1
+                  ? engine.bulkCost(g, count)
+                  : engine.generatorCost(g);
+
+              return StillRow(
+                name: g.name,
+                owned: g.ownedCount,
+                output: Production.generatorOutput(
+                  g,
+                  state.generators,
+                  state.upgrades,
+                  state.prestige,
+                  state.achievements.multiplier,
+                ),
+                cost: cost,
+                buyCount: count,
+                affordable: open && money >= cost,
+                locked: !open,
+                onBuy: () => ref
+                    .read(gameProvider.notifier)
+                    .buyGenerator(g.id, count: count),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../content/game_content.dart';
+import '../models/achievement.dart';
 import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../core/save.dart';
@@ -82,13 +83,26 @@ class GameNotifier extends Notifier<GameState> {
 
   void setHeat(double multiplier) => _heatMultiplier = multiplier;
 
+  /// Достижения, открывшиеся с прошлого тика — интерфейс показывает по ним
+  /// всплывающие плашки.
+  final List<Achievement> freshAchievements = [];
+
   void _tick() {
     final engine = ref.read(gameEngineProvider);
-    state = engine.processTick(
-      state,
-      ref.read(timeProvider)(),
-      heatMultiplier: _heatMultiplier,
-    );
+    final now = ref.read(timeProvider)();
+
+    var next = engine.processTick(state, now, heatMultiplier: _heatMultiplier);
+
+    // Автопродажа: открывается достижением, а не выдаётся сразу. Именно так
+    // неудобство превращается в цель, из которой игрок выкупается.
+    if (next.achievements.hasPerk(AchievementPerk.autoSell) && next.isTankFull) {
+      next = engine.sell(next, now);
+    }
+
+    final checked = engine.checkAchievements(next);
+    if (checked.fresh.isNotEmpty) freshAchievements.addAll(checked.fresh);
+
+    state = checked.state;
   }
 
   /// Нажатие по Вите. [heatMultiplier] приходит от шкалы ГРАДУСА.
@@ -107,9 +121,12 @@ class GameNotifier extends Notifier<GameState> {
     state = engine.sell(state, ref.read(timeProvider)());
   }
 
-  void buyGenerator(String id) {
+  void buyGenerator(String id, {int count = 1}) {
     final engine = ref.read(gameEngineProvider);
-    state = engine.buyGenerator(state, id, ref.read(timeProvider)());
+    final now = ref.read(timeProvider)();
+    state = count <= 1
+        ? engine.buyGenerator(state, id, now)
+        : engine.buyGeneratorBulk(state, id, count, now);
   }
 
   void buyUpgrade(String id) {

@@ -86,6 +86,11 @@ class StillRow extends StatelessWidget {
   final double cost;
   final bool affordable;
   final bool locked;
+
+  /// Сколько штук уйдёт за одно нажатие. Больше единицы — показываем это на
+  /// кнопке, иначе непонятно, за что списали.
+  final int buyCount;
+
   final VoidCallback onBuy;
 
   const StillRow({
@@ -97,6 +102,7 @@ class StillRow extends StatelessWidget {
     required this.affordable,
     required this.locked,
     required this.onBuy,
+    this.buyCount = 1,
   });
 
   @override
@@ -134,7 +140,11 @@ class StillRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: GS.s3),
-          BuyButton(label: Fmt.money(cost), affordable: affordable, onTap: onBuy),
+          BuyButton(
+            label: buyCount > 1 ? '×$buyCount   ${Fmt.money(cost)}' : Fmt.money(cost),
+            affordable: affordable,
+            onTap: onBuy,
+          ),
         ],
       ),
     );
