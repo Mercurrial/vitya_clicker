@@ -122,7 +122,7 @@ void main() {
     });
 
     test('сейв из будущей версии не трогаем', () {
-      final future = '{"version": ${kSaveVersion + 1}, "litres": 1}';
+      const future = '{"version": ${kSaveVersion + 1}, "litres": 1}';
       expect(codec.decode(future).wasCorrupt, isTrue);
     });
   });
