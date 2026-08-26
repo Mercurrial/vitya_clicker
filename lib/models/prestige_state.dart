@@ -2,39 +2,63 @@ import 'dart:math' as math;
 
 import 'package:equatable/equatable.dart';
 
-/// Prestige ("Singularity") state. Persists across resets.
+/// ПОХМЕЛЬЕ — престиж-слой.
 ///
-/// Shards are earned from total energy ever produced:
-///   shards = floor(sqrt(totalEverEarned / 1e6))
-/// and grant a permanent global production multiplier (+5% each, additive).
+/// Витя просыпается, гараж пуст, аппарата нет. Но осталась МУДРОСТЬ: она
+/// переживает любой сброс и ускоряет каждый следующий заход.
+///
+/// Мудрость считается от суммарно нагнанного за всё время:
+///   мудрость = ⌊√(всего литров / 1e6)⌋
+/// Корень — намеренно: он делает первые заходы щедрыми, а поздние — плавными,
+/// иначе престиж либо не окупается, либо мгновенно ломает баланс.
 class PrestigeState extends Equatable {
-  final int shards;
+  /// Накопленная мудрость (перманентная).
+  final int wisdom;
+
+  /// Сколько литров Витя нагнал за всё время, включая прошлые жизни.
   final double totalEverEarned;
 
-  const PrestigeState({this.shards = 0, this.totalEverEarned = 0.0});
+  /// Сколько раз он уже просыпался с больной головой.
+  final int hangovers;
 
-  /// +5% to all production per shard (additive). 0 shards ⇒ ×1.0.
-  double get globalMultiplier => 1.0 + 0.05 * shards;
+  const PrestigeState({
+    this.wisdom = 0,
+    this.totalEverEarned = 0.0,
+    this.hangovers = 0,
+  });
 
-  /// Shards you would hold after prestiging right now.
-  int get potentialShards {
+  /// Каждая единица мудрости даёт +5 % ко всему производству.
+  static const double bonusPerWisdom = 0.05;
+
+  /// Порог, за который начисляется первая мудрость.
+  static const double litresPerWisdomStep = 1e6;
+
+  double get globalMultiplier => 1.0 + bonusPerWisdom * wisdom;
+
+  /// Сколько мудрости было бы, если проспаться прямо сейчас.
+  int get potentialWisdom {
     if (totalEverEarned <= 0) return 0;
-    return math.sqrt(totalEverEarned / 1e6).floor();
+    return math.sqrt(totalEverEarned / litresPerWisdomStep).floor();
   }
 
-  /// Shards gained by prestiging right now (never negative).
-  int get pendingShards {
-    final d = potentialShards - shards;
+  /// Сколько мудрости добавится за похмелье прямо сейчас.
+  int get pendingWisdom {
+    final d = potentialWisdom - wisdom;
     return d > 0 ? d : 0;
   }
 
-  PrestigeState copyWith({int? shards, double? totalEverEarned}) => PrestigeState(
-        shards: shards ?? this.shards,
+  /// Есть ли смысл ложиться спать.
+  bool get canPrestige => pendingWisdom > 0;
+
+  PrestigeState copyWith({int? wisdom, double? totalEverEarned, int? hangovers}) =>
+      PrestigeState(
+        wisdom: wisdom ?? this.wisdom,
         totalEverEarned: totalEverEarned ?? this.totalEverEarned,
+        hangovers: hangovers ?? this.hangovers,
       );
 
   @override
-  List<Object?> get props => [shards, totalEverEarned];
+  List<Object?> get props => [wisdom, totalEverEarned, hangovers];
 
   @override
   bool get stringify => true;

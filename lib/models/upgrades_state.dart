@@ -16,10 +16,10 @@ class UpgradesState extends Equatable {
     );
   }
 
-  /// Суммарный множитель радиации ядра от купленных апгрейдов
-  double get coreMultiplier {
+  /// Суммарный множитель силы тапа от купленных апгрейдов
+  double get tapMultiplier {
     return items
-        .where((u) => u.purchased && u.target == UpgradeTarget.coreOutput)
+        .where((u) => u.purchased && u.target == UpgradeTarget.tapPower)
         .fold(1.0, (product, u) => product * u.multiplier);
   }
 

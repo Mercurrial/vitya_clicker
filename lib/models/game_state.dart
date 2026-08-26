@@ -1,13 +1,15 @@
 import 'package:equatable/equatable.dart';
+
 import '../engine/production.dart';
-import 'resources_state.dart';
 import 'clicker_state.dart';
-import 'generators_state.dart';
 import 'generator.dart';
+import 'generators_state.dart';
+import 'prestige_state.dart';
+import 'resources_state.dart';
 import 'upgrade.dart';
 import 'upgrades_state.dart';
-import 'prestige_state.dart';
 
+/// Полное состояние игры. Всё, что нужно для сейва и для расчёта дохода.
 class GameState extends Equatable {
   final ResourcesState resources;
   final ClickerState clicker;
@@ -15,7 +17,10 @@ class GameState extends Equatable {
   final UpgradesState upgrades;
   final PrestigeState prestige;
   final DateTime lastUpdateTime;
-  final double goldPerSecond;
+
+  /// Кэш суммарного дохода — пересчитывается только при изменении того,
+  /// от чего он зависит (аппараты, апгрейды, мудрость).
+  final double litresPerSecond;
 
   const GameState({
     required this.resources,
@@ -24,7 +29,7 @@ class GameState extends Equatable {
     required this.upgrades,
     required this.prestige,
     required this.lastUpdateTime,
-    required this.goldPerSecond,
+    required this.litresPerSecond,
   });
 
   factory GameState.initial({
@@ -33,17 +38,18 @@ class GameState extends Equatable {
     PrestigeState prestige = const PrestigeState(),
     DateTime? lastUpdateTime,
   }) {
-    final genState = GeneratorsState(items: List.unmodifiable(initialGenerators));
-    final upgState = UpgradesState(
-        items: initialUpgrades != null ? List.unmodifiable(initialUpgrades) : const []);
+    final gens = GeneratorsState(items: List.unmodifiable(initialGenerators));
+    final ups = UpgradesState(
+      items: initialUpgrades != null ? List.unmodifiable(initialUpgrades) : const [],
+    );
     return GameState(
       resources: const ResourcesState(),
       clicker: const ClickerState(),
-      generators: genState,
-      upgrades: upgState,
+      generators: gens,
+      upgrades: ups,
       prestige: prestige,
       lastUpdateTime: lastUpdateTime ?? DateTime.now(),
-      goldPerSecond: Production.goldPerSecond(genState, upgState, prestige),
+      litresPerSecond: Production.litresPerSecond(gens, ups, prestige),
     );
   }
 
@@ -55,30 +61,43 @@ class GameState extends Equatable {
     PrestigeState? prestige,
     DateTime? lastUpdateTime,
   }) {
-    final nextGenerators = generators ?? this.generators;
-    final nextUpgrades = upgrades ?? this.upgrades;
+    final nextGens = generators ?? this.generators;
+    final nextUps = upgrades ?? this.upgrades;
     final nextPrestige = prestige ?? this.prestige;
 
-    // goldPerSecond depends on generators, upgrades and prestige (shards).
     final recompute = generators != null || upgrades != null || prestige != null;
-    final newGps = recompute
-        ? Production.goldPerSecond(nextGenerators, nextUpgrades, nextPrestige)
-        : goldPerSecond;
+    final nextRate = recompute
+        ? Production.litresPerSecond(nextGens, nextUps, nextPrestige)
+        : litresPerSecond;
 
     return GameState(
       resources: resources ?? this.resources,
       clicker: clicker ?? this.clicker,
-      generators: nextGenerators,
-      upgrades: nextUpgrades,
+      generators: nextGens,
+      upgrades: nextUps,
       prestige: nextPrestige,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
-      goldPerSecond: newGps,
+      litresPerSecond: nextRate,
     );
   }
 
+  /// Литры за одно нажатие: база × апгрейды тапа × мудрость.
+  ///
+  /// Намеренно НЕ зависит от литров в секунду — иначе автокликер становился бы
+  /// главной стратегией поздней игры.
+  double get tapPower =>
+      clicker.baseTapPower * upgrades.tapMultiplier * prestige.globalMultiplier;
+
   @override
-  List<Object?> get props =>
-      [resources, clicker, generators, upgrades, prestige, lastUpdateTime, goldPerSecond];
+  List<Object?> get props => [
+        resources,
+        clicker,
+        generators,
+        upgrades,
+        prestige,
+        lastUpdateTime,
+        litresPerSecond,
+      ];
 
   @override
   bool get stringify => true;

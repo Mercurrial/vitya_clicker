@@ -2,7 +2,7 @@ import 'package:equatable/equatable.dart';
 
 /// Модель апгрейда. Каждый апгрейд применяет множитель к конкретной цели.
 enum UpgradeTarget {
-  coreOutput,        // Множитель на базовую радиацию ядра
+  tapPower,          // Множитель на силу тапа
   generatorOutput,   // Множитель на конкретный генератор (по generatorId)
   allGenerators,     // Множитель на ВСЕ генераторы
   synergyResonance,  // +10% ко всем за каждый тип генератора с 25+ штук

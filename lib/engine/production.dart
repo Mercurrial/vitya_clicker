@@ -4,25 +4,26 @@ import '../models/prestige_state.dart';
 import '../models/upgrade.dart';
 import '../models/upgrades_state.dart';
 
-/// Centralised production maths for KARDASHEV (Stage 1).
+/// Расчёт производства.
 ///
-/// A generator's output stacks four multipliers on top of its flat base:
-///   owned · baseProduction
-///     × milestone (×2 at 10/25/50/100 owned — the acceleration injector)
-///     × upgrade   (per-generator ×N and global "all generators" ×N)
-///     × synergy   (Resonance breadth bonus, Fusion↔Geothermal coupling)
-///     × prestige  (1 + 0.05 · shards)
+/// Доход аппарата — это плоская база, на которую последовательно ложатся
+/// множители:
+///   штук × базовый доход
+///     × milestone   (×2 на 10/25/50/100 — ступенчатые скачки, «ускорение»)
+///     × апгрейды    (персональные ×N и глобальные ×N)
+///     × синергии    (Наставник Петрович, Семейный подряд)
+///     × мудрость    (престиж)
+///
+/// Функция чистая: зависит только от состояния. Это обязательное условие для
+/// оффлайн-дохода — его считаем как f(состояние, прошедшее время).
 class Production {
   const Production._();
 
-  /// J/s the star core radiates with zero generators (click-free bootstrap).
-  static const double coreBase = 1.0;
+  /// Синергия «Наставник Петрович»: этот аппарат растёт от количества вот того.
+  static const String _menteeId = 'dedov';
+  static const String _mentorId = 'banka';
 
-  /// Core radiance: base × core upgrades × prestige multiplier.
-  static double coreOutput(UpgradesState ups, PrestigeState prestige) =>
-      coreBase * ups.coreMultiplier * prestige.globalMultiplier;
-
-  /// Owned counts at which a generator's output doubles.
+  /// Количества, на которых доход аппарата удваивается.
   static const List<int> milestones = [10, 25, 50, 100];
 
   static int milestoneSteps(int owned) {
@@ -33,7 +34,7 @@ class Production {
     return steps;
   }
 
-  /// ×2 per milestone reached.
+  /// ×2 за каждый достигнутый рубеж.
   static double milestoneMultiplier(int owned) {
     var m = 1.0;
     for (var i = 0; i < milestoneSteps(owned); i++) {
@@ -42,7 +43,7 @@ class Production {
     return m;
   }
 
-  /// J/s produced by a single generator, all multipliers applied.
+  /// Литры в секунду от одного аппарата со всеми множителями.
   static double generatorOutput(
     Generator g,
     GeneratorsState gens,
@@ -58,13 +59,13 @@ class Production {
     return out;
   }
 
-  /// Total passive J/s across all generators.
-  static double goldPerSecond(
+  /// Суммарные литры в секунду.
+  static double litresPerSecond(
     GeneratorsState gens,
     UpgradesState ups,
     PrestigeState prestige,
   ) {
-    var sum = coreOutput(ups, prestige);
+    var sum = 0.0;
     for (final g in gens.items) {
       sum += generatorOutput(g, gens, ups, prestige);
     }
@@ -73,7 +74,8 @@ class Production {
 
   static double _synergyMultiplier(Generator g, GeneratorsState gens, UpgradesState ups) {
     var f = 1.0;
-    // Resonance: each generator type at >= 25 owned grants +10% to ALL.
+
+    // Семейный подряд: каждый аппарат от 25 штук даёт +10% ко всем.
     if (ups.hasPurchased(UpgradeTarget.synergyResonance)) {
       var k = 0;
       for (final x in gens.items) {
@@ -81,10 +83,12 @@ class Production {
       }
       f *= 1.0 + 0.10 * k;
     }
-    // Coupling: Fusion Core gains +1% per Geothermal Tap owned.
-    if (g.id == 'fusion' && ups.hasPurchased(UpgradeTarget.synergyCoupling)) {
-      f *= 1.0 + 0.01 * _ownedOf(gens, 'geothermal');
+
+    // Наставник Петрович: «Дедов» +1% за каждую банку.
+    if (g.id == _menteeId && ups.hasPurchased(UpgradeTarget.synergyCoupling)) {
+      f *= 1.0 + 0.01 * _ownedOf(gens, _mentorId);
     }
+
     return f;
   }
 
