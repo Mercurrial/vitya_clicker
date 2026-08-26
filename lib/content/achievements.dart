@@ -67,6 +67,9 @@ final List<AchievementRow> kAchievementRows = [
         name: 'Целый литр',
         hint: 'Накопить литр в баке',
         check: (s) => s.resources.ml >= 1000,
+        // Пачки нужны с первых минут: покупать по одной больно сразу, а не
+        // когда дойдёшь до «Дедова».
+        perk: AchievementPerk.bulkBuy,
       ),
     ],
   ),
@@ -128,8 +131,6 @@ final List<AchievementRow> kAchievementRows = [
         name: 'Дедово наследство',
         hint: 'Запустить аппарат «Дедов»',
         check: (s) => _ownedOf(s, 'dedov') >= 1,
-        // Хозяйство разрослось — пора закупаться пачками.
-        perk: AchievementPerk.bulkBuy,
       ),
     ],
   ),

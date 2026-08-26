@@ -134,6 +134,54 @@ void main() {
     });
   });
 
+  group('Бак растёт вместе с производством', () {
+    // Ровно та системная поломка, которую нашёл плейтест: производство растёт
+    // экспоненциально, а бак множителями — и он неизбежно отстаёт. Бак
+    // заполнялся за шесть секунд, idle превращался в дежурство у кнопки, а
+    // рынок обесценивался, потому что продавать приходилось всегда.
+    test('запас времени не проседает при росте потока', () {
+      var small = fresh();
+      small = small.copyWith(resources: small.resources.copyWith(money: 1e12));
+      // Достаточно аппаратов, чтобы поток, а не нижняя граница, задавал бак.
+      for (var i = 0; i < 5; i++) {
+        small = engine.buyGenerator(small, 'bidon', t0);
+      }
+      final smallBuffer = small.tankBuffer;
+
+      var big = small;
+      for (var i = 0; i < 30; i++) {
+        big = engine.buyGenerator(big, 'bidon', t0);
+        big = engine.buyGenerator(big, 'flyaga', t0);
+      }
+
+      expect(big.mlPerSecond, greaterThan(small.mlPerSecond * 50));
+      expect(
+        big.tankBuffer.inSeconds,
+        closeTo(smallBuffer.inSeconds, 2),
+        reason: 'запас времени должен держаться, а не таять',
+      );
+      expect(big.tankCapacity, greaterThan(small.tankCapacity * 50));
+    });
+
+    test('улучшение тары покупает время, а не литры', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
+      for (var i = 0; i < 10; i++) {
+        s = engine.buyGenerator(s, 'bidon', t0);
+      }
+      final before = s.tankBuffer;
+      s = engine.buyUpgrade(s, 'tank_kanistra', t0);
+
+      expect(s.tankBuffer.inSeconds, closeTo(before.inSeconds * 2, 2));
+    });
+
+    test('в самом начале действует нижняя граница', () {
+      final s = fresh();
+      expect(s.mlPerSecond, 0);
+      expect(s.tankCapacity, Production.baseTankMl);
+    });
+  });
+
   group('Бак', () {
     test('производство упирается в ёмкость', () {
       var s = fresh();
@@ -160,10 +208,14 @@ void main() {
 
     test('улучшение бака увеличивает ёмкость', () {
       var s = fresh();
-      final before = s.tankCapacity;
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
+      // Нужен поток: иначе ёмкость держит нижняя граница и множитель не виден.
+      for (var i = 0; i < 10; i++) {
+        s = engine.buyGenerator(s, 'bidon', t0);
+      }
+      final before = s.tankCapacity;
       s = engine.buyUpgrade(s, 'tank_kanistra', t0);
-      expect(s.tankCapacity, closeTo(before * 2, 1e-9));
+      expect(s.tankCapacity, closeTo(before * 2, 1e-6));
     });
   });
 

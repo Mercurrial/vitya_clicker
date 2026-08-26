@@ -162,7 +162,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'tank_kanistra',
     name: 'Вторая канистра',
-    description: 'Бак ×2',
+    description: 'Запас бака ×2',
     cost: 200,
     target: UpgradeTarget.tankCapacity,
     multiplier: 2,
@@ -170,7 +170,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'tank_bidon',
     name: 'Бидон под слив',
-    description: 'Бак ×3',
+    description: 'Запас бака ×3',
     cost: 9000,
     target: UpgradeTarget.tankCapacity,
     multiplier: 3,
@@ -178,7 +178,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'tank_tsisterna',
     name: 'Списанная цистерна',
-    description: 'Бак ×4',
+    description: 'Запас бака ×4',
     cost: 900000,
     target: UpgradeTarget.tankCapacity,
     multiplier: 4,
@@ -186,7 +186,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'tank_rezervuar',
     name: 'Подземный резервуар',
-    description: 'Бак ×5',
+    description: 'Запас бака ×5',
     cost: 60000000,
     target: UpgradeTarget.tankCapacity,
     multiplier: 5,

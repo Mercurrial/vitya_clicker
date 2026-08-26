@@ -99,12 +99,13 @@ class _GaugePainter extends CustomPainter {
     );
     canvas.drawRRect(track, Paint()..color = GColors.wellBg);
 
-    // Зелёная зона — она гуляет, поэтому рисуется каждый кадр.
     final zs = zoneStart.clamp(0.0, 1.0) * size.width;
     final ze = zoneEnd.clamp(0.0, 1.0) * size.width;
+
+    // Подложка зоны — под заливкой, чтобы не спорить с ней цветом.
     canvas.drawRRect(
       RRect.fromRectAndRadius(Rect.fromLTRB(zs, top, ze, top + trackHeight), radius),
-      Paint()..color = GColors.green.withOpacity(0.35),
+      Paint()..color = GColors.green.withOpacity(0.25),
     );
 
     // Залитая часть — текущий жар.
@@ -122,6 +123,22 @@ class _GaugePainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(0, top, size.width, trackHeight));
       canvas.drawRRect(fill, paint);
     }
+
+    // Границы зоны рисуем ПОВЕРХ заливки.
+    //
+    // Раньше заливка закрашивала зону целиком, и после перегрева игрок терял
+    // ориентир: было не видно, куда возвращаться. Теперь зона всегда читается.
+    final edge = Paint()
+      ..color = GColors.green
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(zs, top - 3), Offset(zs, top + trackHeight + 3), edge);
+    canvas.drawLine(Offset(ze, top - 3), Offset(ze, top + trackHeight + 3), edge);
+    canvas.drawLine(
+      Offset(zs, top - 3),
+      Offset(ze, top - 3),
+      edge..strokeWidth = 1.5,
+    );
 
     // Стрелка текущего положения.
     final needleColor = overheated

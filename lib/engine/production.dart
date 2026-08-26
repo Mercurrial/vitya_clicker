@@ -23,19 +23,39 @@ class Production {
   static const String _menteeId = 'dedov';
   static const String _mentorId = 'banka';
 
-  /// Ёмкость бака без улучшений — два литра.
-  ///
-  /// Бак не декорация: когда он полон, аппараты встают. Это честно (ёмкость
-  /// действительно кончается) и создаёт причину вернуться — пока игрока нет,
-  /// бак наполняется, он приходит и продаёт.
+  /// Минимальная ёмкость — два литра, пока производства почти нет.
   static const double baseTankMl = 2000;
 
-  /// Ёмкость бака с учётом улучшений.
-  static double tankCapacity(UpgradesState ups) =>
-      baseTankMl *
-      ups.items
-          .where((u) => u.purchased && u.target == UpgradeTarget.tankCapacity)
-          .fold(1.0, (product, u) => product * u.multiplier);
+  /// Сколько секунд производства держит бак без улучшений (две минуты).
+  static const double baseBufferSeconds = 120;
+
+  /// Ёмкость бака.
+  ///
+  /// Считается как **запас времени**, а не как фиксированный объём. Это
+  /// принципиально: производство растёт экспоненциально, и любой плоский объём
+  /// оно обгоняет за считанные минуты — бак начинает переполняться за шесть
+  /// секунд, idle превращается в дежурство у кнопки, а рынок обесценивается,
+  /// потому что продавать приходится всегда, а не на пике.
+  ///
+  /// Привязка к потоку это лечит: улучшения увеличивают не литры, а часы, на
+  /// которые можно уйти. Нижняя граница нужна для самого начала, когда
+  /// аппаратов ещё нет.
+  static double tankCapacity(UpgradesState ups, double mlPerSecond) {
+    final buffer = baseBufferSeconds *
+        ups.items
+            .where((u) => u.purchased && u.target == UpgradeTarget.tankCapacity)
+            .fold(1.0, (product, u) => product * u.multiplier);
+    final byFlow = mlPerSecond * buffer;
+    return byFlow > baseTankMl ? byFlow : baseTankMl;
+  }
+
+  /// На сколько времени хватит бака при текущем потоке — это и есть то, что
+  /// игрок реально покупает, расширяя тару.
+  static Duration tankBuffer(UpgradesState ups, double mlPerSecond) {
+    if (mlPerSecond <= 0) return Duration.zero;
+    final seconds = tankCapacity(ups, mlPerSecond) / mlPerSecond;
+    return Duration(seconds: seconds.round());
+  }
 
   /// Сколько секунд производства стоит одно нажатие.
   ///

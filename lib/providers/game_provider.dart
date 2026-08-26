@@ -27,6 +27,11 @@ final serializerProvider = Provider<GameSerializer>((ref) => const GameSerialize
 
 final clockProvider = Provider<GameClock>((ref) => const GameClock());
 
+/// Текущий множитель жара. Живёт в провайдере, а не приватным полем, потому
+/// что его должен видеть и движок (для тика), и интерфейс (чтобы показывать
+/// фактическую скорость, а не базовую).
+final heatMultiplierProvider = StateProvider<double>((ref) => 1.0);
+
 final formulasProvider = Provider<Formulas>((ref) => const Formulas());
 
 final gameEngineProvider = Provider<GameEngine>(
@@ -77,11 +82,11 @@ class GameNotifier extends Notifier<GameState> {
     await saves.save(json);
   }
 
-  /// Текущий жар под аппаратом. Ставится интерфейсом со шкалы ГРАДУСА и
-  /// множит ВЕСЬ пассивный поток — ради этого игрок и тапает.
-  double _heatMultiplier = 1.0;
+  /// Текущий жар под аппаратом — множит ВЕСЬ пассивный поток.
+  double get _heatMultiplier => ref.read(heatMultiplierProvider);
 
-  void setHeat(double multiplier) => _heatMultiplier = multiplier;
+  void setHeat(double multiplier) =>
+      ref.read(heatMultiplierProvider.notifier).state = multiplier;
 
   /// Достижения, открывшиеся с прошлого тика — интерфейс показывает по ним
   /// всплывающие плашки.

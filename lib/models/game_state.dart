@@ -92,8 +92,12 @@ class GameState extends Equatable {
     );
   }
 
-  /// Сколько влезает в бак.
-  double get tankCapacity => Production.tankCapacity(upgrades);
+  /// Сколько влезает в бак. Растёт вместе с производством, иначе экспонента
+  /// обгоняет тару и игра превращается в дежурство у кнопки.
+  double get tankCapacity => Production.tankCapacity(upgrades, mlPerSecond);
+
+  /// На сколько времени хватит бака при текущем потоке.
+  Duration get tankBuffer => Production.tankBuffer(upgrades, mlPerSecond);
 
   /// Бак полон — аппараты стоят, пора продавать.
   bool get isTankFull => resources.ml >= tankCapacity - 1e-9;

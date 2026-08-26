@@ -148,20 +148,25 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                     const _Counter(),
                     // Гараж — центр экрана. Портрет висит на его стене, а
                     // купленные аппараты встают на полки: империю видно.
+                    //
+                    // На низком окне сцена уступает место списку: иначе нижняя
+                    // панель уезжает за край и до кнопок не добраться.
                     Expanded(
-                      flex: 5,
+                      flex: MediaQuery.of(context).size.height < 760 ? 3 : 5,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: GS.s3),
                         child: AnimatedBuilder(
                           animation: _heat,
                           builder: (context, _) => GarageScene(
                             heat: _heat.heat,
-                            hanging: VityaPortrait(
-                              era: era,
-                              onTap: _onTap,
-                              size: 116,
-                              style: style.portrait,
-                              radius: style.radius * 0.6,
+                            hanging: _PortraitWithHint(
+                              portrait: VityaPortrait(
+                                era: era,
+                                onTap: _onTap,
+                                size: 116,
+                                style: style.portrait,
+                                radius: style.radius * 0.6,
+                              ),
                             ),
                           ),
                         ),
@@ -220,9 +225,13 @@ class _StyleToggle extends ConsumerWidget {
   }
 }
 
+/// Эпоха Вити по суммарно нагнанному.
+///
+/// Пороги низкие намеренно: ранг — бесплатный источник ощущения роста, и если
+/// он не меняется за первые полчаса, он не работает вовсе.
 VityaEra _eraFor(double lifetime) {
-  if (lifetime < 1e5) return VityaEra.start;
-  if (lifetime < 1e9) return VityaEra.work;
+  if (lifetime < 1e4) return VityaEra.start; // до 10 литров
+  if (lifetime < 1e7) return VityaEra.work; // до 10 тысяч литров
   return VityaEra.boss;
 }
 
@@ -628,6 +637,79 @@ class _WideButton extends StatelessWidget {
   }
 }
 
+/// Портрет с подсказкой для самого начала.
+///
+/// Без неё игра не сообщает главного: что жать надо по Вите. Тестировавший
+/// нашёл это перебором — значит подсказки не хватало. Она живёт ровно до
+/// первого нажатия и больше не появляется.
+class _PortraitWithHint extends ConsumerStatefulWidget {
+  final Widget portrait;
+  const _PortraitWithHint({required this.portrait});
+
+  @override
+  ConsumerState<_PortraitWithHint> createState() => _PortraitWithHintState();
+}
+
+class _PortraitWithHintState extends ConsumerState<_PortraitWithHint>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final taps = ref.watch(gameProvider.select((s) => s.clicker.totalTaps));
+    if (taps > 0) return widget.portrait;
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_pulse.value);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.scale(scale: 1 + 0.04 * t, child: child),
+            const SizedBox(height: GS.s2),
+            Opacity(
+              opacity: 0.55 + 0.45 * t,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: GColors.amber,
+                  borderRadius: BorderRadius.circular(GR.pill),
+                ),
+                child: Text(
+                  'ЖМИ ПО ВИТЕ — ОН ПОДКИНЕТ ДРОВ',
+                  style: GType.ui(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    color: GColors.onAmber,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      child: widget.portrait,
+    );
+  }
+}
+
 /// Тёплый свет лампы под потолком гаража.
 class _LampLight extends StatelessWidget {
   const _LampLight();
@@ -715,6 +797,8 @@ class _CounterState extends ConsumerState<_Counter>
             ml: state.resources.ml,
             capacity: state.tankCapacity,
             rate: state.mlPerSecond,
+            heat: ref.watch(heatMultiplierProvider),
+            buffer: state.tankBuffer,
             full: state.isTankFull,
           ),
           const SizedBox(height: GS.s2),
@@ -723,7 +807,10 @@ class _CounterState extends ConsumerState<_Counter>
               Expanded(
                 child: _SellButton(
                   value: value,
-                  enabled: state.resources.ml > 0,
+                  // Кнопка не должна предлагать продать на ноль рублей:
+                  // раньше при копейках в баке она выглядела активной и
+                  // обещала «ПРОДАТЬ · 0 ₽».
+                  enabled: value >= 1,
                   hot: goodMoment,
                   onTap: () => ref.read(gameProvider.notifier).sell(),
                 ),
@@ -745,6 +832,8 @@ class _TankBar extends StatelessWidget {
   final double ml;
   final double capacity;
   final double rate;
+  final double heat;
+  final Duration buffer;
   final bool full;
 
   const _TankBar({
@@ -752,6 +841,8 @@ class _TankBar extends StatelessWidget {
     required this.ml,
     required this.capacity,
     required this.rate,
+    required this.heat,
+    required this.buffer,
     required this.full,
   });
 
@@ -787,18 +878,41 @@ class _TankBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '${Fmt.volume(ml)} / ${Fmt.volume(capacity)}',
+              // Запас времени важнее литров: именно его покупают, расширяя тару.
+              rate > 0 && !full
+                  ? '${Fmt.volume(ml)} / ${Fmt.volume(capacity)} · хватит на ${Fmt.duration(buffer)}'
+                  : '${Fmt.volume(ml)} / ${Fmt.volume(capacity)}',
               style: GType.num(size: 11, color: GColors.textMid),
             ),
-            Text(
-              full
-                  ? 'БАК ПОЛОН — АППАРАТЫ СТОЯТ'
-                  : (rate > 0 ? Fmt.rate(rate) : 'аппараты простаивают'),
-              style: GType.num(
-                size: 11,
-                color: full ? GColors.hot : GColors.copper,
-              ),
-            ),
+            if (full)
+              Text(
+                'БАК ПОЛОН — АППАРАТЫ СТОЯТ',
+                style: GType.num(size: 11, color: GColors.hot),
+              )
+            else if (rate <= 0)
+              Text('аппараты простаивают', style: GType.num(size: 11, color: GColors.copper))
+            else if (heat > 1.001)
+              // Показываем фактическую скорость: без этого не видно, что даёт жар.
+              RichText(
+                text: TextSpan(children: [
+                  TextSpan(
+                    text: Fmt.short(rate),
+                    style: GType.num(size: 11, color: GColors.textLo).copyWith(
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '  ${Fmt.rate(rate * heat)}',
+                    style: GType.num(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      color: GColors.green,
+                    ),
+                  ),
+                ]),
+              )
+            else
+              Text(Fmt.rate(rate), style: GType.num(size: 11, color: GColors.copper)),
           ],
         ),
       ],
