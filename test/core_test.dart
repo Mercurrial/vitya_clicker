@@ -153,18 +153,29 @@ void main() {
       expect(codec.decode(future).wasCorrupt, isTrue);
     });
 
-    test('старый сейв в литрах мигрирует в миллилитры', () {
-      // v1 хранил объём в литрах — при переходе на мл всё умножается на 1000.
+    test('сейв из v1 доходит до текущей версии через всю цепочку', () {
+      // v1 считал в литрах, v2 перешла на миллилитры (×1000), v3 развела
+      // товар и деньги: накопленное считается проданным по базовой цене.
       const old = '{"version": 1, "litres": 2.5, "lifetime": 10, "wisdom": 3}';
       final result = codec.decode(old);
 
       expect(result.wasCorrupt, isFalse);
       expect(result.wasMigrated, isTrue);
-      expect(result.data!['ml'], 2500);
-      expect(result.data!['lifetime'], 10000);
+      expect(result.data!['ml'], 0, reason: 'бак отдаём пустым');
+      expect(result.data!['money'], closeTo(250, 1e-9), reason: '2500 мл по 0.1 ₽');
+      expect(result.data!['lifetime'], 10000, reason: 'история в мл');
       expect(result.data!['wisdom'], 3, reason: 'непричастные поля не трогаем');
       expect(result.data!.containsKey('litres'), isFalse);
       expect(result.data!['version'], kSaveVersion);
+    });
+
+    test('сейв из v2 переводит накопленное в деньги', () {
+      const old = '{"version": 2, "ml": 5000, "wisdom": 1}';
+      final result = codec.decode(old);
+
+      expect(result.wasMigrated, isTrue);
+      expect(result.data!['ml'], 0);
+      expect(result.data!['money'], closeTo(500, 1e-9));
     });
   });
 

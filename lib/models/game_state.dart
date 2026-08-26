@@ -81,6 +81,16 @@ class GameState extends Equatable {
     );
   }
 
+  /// Сколько влезает в бак.
+  double get tankCapacity => Production.tankCapacity(upgrades);
+
+  /// Бак полон — аппараты стоят, пора продавать.
+  bool get isTankFull => resources.ml >= tankCapacity - 1e-9;
+
+  /// Заполненность бака, 0..1 — для шкалы в интерфейсе.
+  double get tankFraction =>
+      tankCapacity <= 0 ? 0 : (resources.ml / tankCapacity).clamp(0.0, 1.0);
+
   /// Ручная отдача за нажатие, в мл.
   ///
   /// Берётся большее из двух: плоская база (она держит самое начало, когда

@@ -19,7 +19,7 @@ void main() {
 
   GameState played() {
     var s = build();
-    s = s.copyWith(resources: s.resources.copyWith(ml: 500000));
+    s = s.copyWith(resources: s.resources.copyWith(money: 500000));
     for (var i = 0; i < 12; i++) {
       s = engine.buyGenerator(s, 'banka', now);
     }

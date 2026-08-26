@@ -35,7 +35,7 @@ void main() {
       final atStart = s.tapYield;
 
       // Разгоняем пассивный доход.
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e9));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
       for (var i = 0; i < 40; i++) {
         s = engine.buyGenerator(s, 'banka', t0);
       }
@@ -56,7 +56,7 @@ void main() {
 
     test('начисляется пропорционально времени', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 100));
+      s = s.copyWith(resources: s.resources.copyWith(money: 100));
       s = engine.buyGenerator(s, 'banka', t0); // 1 мл/с
       final rate = s.mlPerSecond;
 
@@ -67,7 +67,7 @@ void main() {
 
     test('жар множит ВЕСЬ поток — ради этого и тапают', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       for (var i = 0; i < 5; i++) {
         s = engine.buyGenerator(s, 'banka', t0);
       }
@@ -82,7 +82,7 @@ void main() {
 
     test('отсутствие не наказывается: без жара идёт базовая скорость', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
       final base = s.resources.ml;
       final span = t0.add(const Duration(seconds: 10));
@@ -101,7 +101,7 @@ void main() {
 
     test('цена растёт с каждой купленной штукой', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       final first = engine.generatorCost(s.generators.items.first);
       s = engine.buyGenerator(s, 'banka', t0);
       final second = engine.generatorCost(s.generators.items.first);
@@ -111,14 +111,93 @@ void main() {
 
     test('апгрейд тапа удваивает силу и покупается один раз', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       final before = s.tapYield;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
       expect(s.tapYield, closeTo(before * 2, 1e-9));
 
-      final spent = s.resources.ml;
+      final spent = s.resources.money;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
-      expect(s.resources.ml, spent, reason: 'повторная покупка не должна списывать');
+      expect(s.resources.money, spent, reason: 'повторная покупка не должна списывать');
+    });
+
+    test('покупка списывает рубли, а не самогон', () {
+      var s = fresh();
+      s = s.copyWith(
+        resources: s.resources.copyWith(money: 1000, ml: 500),
+      );
+      final cost = engine.generatorCost(s.generators.items.first);
+      s = engine.buyGenerator(s, 'banka', t0);
+
+      expect(s.resources.money, closeTo(1000 - cost, 1e-9));
+      expect(s.resources.ml, 500, reason: 'товар в баке трогать нельзя');
+    });
+  });
+
+  group('Бак', () {
+    test('производство упирается в ёмкость', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
+      for (var i = 0; i < 30; i++) {
+        s = engine.buyGenerator(s, 'bidon', t0);
+      }
+      // Целый час при таком потоке залил бы куда больше ёмкости.
+      s = engine.processTick(s, t0.add(const Duration(hours: 1)));
+
+      expect(s.resources.ml, closeTo(s.tankCapacity, 1e-6));
+      expect(s.isTankFull, isTrue);
+    });
+
+    test('в полный бак не капает даже с тапа', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(ml: s.tankCapacity));
+      final before = s.resources.ml;
+      s = engine.processTap(s, t0);
+
+      expect(s.resources.ml, before);
+      expect(s.clicker.totalTaps, 1, reason: 'нажатие всё равно засчитано');
+    });
+
+    test('улучшение бака увеличивает ёмкость', () {
+      var s = fresh();
+      final before = s.tankCapacity;
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
+      s = engine.buyUpgrade(s, 'tank_kanistra', t0);
+      expect(s.tankCapacity, closeTo(before * 2, 1e-9));
+    });
+  });
+
+  group('Продажа', () {
+    test('переводит бак в рубли и опустошает его', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1000));
+      final expected = engine.saleValue(s, t0);
+
+      s = engine.sell(s, t0);
+      expect(s.resources.ml, 0);
+      expect(s.resources.money, closeTo(expected, 1e-9));
+      expect(expected, greaterThan(0));
+    });
+
+    test('пустой бак продать нельзя', () {
+      final s = fresh();
+      expect(engine.sell(s, t0), same(s));
+    });
+
+    test('качество поднимает выручку за тот же объём', () {
+      var plain = fresh();
+      plain = plain.copyWith(resources: plain.resources.copyWith(ml: 1000));
+
+      var good = fresh();
+      good = good.copyWith(
+        resources: good.resources.copyWith(money: 1e6, ml: 1000),
+      );
+      good = engine.buyUpgrade(good, 'q_peregonka', t0);
+
+      expect(
+        engine.saleValue(good, t0),
+        greaterThan(engine.saleValue(plain, t0)),
+      );
     });
   });
 
@@ -133,7 +212,7 @@ void main() {
 
     test('десятая банка даёт скачок больше, чем девятая', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e9));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
       final rates = <double>[];
       for (var i = 0; i < 10; i++) {
         s = engine.buyGenerator(s, 'banka', t0);
@@ -164,7 +243,7 @@ void main() {
     test('сбрасывает гараж, но сохраняет мудрость и историю', () {
       const earned = 25 * PrestigeState.mlPerWisdomStep;
       var s = fresh(prestige: const PrestigeState(totalEverEarned: earned));
-      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
 
       final after = engine.prestige(s, kGenerators, kUpgrades, t0);

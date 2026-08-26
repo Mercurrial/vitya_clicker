@@ -134,7 +134,7 @@ class StillRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: GS.s3),
-          BuyButton(label: Fmt.short(cost), affordable: affordable, onTap: onBuy),
+          BuyButton(label: Fmt.money(cost), affordable: affordable, onTap: onBuy),
         ],
       ),
     );
@@ -284,7 +284,7 @@ class UpgradeRow extends StatelessWidget {
             if (purchased)
               Text('куплено', style: GType.label().copyWith(color: GColors.green))
             else
-              BuyButton(label: Fmt.short(cost), affordable: affordable, onTap: onBuy),
+              BuyButton(label: Fmt.money(cost), affordable: affordable, onTap: onBuy),
           ],
         ),
       ),

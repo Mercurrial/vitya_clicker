@@ -1,8 +1,10 @@
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatters.dart';
+import '../../engine/market.dart';
 import '../../engine/production.dart';
 import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
@@ -199,7 +201,7 @@ class _CounterState extends ConsumerState<_Counter>
   @override
   void initState() {
     super.initState();
-    _shown = ref.read(gameProvider).resources.ml;
+    _shown = ref.read(gameProvider).resources.money;
     _ticker = createTicker(_onTick)..start();
   }
 
@@ -213,42 +215,231 @@ class _CounterState extends ConsumerState<_Counter>
     final dt = _prev == Duration.zero ? 0.016 : (now - _prev).inMicroseconds / 1e6;
     _prev = now;
 
-    final target = ref.read(gameProvider).resources.ml;
+    // Касса сглаживается: при продаже число не должно прыгать скачком.
+    final target = ref.read(gameProvider).resources.money;
     _shown += (target - _shown) * (dt * 9).clamp(0.0, 1.0);
 
-    final text = Fmt.volume(_shown);
+    final text = Fmt.money(_shown);
     if (text != _last) {
       _last = text;
       if (mounted) setState(() {});
     }
+    // Бак и рынок меняются непрерывно — обновляем каждый кадр.
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final rate = ref.watch(gameProvider.select((s) => s.mlPerSecond));
+    final state = ref.watch(gameProvider);
+    final now = DateTime.now();
+    final price = Market.pricePerLitre(now, state.upgrades);
+    final value = state.resources.ml * Market.pricePerMl(now, state.upgrades);
+    final goodMoment = Market.isGoodMoment(now);
+
     return Padding(
-      padding: const EdgeInsets.only(top: GS.s4, bottom: GS.s2),
+      padding: const EdgeInsets.fromLTRB(GS.s4, GS.s3, GS.s4, GS.s2),
       child: Column(
         children: [
-          Text('САМОГОН', style: GType.label()),
-          const SizedBox(height: GS.s1),
+          Text('КАССА', style: GType.label()),
+          Text(Fmt.money(_shown), style: GType.counter()),
+          const SizedBox(height: GS.s2),
+          _TankBar(
+            fraction: state.tankFraction,
+            ml: state.resources.ml,
+            capacity: state.tankCapacity,
+            rate: state.mlPerSecond,
+            full: state.isTankFull,
+          ),
+          const SizedBox(height: GS.s2),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(Fmt.volumeNumber(_shown), style: GType.counter()),
-              const SizedBox(width: 6),
-              Text(
-                Fmt.volumeUnit(_shown),
-                style: GType.num(size: 18, color: GColors.textMid),
+              Expanded(
+                child: _SellButton(
+                  value: value,
+                  enabled: state.resources.ml > 0,
+                  hot: goodMoment,
+                  onTap: () => ref.read(gameProvider.notifier).sell(),
+                ),
               ),
+              const SizedBox(width: GS.s3),
+              _PriceTag(price: price, hot: goodMoment),
             ],
           ),
-          const SizedBox(height: GS.s1),
+        ],
+      ),
+    );
+  }
+}
+
+/// Бак: сколько налито и как быстро прибывает. Полный бак — красный сигнал,
+/// потому что в этот момент аппараты стоят.
+class _TankBar extends StatelessWidget {
+  final double fraction;
+  final double ml;
+  final double capacity;
+  final double rate;
+  final bool full;
+
+  const _TankBar({
+    required this.fraction,
+    required this.ml,
+    required this.capacity,
+    required this.rate,
+    required this.full,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(GR.pill),
+          child: SizedBox(
+            height: 10,
+            child: Stack(
+              children: [
+                const ColoredBox(color: GColors.wellBg, child: SizedBox.expand()),
+                FractionallySizedBox(
+                  widthFactor: fraction,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: full
+                            ? const [GColors.hot, GColors.hot]
+                            : const [GColors.brew, GColors.amber],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${Fmt.volume(ml)} / ${Fmt.volume(capacity)}',
+              style: GType.num(size: 11, color: GColors.textMid),
+            ),
+            Text(
+              full
+                  ? 'БАК ПОЛОН — АППАРАТЫ СТОЯТ'
+                  : (rate > 0 ? Fmt.rate(rate) : 'аппараты простаивают'),
+              style: GType.num(
+                size: 11,
+                color: full ? GColors.hot : GColors.copper,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Кнопка продажи. Янтарная — только когда есть что сдавать; на пике рынка
+/// добавляется свечение, чтобы момент было видно боковым зрением.
+class _SellButton extends StatefulWidget {
+  final double value;
+  final bool enabled;
+  final bool hot;
+  final VoidCallback onTap;
+
+  const _SellButton({
+    required this.value,
+    required this.enabled,
+    required this.hot,
+    required this.onTap,
+  });
+
+  @override
+  State<_SellButton> createState() => _SellButtonState();
+}
+
+class _SellButtonState extends State<_SellButton> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.enabled;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: on ? (_) => setState(() => _down = true) : null,
+      onTapUp: (_) => setState(() => _down = false),
+      onTapCancel: () => setState(() => _down = false),
+      onTap: on
+          ? () {
+              HapticFeedback.mediumImpact();
+              widget.onTap();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _down ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(GR.button),
+            gradient: on
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [GColors.amber, GColors.amberDim],
+                  )
+                : null,
+            color: on ? null : GColors.wellBg,
+            border: on ? null : Border.all(color: GColors.border),
+            boxShadow: on && widget.hot
+                ? const [BoxShadow(color: GColors.amberGlow, blurRadius: 20)]
+                : null,
+          ),
+          child: Text(
+            on ? 'ПРОДАТЬ · ${Fmt.money(widget.value)}' : 'НЕЧЕГО ПРОДАВАТЬ',
+            style: GType.ui(
+              size: 14,
+              weight: FontWeight.w700,
+              color: on ? GColors.onAmber : GColors.textLo,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Текущая цена на рынке. Её видно всегда — иначе решение «продавать сейчас
+/// или подождать» превращается в угадайку.
+class _PriceTag extends StatelessWidget {
+  final double price;
+  final bool hot;
+
+  const _PriceTag({required this.price, required this.hot});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: GS.s3),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: GColors.wellBg,
+        borderRadius: BorderRadius.circular(GR.button),
+        border: Border.all(color: hot ? GColors.amber : GColors.border),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('РЫНОК', style: GType.label().copyWith(fontSize: 9)),
           Text(
-            rate > 0 ? Fmt.rate(rate) : 'аппараты простаивают',
-            style: GType.num(size: 13, color: GColors.copper),
+            Fmt.pricePerLitre(price),
+            style: GType.num(
+              size: 12,
+              weight: FontWeight.w700,
+              color: hot ? GColors.amber : GColors.textHi,
+            ),
           ),
         ],
       ),
@@ -339,7 +530,8 @@ class _StillsTab extends ConsumerWidget {
     final state = ref.watch(gameProvider);
     final engine = ref.read(gameEngineProvider);
     final gens = state.generators.items;
-    final ml = state.resources.ml;
+    // Аппараты покупаются за ДЕНЬГИ, а не за товар в баке.
+    final money = state.resources.money;
 
     // Открыт первый аппарат и любой следующий за уже купленным — лестница
     // ведёт игрока и не вываливает сразу 13 позиций.
@@ -369,7 +561,7 @@ class _StillsTab extends ConsumerWidget {
           owned: g.ownedCount,
           output: Production.generatorOutput(g, state.generators, state.upgrades, state.prestige),
           cost: cost,
-          affordable: open && ml >= cost,
+          affordable: open && money >= cost,
           locked: !open,
           onBuy: () => ref.read(gameProvider.notifier).buyGenerator(g.id),
         );
@@ -384,12 +576,13 @@ class _UpgradesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
-    final ml = state.resources.ml;
+    // Улучшения тоже покупаются за деньги.
+    final money = state.resources.money;
 
     // Показываем только те, что уже имеют смысл: иначе список пугает.
     final visible = state.upgrades.items.where((u) {
       if (u.purchased) return true;
-      return ml >= u.cost * 0.35;
+      return money >= u.cost * 0.35;
     }).toList();
 
     if (visible.isEmpty) {
@@ -415,7 +608,7 @@ class _UpgradesTab extends ConsumerWidget {
           name: u.name,
           effect: u.description,
           cost: u.cost,
-          affordable: ml >= u.cost,
+          affordable: money >= u.cost,
           purchased: u.purchased,
           onBuy: () => ref.read(gameProvider.notifier).buyUpgrade(u.id),
         );

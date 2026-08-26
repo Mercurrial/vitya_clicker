@@ -93,6 +93,19 @@ class Fmt {
   /// Единица, подходящая величине: «мл» или «л».
   static String volumeUnit(double ml) => ml < 1000 ? 'мл' : 'л';
 
+  /// Рубли: «1.20К ₽». До тысячи — целыми, копейки в игре не нужны.
+  static String money(double value) {
+    if (value.isNaN) return '0 ₽';
+    if (value < 0) return '-${money(-value)}';
+    return '${short(value)} ₽';
+  }
+
+  /// Цена за литр — с точностью, потому что её сравнивают глазами.
+  static String pricePerLitre(double value) {
+    if (value < 1000) return '${value.toStringAsFixed(0)} ₽/л';
+    return '${short(value)} ₽/л';
+  }
+
   /// Множитель: 2.0 → «×2», 1.5 → «×1.5», 2.25 → «×2.25».
   static String mult(double value) {
     if (value == value.roundToDouble()) return '×${value.toStringAsFixed(0)}';

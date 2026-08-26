@@ -14,7 +14,7 @@ import 'dart:convert';
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
-const int kSaveVersion = 2;
+const int kSaveVersion = 3;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
@@ -66,6 +66,15 @@ class SaveCodec {
         'ml': scale(json['litres']),
         'lifetime': scale(json['lifetime']),
       }..remove('litres');
+    },
+
+    // v2 покупала оборудование за сам самогон. В v3 появились рубли: то, что
+    // было накоплено, честнее считать уже проданным по базовой цене, а бак
+    // отдать игроку пустым.
+    2: (json) {
+      final ml = json['ml'];
+      final money = ml is num ? ml.toDouble() * 0.1 : 0.0;
+      return {...json, 'ml': 0.0, 'money': money};
     },
   };
 

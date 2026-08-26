@@ -101,6 +101,12 @@ class GameNotifier extends Notifier<GameState> {
     );
   }
 
+  /// Сдать весь бак по текущей цене.
+  void sell() {
+    final engine = ref.read(gameEngineProvider);
+    state = engine.sell(state, ref.read(timeProvider)());
+  }
+
   void buyGenerator(String id) {
     final engine = ref.read(gameEngineProvider);
     state = engine.buyGenerator(state, id, ref.read(timeProvider)());

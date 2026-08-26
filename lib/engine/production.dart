@@ -23,6 +23,20 @@ class Production {
   static const String _menteeId = 'dedov';
   static const String _mentorId = 'banka';
 
+  /// Ёмкость бака без улучшений — два литра.
+  ///
+  /// Бак не декорация: когда он полон, аппараты встают. Это честно (ёмкость
+  /// действительно кончается) и создаёт причину вернуться — пока игрока нет,
+  /// бак наполняется, он приходит и продаёт.
+  static const double baseTankMl = 2000;
+
+  /// Ёмкость бака с учётом улучшений.
+  static double tankCapacity(UpgradesState ups) =>
+      baseTankMl *
+      ups.items
+          .where((u) => u.purchased && u.target == UpgradeTarget.tankCapacity)
+          .fold(1.0, (product, u) => product * u.multiplier);
+
   /// Сколько секунд производства стоит одно нажатие.
   ///
   /// Именно доля от текущего потока, а не константа: константу экспоненциальный
