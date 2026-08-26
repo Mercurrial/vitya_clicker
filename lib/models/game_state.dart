@@ -18,9 +18,9 @@ class GameState extends Equatable {
   final PrestigeState prestige;
   final DateTime lastUpdateTime;
 
-  /// Кэш суммарного дохода — пересчитывается только при изменении того,
+  /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
   /// от чего он зависит (аппараты, апгрейды, мудрость).
-  final double litresPerSecond;
+  final double mlPerSecond;
 
   const GameState({
     required this.resources,
@@ -29,7 +29,7 @@ class GameState extends Equatable {
     required this.upgrades,
     required this.prestige,
     required this.lastUpdateTime,
-    required this.litresPerSecond,
+    required this.mlPerSecond,
   });
 
   factory GameState.initial({
@@ -49,7 +49,7 @@ class GameState extends Equatable {
       upgrades: ups,
       prestige: prestige,
       lastUpdateTime: lastUpdateTime ?? DateTime.now(),
-      litresPerSecond: Production.litresPerSecond(gens, ups, prestige),
+      mlPerSecond: Production.mlPerSecond(gens, ups, prestige),
     );
   }
 
@@ -67,8 +67,8 @@ class GameState extends Equatable {
 
     final recompute = generators != null || upgrades != null || prestige != null;
     final nextRate = recompute
-        ? Production.litresPerSecond(nextGens, nextUps, nextPrestige)
-        : litresPerSecond;
+        ? Production.mlPerSecond(nextGens, nextUps, nextPrestige)
+        : mlPerSecond;
 
     return GameState(
       resources: resources ?? this.resources,
@@ -77,16 +77,24 @@ class GameState extends Equatable {
       upgrades: nextUps,
       prestige: nextPrestige,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
-      litresPerSecond: nextRate,
+      mlPerSecond: nextRate,
     );
   }
 
-  /// Литры за одно нажатие: база × апгрейды тапа × мудрость.
+  /// Ручная отдача за нажатие, в мл.
   ///
-  /// Намеренно НЕ зависит от литров в секунду — иначе автокликер становился бы
-  /// главной стратегией поздней игры.
-  double get tapPower =>
-      clicker.baseTapPower * upgrades.tapMultiplier * prestige.globalMultiplier;
+  /// Берётся большее из двух: плоская база (она держит самое начало, когда
+  /// аппаратов ещё нет) и доля секунды текущего производства (она не даёт
+  /// нажатию обесцениться позже). Так тап остаётся осмысленным на всей
+  /// дистанции, а не умирает через пять минут.
+  ///
+  /// Основная ценность тапа всё равно не тут, а в жаре — он множит весь поток.
+  double get tapYield {
+    final flat =
+        clicker.baseTapPower * upgrades.tapMultiplier * prestige.globalMultiplier;
+    final share = mlPerSecond * Production.tapSeconds;
+    return flat > share ? flat : share;
+  }
 
   @override
   List<Object?> get props => [
@@ -96,7 +104,7 @@ class GameState extends Equatable {
         upgrades,
         prestige,
         lastUpdateTime,
-        litresPerSecond,
+        mlPerSecond,
       ];
 
   @override

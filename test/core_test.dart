@@ -32,6 +32,33 @@ void main() {
     });
   });
 
+  group('Fmt.volume — миллилитры и литры', () {
+    test('до литра показываем миллилитры', () {
+      expect(Fmt.volume(0), '0 мл');
+      expect(Fmt.volume(5), '5 мл');
+      expect(Fmt.volume(850.7), '850 мл');
+      expect(Fmt.volume(999), '999 мл');
+    });
+
+    test('от литра переключаемся на литры', () {
+      expect(Fmt.volume(1000), '1.00 л');
+      expect(Fmt.volume(1200), '1.20 л');
+      expect(Fmt.volume(2500000), '2.50К л');
+    });
+
+    test('число и единица согласованы между собой', () {
+      expect(Fmt.volumeNumber(850), '850');
+      expect(Fmt.volumeUnit(850), 'мл');
+      expect(Fmt.volumeNumber(1200), '1.20');
+      expect(Fmt.volumeUnit(1200), 'л');
+    });
+
+    test('скорость получает суффикс', () {
+      expect(Fmt.rate(120), '120 мл/с');
+      expect(Fmt.rate(5000), '5.00 л/с');
+    });
+  });
+
   group('Fmt.plural — русское склонение', () {
     String litres(int n) => Fmt.plural(n, 'литр', 'литра', 'литров');
 
@@ -122,8 +149,22 @@ void main() {
     });
 
     test('сейв из будущей версии не трогаем', () {
-      const future = '{"version": ${kSaveVersion + 1}, "litres": 1}';
+      const future = '{"version": ${kSaveVersion + 1}, "ml": 1}';
       expect(codec.decode(future).wasCorrupt, isTrue);
+    });
+
+    test('старый сейв в литрах мигрирует в миллилитры', () {
+      // v1 хранил объём в литрах — при переходе на мл всё умножается на 1000.
+      const old = '{"version": 1, "litres": 2.5, "lifetime": 10, "wisdom": 3}';
+      final result = codec.decode(old);
+
+      expect(result.wasCorrupt, isFalse);
+      expect(result.wasMigrated, isTrue);
+      expect(result.data!['ml'], 2500);
+      expect(result.data!['lifetime'], 10000);
+      expect(result.data!['wisdom'], 3, reason: 'непричастные поля не трогаем');
+      expect(result.data!.containsKey('litres'), isFalse);
+      expect(result.data!['version'], kSaveVersion);
     });
   });
 

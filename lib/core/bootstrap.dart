@@ -68,11 +68,11 @@ Future<Bootstrap> bootstrapGame({
   // остаётся единственной формулой — расходиться нечему.
   final offline = clock.since(serializer.lastSeenOf(data));
   var gained = 0.0;
-  if (offline.credited > Duration.zero && state.litresPerSecond > 0) {
-    final before = state.resources.litres;
+  if (offline.credited > Duration.zero && state.mlPerSecond > 0) {
+    final before = state.resources.ml;
     state = state.copyWith(lastUpdateTime: now.subtract(offline.credited));
     state = const _TickOnly().apply(state, now);
-    gained = state.resources.litres - before;
+    gained = state.resources.ml - before;
   }
 
   return Bootstrap(
@@ -92,10 +92,10 @@ class _TickOnly {
     final seconds =
         now.difference(state.lastUpdateTime).inMilliseconds / 1000.0;
     if (seconds <= 0) return state.copyWith(lastUpdateTime: now);
-    final produced = state.litresPerSecond * seconds;
+    final produced = state.mlPerSecond * seconds;
     return state.copyWith(
       resources: state.resources.copyWith(
-        litres: state.resources.litres + produced,
+        ml: state.resources.ml + produced,
       ),
       prestige: state.prestige.copyWith(
         totalEverEarned: state.prestige.totalEverEarned + produced,

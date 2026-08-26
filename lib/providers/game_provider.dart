@@ -76,9 +76,19 @@ class GameNotifier extends Notifier<GameState> {
     await saves.save(json);
   }
 
+  /// Текущий жар под аппаратом. Ставится интерфейсом со шкалы ГРАДУСА и
+  /// множит ВЕСЬ пассивный поток — ради этого игрок и тапает.
+  double _heatMultiplier = 1.0;
+
+  void setHeat(double multiplier) => _heatMultiplier = multiplier;
+
   void _tick() {
     final engine = ref.read(gameEngineProvider);
-    state = engine.processTick(state, ref.read(timeProvider)());
+    state = engine.processTick(
+      state,
+      ref.read(timeProvider)(),
+      heatMultiplier: _heatMultiplier,
+    );
   }
 
   /// Нажатие по Вите. [heatMultiplier] приходит от шкалы ГРАДУСА.

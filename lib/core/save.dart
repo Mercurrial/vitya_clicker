@@ -14,7 +14,7 @@ import 'dart:convert';
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
-const int kSaveVersion = 1;
+const int kSaveVersion = 2;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
@@ -56,8 +56,18 @@ class SaveCodec {
   const SaveCodec();
 
   /// Миграции по возрастанию: ключ — версия, ИЗ которой мигрируем.
-  /// Пример для будущего: `2: (j) { j['шухер'] = 0.0; return j; }`
-  static const Map<int, Migration> _migrations = {};
+  static final Map<int, Migration> _migrations = {
+    // v1 считал объём в литрах; v2 перешла на миллилитры, чтобы начало игры
+    // ощущалось как «капает по чуть-чуть». Переводим накопленное и историю.
+    1: (json) {
+      double scale(dynamic v) => v is num ? v.toDouble() * 1000 : 0.0;
+      return {
+        ...json,
+        'ml': scale(json['litres']),
+        'lifetime': scale(json['lifetime']),
+      }..remove('litres');
+    },
+  };
 
   /// Упаковка состояния в строку с проставленной версией.
   String encode(Map<String, dynamic> state) {

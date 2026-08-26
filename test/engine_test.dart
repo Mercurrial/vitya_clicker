@@ -20,46 +20,75 @@ void main() {
   group('Тап', () {
     test('даёт базовую силу и считает нажатия', () {
       final s = engine.processTap(fresh(), t0);
-      expect(s.resources.litres, kBaseTapPower);
+      expect(s.resources.ml, kBaseTapMl);
       expect(s.clicker.totalTaps, 1);
-      expect(s.prestige.totalEverEarned, kBaseTapPower);
+      expect(s.prestige.totalEverEarned, kBaseTapMl);
     });
 
     test('градус умножает добычу', () {
       final s = engine.processTap(fresh(), t0, heatMultiplier: 3.0);
-      expect(s.resources.litres, kBaseTapPower * 3);
+      expect(s.resources.ml, kBaseTapMl * 3);
     });
 
-    test('не зависит от литров в секунду — автокликер не решает', () {
+    test('отдача не обесценивается: растёт вместе с производством', () {
       var s = fresh();
-      // Купим аппаратов, чтобы поднять пассивный доход.
-      s = s.copyWith(resources: s.resources.copyWith(litres: 1e6));
-      for (var i = 0; i < 20; i++) {
+      final atStart = s.tapYield;
+
+      // Разгоняем пассивный доход.
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e9));
+      for (var i = 0; i < 40; i++) {
         s = engine.buyGenerator(s, 'banka', t0);
       }
-      expect(s.litresPerSecond, greaterThan(0));
+      expect(s.mlPerSecond, greaterThan(0));
 
-      final before = s.resources.litres;
-      final after = engine.processTap(s, t0).resources.litres;
-      expect(after - before, closeTo(s.tapPower, 1e-9));
+      // Именно это чинит «через пять минут тап стал бесполезен»: отдача — доля
+      // текущего потока, а не константа.
+      expect(s.tapYield, greaterThan(atStart));
+      expect(s.tapYield, closeTo(s.mlPerSecond * Production.tapSeconds, 1e-9));
     });
   });
 
   group('Пассивный доход', () {
     test('без аппаратов ничего не капает', () {
       final s = engine.processTick(fresh(), t0.add(const Duration(minutes: 5)));
-      expect(s.resources.litres, 0);
+      expect(s.resources.ml, 0);
     });
 
     test('начисляется пропорционально времени', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(litres: 100));
-      s = engine.buyGenerator(s, 'banka', t0); // 0.1 Л/с
-      final rate = s.litresPerSecond;
+      s = s.copyWith(resources: s.resources.copyWith(ml: 100));
+      s = engine.buyGenerator(s, 'banka', t0); // 1 мл/с
+      final rate = s.mlPerSecond;
 
-      final before = s.resources.litres;
+      final before = s.resources.ml;
       s = engine.processTick(s, t0.add(const Duration(seconds: 10)));
-      expect(s.resources.litres - before, closeTo(rate * 10, 1e-9));
+      expect(s.resources.ml - before, closeTo(rate * 10, 1e-9));
+    });
+
+    test('жар множит ВЕСЬ поток — ради этого и тапают', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      for (var i = 0; i < 5; i++) {
+        s = engine.buyGenerator(s, 'banka', t0);
+      }
+      final base = s.resources.ml;
+      final span = t0.add(const Duration(seconds: 10));
+
+      final cold = engine.processTick(s, span).resources.ml - base;
+      final hot = engine.processTick(s, span, heatMultiplier: 3.0).resources.ml - base;
+
+      expect(hot, closeTo(cold * 3, 1e-9));
+    });
+
+    test('отсутствие не наказывается: без жара идёт базовая скорость', () {
+      var s = fresh();
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      s = engine.buyGenerator(s, 'banka', t0);
+      final base = s.resources.ml;
+      final span = t0.add(const Duration(seconds: 10));
+
+      final offline = engine.processTick(s, span).resources.ml - base;
+      expect(offline, closeTo(s.mlPerSecond * 10, 1e-9));
     });
   });
 
@@ -72,7 +101,7 @@ void main() {
 
     test('цена растёт с каждой купленной штукой', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(litres: 1e6));
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
       final first = engine.generatorCost(s.generators.items.first);
       s = engine.buyGenerator(s, 'banka', t0);
       final second = engine.generatorCost(s.generators.items.first);
@@ -82,14 +111,14 @@ void main() {
 
     test('апгрейд тапа удваивает силу и покупается один раз', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(litres: 1e6));
-      final before = s.tapPower;
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
+      final before = s.tapYield;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
-      expect(s.tapPower, closeTo(before * 2, 1e-9));
+      expect(s.tapYield, closeTo(before * 2, 1e-9));
 
-      final spent = s.resources.litres;
+      final spent = s.resources.ml;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
-      expect(s.resources.litres, spent, reason: 'повторная покупка не должна списывать');
+      expect(s.resources.ml, spent, reason: 'повторная покупка не должна списывать');
     });
   });
 
@@ -104,11 +133,11 @@ void main() {
 
     test('десятая банка даёт скачок больше, чем девятая', () {
       var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(litres: 1e9));
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e9));
       final rates = <double>[];
       for (var i = 0; i < 10; i++) {
         s = engine.buyGenerator(s, 'banka', t0);
-        rates.add(s.litresPerSecond);
+        rates.add(s.mlPerSecond);
       }
       final ninthStep = rates[8] - rates[7];
       final tenthStep = rates[9] - rates[8];
@@ -124,28 +153,32 @@ void main() {
     });
 
     test('мудрость считается как корень из нагнанного', () {
-      const p = PrestigeState(totalEverEarned: 25e6);
+      // 25 шагов по 1e7 мл ⇒ √25 = 5.
+      const p = PrestigeState(
+        totalEverEarned: 25 * PrestigeState.mlPerWisdomStep,
+      );
       expect(p.potentialWisdom, 5);
       expect(p.pendingWisdom, 5);
     });
 
     test('сбрасывает гараж, но сохраняет мудрость и историю', () {
-      var s = fresh(prestige: const PrestigeState(totalEverEarned: 25e6));
-      s = s.copyWith(resources: s.resources.copyWith(litres: 1e6));
+      const earned = 25 * PrestigeState.mlPerWisdomStep;
+      var s = fresh(prestige: const PrestigeState(totalEverEarned: earned));
+      s = s.copyWith(resources: s.resources.copyWith(ml: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
 
       final after = engine.prestige(s, kGenerators, kUpgrades, t0);
-      expect(after.resources.litres, 0, reason: 'литры сгорают');
+      expect(after.resources.ml, 0, reason: 'накопленное сгорает');
       expect(after.generators.items.first.ownedCount, 0, reason: 'аппараты сброшены');
       expect(after.prestige.wisdom, 5, reason: 'мудрость остаётся');
       expect(after.prestige.hangovers, 1);
-      expect(after.prestige.totalEverEarned, 25e6, reason: 'история не обнуляется');
+      expect(after.prestige.totalEverEarned, earned, reason: 'история не обнуляется');
     });
 
     test('мудрость ускоряет следующий заход', () {
       final plain = fresh();
       final wise = fresh(prestige: const PrestigeState(wisdom: 10));
-      expect(wise.tapPower, closeTo(plain.tapPower * 1.5, 1e-9));
+      expect(wise.tapYield, closeTo(plain.tapYield * 1.5, 1e-9));
     });
   });
 }

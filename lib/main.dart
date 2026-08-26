@@ -92,9 +92,9 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
         notifier.saveNow();
       case AppLifecycleState.resumed:
         final away = ref.read(clockProvider).since(_leftAt);
-        final before = ref.read(gameProvider).resources.litres;
+        final before = ref.read(gameProvider).resources.ml;
         notifier.applyOffline(away.credited);
-        final gained = ref.read(gameProvider).resources.litres - before;
+        final gained = ref.read(gameProvider).resources.ml - before;
         if (away.isMeaningful && gained > 0 && mounted) {
           showWelcomeBack(context, offline: away, gained: gained);
         }

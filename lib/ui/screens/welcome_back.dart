@@ -53,7 +53,7 @@ Future<void> showWelcomeBack(
             ),
             const SizedBox(height: GS.s4),
             Text(
-              '+${Fmt.litres(gained)}',
+              '+${Fmt.volume(gained)}',
               style: GType.num(
                 size: 32,
                 weight: FontWeight.w700,

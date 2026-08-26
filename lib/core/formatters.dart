@@ -59,11 +59,39 @@ class Fmt {
     return '$mantissa${_suffixes[tier]}';
   }
 
-  /// Литры с единицей: «1.5К Л».
-  static String litres(double value) => '${short(value)} Л';
+  /// Объём. Внутри игра считает в МИЛЛИЛИТРАХ — так начало ощущается честно:
+  /// Витя капает по чуть-чуть, а не сразу литрами.
+  ///
+  /// До литра показываем миллилитры («850 мл»), дальше переключаемся на литры
+  /// с суффиксами («1.20 л», «2.30К л»).
+  static String volume(double ml) {
+    if (ml.isNaN) return '0 мл';
+    if (ml < 0) return '-${volume(-ml)}';
+    if (ml < 1000) return '${ml.floor()} мл';
+    return '${_litres(ml / 1000)} л';
+  }
 
-  /// Скорость производства: «1.5К Л/с».
-  static String rate(double value) => '${short(value)} Л/с';
+  /// Литры с тремя значащими цифрами.
+  ///
+  /// Отдельно от [short], потому что там значения меньше тысячи округляются до
+  /// целого — для литров это потеря: 1200 мл превратились бы в «1 л».
+  static String _litres(double l) {
+    if (l >= 1000) return short(l);
+    if (l < 10) return l.toStringAsFixed(2);
+    if (l < 100) return l.toStringAsFixed(1);
+    return l.toStringAsFixed(0);
+  }
+
+  /// Скорость производства: «120 мл/с», «1.20 л/с».
+  static String rate(double mlPerSecond) => '${volume(mlPerSecond)}/с';
+
+  /// Только число объёма, без единицы — для крупного счётчика,
+  /// где единица выводится отдельным элементом.
+  static String volumeNumber(double ml) =>
+      ml < 1000 ? ml.floor().toString() : _litres(ml / 1000);
+
+  /// Единица, подходящая величине: «мл» или «л».
+  static String volumeUnit(double ml) => ml < 1000 ? 'мл' : 'л';
 
   /// Множитель: 2.0 → «×2», 1.5 → «×1.5», 2.25 → «×2.25».
   static String mult(double value) {

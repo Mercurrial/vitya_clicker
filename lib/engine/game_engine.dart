@@ -10,20 +10,21 @@ class GameEngine {
 
   const GameEngine({this.formulas = const Formulas()});
 
-  /// Нажатие по Вите.
+  /// Нажатие по Вите — подкинуть дров под аппарат.
   ///
-  /// [heatMultiplier] приходит от шкалы ГРАДУСА (зелёная зона даёт ×3,
-  /// перегрев — штраф). Движок про саму шкалу ничего не знает — он получает
-  /// готовый коэффициент, поэтому остаётся чистым.
+  /// Главная ценность тапа не здесь, а в жаре: он множит ВСЁ производство
+  /// (см. [processTick]). Прямая отдача нужна лишь для того, чтобы нажатие
+  /// ощущалось, и она намеренно считается как «доля секунды производства» —
+  /// поэтому не отмирает с ростом империи, как отмирала бы константа.
   GameState processTap(
     GameState state,
     DateTime currentTime, {
     double heatMultiplier = 1.0,
   }) {
-    final gain = state.tapPower * heatMultiplier;
+    final gain = state.tapYield * heatMultiplier;
 
     return state.copyWith(
-      resources: state.resources.copyWith(litres: state.resources.litres + gain),
+      resources: state.resources.copyWith(ml: state.resources.ml + gain),
       clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
       prestige: state.prestige.copyWith(
         totalEverEarned: state.prestige.totalEverEarned + gain,
@@ -34,10 +35,21 @@ class GameEngine {
 
   /// Пассивная генерация за прошедшее время.
   ///
-  /// Используется и для обычного тика, и для оффлайн-дохода — разница только в
-  /// величине [currentTime] минус метка состояния.
-  GameState processTick(GameState state, DateTime currentTime) {
-    final rate = state.litresPerSecond;
+  /// [heatMultiplier] — вот ради чего игрок вообще тапает: жар под аппаратом
+  /// множит весь поток, а не добавляет фиксированную каплю. Поэтому ценность
+  /// нажатий растёт вместе с производством и никогда не обнуляется.
+  ///
+  /// Пока игра закрыта, множитель равен 1: отсутствие не наказывается, просто
+  /// активная игра идёт быстрее.
+  ///
+  /// Та же функция обслуживает оффлайн-доход — разница только в величине
+  /// [currentTime] минус метка состояния.
+  GameState processTick(
+    GameState state,
+    DateTime currentTime, {
+    double heatMultiplier = 1.0,
+  }) {
+    final rate = state.mlPerSecond * heatMultiplier;
     if (rate <= 0) return state.copyWith(lastUpdateTime: currentTime);
 
     final deltaSeconds =
@@ -47,7 +59,7 @@ class GameEngine {
     final produced = formulas.calculatePassiveGeneration(rate, deltaSeconds);
 
     return state.copyWith(
-      resources: state.resources.copyWith(litres: state.resources.litres + produced),
+      resources: state.resources.copyWith(ml: state.resources.ml + produced),
       prestige: state.prestige.copyWith(
         totalEverEarned: state.prestige.totalEverEarned + produced,
       ),
@@ -69,13 +81,13 @@ class GameEngine {
 
     final generator = state.generators.items[index];
     final cost = generatorCost(generator);
-    if (state.resources.litres < cost) return state;
+    if (state.resources.ml < cost) return state;
 
     final items = List<Generator>.from(state.generators.items);
     items[index] = generator.copyWith(ownedCount: generator.ownedCount + 1);
 
     return state.copyWith(
-      resources: state.resources.copyWith(litres: state.resources.litres - cost),
+      resources: state.resources.copyWith(ml: state.resources.ml - cost),
       generators: state.generators.copyWith(items: items),
       lastUpdateTime: currentTime,
     );
@@ -88,13 +100,13 @@ class GameEngine {
 
     final upgrade = state.upgrades.items[index];
     if (upgrade.purchased) return state;
-    if (state.resources.litres < upgrade.cost) return state;
+    if (state.resources.ml < upgrade.cost) return state;
 
     final items = List<Upgrade>.from(state.upgrades.items);
     items[index] = upgrade.copyWith(purchased: true);
 
     return state.copyWith(
-      resources: state.resources.copyWith(litres: state.resources.litres - upgrade.cost),
+      resources: state.resources.copyWith(ml: state.resources.ml - upgrade.cost),
       upgrades: state.upgrades.copyWith(items: items),
       lastUpdateTime: currentTime,
     );

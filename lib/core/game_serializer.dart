@@ -24,7 +24,7 @@ class GameSerializer {
 
   Map<String, dynamic> toJson(GameState s, {required int lastSeenMillis}) {
     return {
-      'litres': s.resources.litres,
+      'ml': s.resources.ml,
       'taps': s.clicker.totalTaps,
       'stills': {
         for (final g in s.generators.items)
@@ -73,7 +73,7 @@ class GameSerializer {
     );
 
     return base.copyWith(
-      resources: ResourcesState(litres: _asDouble(json['litres'])),
+      resources: ResourcesState(ml: _asDouble(json['ml'])),
       clicker: ClickerState(totalTaps: _asInt(json['taps'])),
     );
   }

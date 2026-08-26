@@ -31,17 +31,23 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   void initState() {
     super.initState();
     _heat = HeatController(vsync: this);
+    // Жар живёт в интерфейсе, но множит пассивный поток в движке — поэтому
+    // текущее значение непрерывно отдаём в состояние игры.
+    _heat.addListener(_pushHeat);
   }
+
+  void _pushHeat() => ref.read(gameProvider.notifier).setHeat(_heat.multiplier);
 
   @override
   void dispose() {
+    _heat.removeListener(_pushHeat);
     _heat.dispose();
     super.dispose();
   }
 
   ({String text, Color color}) _onTap() {
     final applied = _heat.stoke();
-    final gained = ref.read(gameProvider).tapPower * applied;
+    final gained = ref.read(gameProvider).tapYield * applied;
     ref.read(gameProvider.notifier).tap(heatMultiplier: applied);
 
     final color = _heat.isOverheated
@@ -49,7 +55,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
         : applied >= HeatController.greenMultiplier
             ? GColors.green
             : GColors.brew;
-    return (text: '+${Fmt.litres(gained)}', color: color);
+    return (text: '+${Fmt.volume(gained)}', color: color);
   }
 
   @override
@@ -143,7 +149,7 @@ class _CounterState extends ConsumerState<_Counter>
   @override
   void initState() {
     super.initState();
-    _shown = ref.read(gameProvider).resources.litres;
+    _shown = ref.read(gameProvider).resources.ml;
     _ticker = createTicker(_onTick)..start();
   }
 
@@ -157,10 +163,10 @@ class _CounterState extends ConsumerState<_Counter>
     final dt = _prev == Duration.zero ? 0.016 : (now - _prev).inMicroseconds / 1e6;
     _prev = now;
 
-    final target = ref.read(gameProvider).resources.litres;
+    final target = ref.read(gameProvider).resources.ml;
     _shown += (target - _shown) * (dt * 9).clamp(0.0, 1.0);
 
-    final text = Fmt.short(_shown);
+    final text = Fmt.volume(_shown);
     if (text != _last) {
       _last = text;
       if (mounted) setState(() {});
@@ -169,7 +175,7 @@ class _CounterState extends ConsumerState<_Counter>
 
   @override
   Widget build(BuildContext context) {
-    final rate = ref.watch(gameProvider.select((s) => s.litresPerSecond));
+    final rate = ref.watch(gameProvider.select((s) => s.mlPerSecond));
     return Padding(
       padding: const EdgeInsets.only(top: GS.s4, bottom: GS.s2),
       child: Column(
@@ -181,9 +187,12 @@ class _CounterState extends ConsumerState<_Counter>
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(Fmt.short(_shown), style: GType.counter()),
+              Text(Fmt.volumeNumber(_shown), style: GType.counter()),
               const SizedBox(width: 6),
-              Text('Л', style: GType.num(size: 18, color: GColors.textMid)),
+              Text(
+                Fmt.volumeUnit(_shown),
+                style: GType.num(size: 18, color: GColors.textMid),
+              ),
             ],
           ),
           const SizedBox(height: GS.s1),
@@ -280,7 +289,7 @@ class _StillsTab extends ConsumerWidget {
     final state = ref.watch(gameProvider);
     final engine = ref.read(gameEngineProvider);
     final gens = state.generators.items;
-    final litres = state.resources.litres;
+    final ml = state.resources.ml;
 
     // Открыт первый аппарат и любой следующий за уже купленным — лестница
     // ведёт игрока и не вываливает сразу 13 позиций.
@@ -310,7 +319,7 @@ class _StillsTab extends ConsumerWidget {
           owned: g.ownedCount,
           output: Production.generatorOutput(g, state.generators, state.upgrades, state.prestige),
           cost: cost,
-          affordable: open && litres >= cost,
+          affordable: open && ml >= cost,
           locked: !open,
           onBuy: () => ref.read(gameProvider.notifier).buyGenerator(g.id),
         );
@@ -325,12 +334,12 @@ class _UpgradesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
-    final litres = state.resources.litres;
+    final ml = state.resources.ml;
 
     // Показываем только те, что уже имеют смысл: иначе список пугает.
     final visible = state.upgrades.items.where((u) {
       if (u.purchased) return true;
-      return litres >= u.cost * 0.35;
+      return ml >= u.cost * 0.35;
     }).toList();
 
     if (visible.isEmpty) {
@@ -356,7 +365,7 @@ class _UpgradesTab extends ConsumerWidget {
           name: u.name,
           effect: u.description,
           cost: u.cost,
-          affordable: litres >= u.cost,
+          affordable: ml >= u.cost,
           purchased: u.purchased,
           onBuy: () => ref.read(gameProvider.notifier).buyUpgrade(u.id),
         );

@@ -23,6 +23,12 @@ class Production {
   static const String _menteeId = 'dedov';
   static const String _mentorId = 'banka';
 
+  /// Сколько секунд производства стоит одно нажатие.
+  ///
+  /// Именно доля от текущего потока, а не константа: константу экспоненциальный
+  /// рост генераторов обесценивает за считанные минуты, а доля живёт всегда.
+  static const double tapSeconds = 0.25;
+
   /// Количества, на которых доход аппарата удваивается.
   static const List<int> milestones = [10, 25, 50, 100];
 
@@ -43,7 +49,7 @@ class Production {
     return m;
   }
 
-  /// Литры в секунду от одного аппарата со всеми множителями.
+  /// Миллилитры в секунду от одного аппарата со всеми множителями.
   static double generatorOutput(
     Generator g,
     GeneratorsState gens,
@@ -59,8 +65,8 @@ class Production {
     return out;
   }
 
-  /// Суммарные литры в секунду.
-  static double litresPerSecond(
+  /// Суммарные миллилитры в секунду.
+  static double mlPerSecond(
     GeneratorsState gens,
     UpgradesState ups,
     PrestigeState prestige,

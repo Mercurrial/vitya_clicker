@@ -19,7 +19,7 @@ void main() {
 
   GameState played() {
     var s = build();
-    s = s.copyWith(resources: s.resources.copyWith(litres: 500000));
+    s = s.copyWith(resources: s.resources.copyWith(ml: 500000));
     for (var i = 0; i < 12; i++) {
       s = engine.buyGenerator(s, 'banka', now);
     }
@@ -40,9 +40,9 @@ void main() {
         now: now,
       );
 
-      expect(after.resources.litres, closeTo(before.resources.litres, 1e-9));
+      expect(after.resources.ml, closeTo(before.resources.ml, 1e-9));
       expect(after.clicker.totalTaps, before.clicker.totalTaps);
-      expect(after.litresPerSecond, closeTo(before.litresPerSecond, 1e-9));
+      expect(after.mlPerSecond, closeTo(before.mlPerSecond, 1e-9));
 
       int owned(GameState s, String id) =>
           s.generators.items.firstWhere((g) => g.id == id).ownedCount;
@@ -51,7 +51,7 @@ void main() {
 
       final bought = after.upgrades.items.where((u) => u.purchased).map((u) => u.id);
       expect(bought, contains('tap_ruka'));
-      expect(after.tapPower, closeTo(before.tapPower, 1e-9));
+      expect(after.tapYield, closeTo(before.tapYield, 1e-9));
     });
 
     test('мудрость и история переживают сохранение', () {
@@ -139,7 +139,7 @@ void main() {
         upgrades: kUpgrades,
         now: now,
       );
-      expect(s.resources.litres, 0);
+      expect(s.resources.ml, 0);
       expect(s.prestige.wisdom, 0);
       expect(s.generators.items.length, kGenerators.length);
     });
@@ -147,7 +147,7 @@ void main() {
     test('поля неверных типов и отрицательные значения обнуляются', () {
       final s = ser.fromJson(
         {
-          'litres': 'много',
+          'ml': 'много',
           'taps': -5,
           'stills': 'не карта',
           'bought': 'не список',
@@ -158,7 +158,7 @@ void main() {
         upgrades: kUpgrades,
         now: now,
       );
-      expect(s.resources.litres, 0);
+      expect(s.resources.ml, 0);
       expect(s.clicker.totalTaps, 0);
       expect(s.prestige.wisdom, 0);
       expect(s.prestige.totalEverEarned, 0);

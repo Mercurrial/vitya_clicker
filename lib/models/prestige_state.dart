@@ -30,15 +30,19 @@ class PrestigeState extends Equatable {
   /// Каждая единица мудрости даёт +5 % ко всему производству.
   static const double bonusPerWisdom = 0.05;
 
-  /// Порог, за который начисляется первая мудрость.
-  static const double litresPerWisdomStep = 1e6;
+  /// Шаг начисления мудрости: 1e9 мл — это ровно **тонна** самогона.
+  ///
+  /// Подобрано симуляцией: при росте цены 1.10 игрок набирает 7 мудрости к
+  /// 25-й минуте, 10 к 30-й и 14 к 35-й. Первое похмелье попадает в целевое
+  /// окно 25–35 минут и сразу даёт заметные +35…70 % к следующему заходу.
+  static const double mlPerWisdomStep = 1e9;
 
   double get globalMultiplier => 1.0 + bonusPerWisdom * wisdom;
 
   /// Сколько мудрости было бы, если проспаться прямо сейчас.
   int get potentialWisdom {
     if (totalEverEarned <= 0) return 0;
-    return math.sqrt(totalEverEarned / litresPerWisdomStep).floor();
+    return math.sqrt(totalEverEarned / mlPerWisdomStep).floor();
   }
 
   /// Сколько мудрости добавится за похмелье прямо сейчас.

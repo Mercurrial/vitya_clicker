@@ -17,11 +17,13 @@ class HeatGauge extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        // Подпись объясняет смысл механики: жар множит ВЕСЬ поток, а не
+        // добавляет каплю за нажатие. Без этого игрок не поймёт, зачем тапать.
         final label = controller.isOverheated
-            ? 'ПЕРЕГРЕВ'
+            ? 'ПЕРЕГРЕВ · БРАК'
             : controller.isInZone
-                ? 'В САМЫЙ РАЗ'
-                : 'ГРАДУС';
+                ? 'В САМЫЙ РАЗ · ВСЁ ПРОИЗВОДСТВО'
+                : 'ЖАР ПОД АППАРАТОМ';
         final labelColor = controller.isOverheated
             ? GColors.hot
             : controller.isInZone
