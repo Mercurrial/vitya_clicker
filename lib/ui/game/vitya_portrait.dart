@@ -48,11 +48,23 @@ class VityaPortrait extends StatefulWidget {
 
   final double size;
 
+  /// Ширина портрета в крупных пикселях (0 — плакатный вид).
+  final double pixels;
+
+  /// Сколько тонов оставить в портрете.
+  final double levels;
+
+  /// Радиус рамы: пиксельный стиль требует рубленых углов.
+  final double radius;
+
   const VityaPortrait({
     super.key,
     required this.era,
     required this.onTap,
     this.size = 220,
+    this.pixels = 0,
+    this.levels = 4,
+    this.radius = GR.card,
   });
 
   @override
@@ -140,7 +152,13 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
                   child: child,
                 );
               },
-              child: _Frame(era: widget.era, size: widget.size),
+              child: _Frame(
+                era: widget.era,
+                size: widget.size,
+                pixels: widget.pixels,
+                levels: widget.levels,
+                radius: widget.radius,
+              ),
             ),
           ),
           for (final s in _splashes) ..._splashWidgets(s),
@@ -207,7 +225,17 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
 class _Frame extends StatelessWidget {
   final VityaEra era;
   final double size;
-  const _Frame({required this.era, required this.size});
+  final double pixels;
+  final double levels;
+  final double radius;
+
+  const _Frame({
+    required this.era,
+    required this.size,
+    required this.pixels,
+    required this.levels,
+    required this.radius,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +249,7 @@ class _Frame extends StatelessWidget {
           height: size * 1.1,
           padding: EdgeInsets.all(grand ? 8 : 6),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(GR.card),
+            borderRadius: BorderRadius.circular(radius),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -236,11 +264,15 @@ class _Frame extends StatelessWidget {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(GR.card - 6),
+            borderRadius: BorderRadius.circular(radius > 0 ? radius - 6 : 0),
             child: Stack(
               fit: StackFit.expand,
               children: [
-                PosterPortrait(asset: era.asset),
+                PosterPortrait(
+                  asset: era.asset,
+                  pixels: pixels,
+                  levels: levels,
+                ),
                 // Свет лампы сверху — сажает фото в гараж.
                 const DecoratedBox(
                   decoration: BoxDecoration(

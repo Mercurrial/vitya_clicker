@@ -22,6 +22,10 @@ class PosterPortrait extends StatefulWidget {
   /// 0 — просто чёрно-белая постеризация, 1 — полностью медно-янтарная.
   final double warm;
 
+  /// Ширина портрета в «крупных пикселях». 0 — без пикселизации,
+  /// 48–64 — спрайтовый вид, который живёт в одном языке с гаражом.
+  final double pixels;
+
   final BoxFit fit;
 
   const PosterPortrait({
@@ -29,6 +33,7 @@ class PosterPortrait extends StatefulWidget {
     required this.asset,
     this.levels = 4,
     this.warm = 1,
+    this.pixels = 0,
     this.fit = BoxFit.cover,
   });
 
@@ -96,6 +101,7 @@ class _PosterPortraitState extends State<PosterPortrait> {
         image: _image!,
         levels: widget.levels,
         warm: widget.warm,
+        pixels: widget.pixels,
       ),
       size: Size.infinite,
     );
@@ -107,12 +113,14 @@ class _PosterPainter extends CustomPainter {
   final ui.Image image;
   final double levels;
   final double warm;
+  final double pixels;
 
   _PosterPainter({
     required this.shader,
     required this.image,
     required this.levels,
     required this.warm,
+    required this.pixels,
   });
 
   @override
@@ -125,11 +133,13 @@ class _PosterPainter extends CustomPainter {
       ..setFloat(1, size.height)
       ..setFloat(2, levels)
       ..setFloat(3, warm)
+      ..setFloat(4, pixels)
       ..setImageSampler(0, image);
 
     final rect = Offset.zero & size;
     canvas.drawRect(rect, Paint()..shader = shader);
-    _drawHalftone(canvas, size);
+    // На пиксельном портрете растр только мешает — клетки уже крупные.
+    if (pixels <= 1) _drawHalftone(canvas, size);
   }
 
   /// Редкая точечная сетка поверх — она добавляет ощущение печати и
@@ -149,5 +159,8 @@ class _PosterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PosterPainter old) =>
-      old.image != image || old.levels != levels || old.warm != warm;
+      old.image != image ||
+      old.levels != levels ||
+      old.warm != warm ||
+      old.pixels != pixels;
 }

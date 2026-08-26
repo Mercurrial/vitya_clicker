@@ -8,6 +8,8 @@ import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
 import '../game/heat_gauge.dart';
 import '../game/vitya_portrait.dart';
+import '../pixel/garage_scene.dart';
+import '../theme/art_style.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
 
@@ -63,6 +65,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
     final era = ref.watch(
       gameProvider.select((s) => _eraFor(s.prestige.totalEverEarned)),
     );
+    final style = ref.watch(artStyleProvider);
 
     return ColoredBox(
       color: GColors.bg,
@@ -76,17 +79,34 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                 child: Column(
                   children: [
                     const _Counter(),
+                    // Гараж — центр экрана. Портрет висит на его стене, а
+                    // купленные аппараты встают на полки: империю видно.
                     Expanded(
-                      child: Center(
-                        child: VityaPortrait(era: era, onTap: _onTap, size: 200),
+                      flex: 5,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: GS.s3),
+                        child: AnimatedBuilder(
+                          animation: _heat,
+                          builder: (context, _) => GarageScene(
+                            heat: _heat.heat,
+                            hanging: VityaPortrait(
+                              era: era,
+                              onTap: _onTap,
+                              size: 116,
+                              pixels: style.portraitPixels,
+                              levels: style.portraitLevels,
+                              radius: style.radius * 0.6,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(GS.s6, 0, GS.s6, GS.s3),
+                      padding: const EdgeInsets.fromLTRB(GS.s6, GS.s3, GS.s6, GS.s3),
                       child: HeatGauge(controller: _heat),
                     ),
                     Expanded(
-                      flex: 2,
+                      flex: 4,
                       child: _Shelf(
                         tab: _tab,
                         onTab: (i) => setState(() => _tab = i),
@@ -97,7 +117,38 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
               ),
             ),
           ),
+          // Переключатель стиля — временный, чтобы выбрать язык игры глазами.
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 6,
+            right: 10,
+            child: _StyleToggle(style: style),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// Кнопка смены визуального языка. Инструмент выбора, а не часть игры —
+/// уедет, как только стиль будет утверждён.
+class _StyleToggle extends ConsumerWidget {
+  final ArtStyle style;
+  const _StyleToggle({required this.style});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () =>
+          ref.read(artStyleProvider.notifier).state = style.next,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: GColors.wellBg,
+          borderRadius: BorderRadius.circular(style.radius > 0 ? GR.pill : 0),
+          border: Border.all(color: GColors.border),
+        ),
+        child: Text(style.label, style: GType.label()),
       ),
     );
   }

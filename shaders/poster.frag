@@ -10,6 +10,7 @@
 uniform vec2 uSize;      // размер области отрисовки
 uniform float uLevels;   // сколько тонов оставить (3–5)
 uniform float uWarm;     // 0 = холодный дуотон, 1 = полностью медный
+uniform float uPixels;   // ширина в «крупных пикселях»; 0 = без пикселизации
 uniform sampler2D uTex;
 
 out vec4 fragColor;
@@ -22,6 +23,16 @@ const vec3 kLight  = vec3(1.000, 0.898, 0.706); // #FFE5B4 свет лампы
 
 void main() {
     vec2 uv = FlutterFragCoord().xy / uSize;
+
+    // Пикселизация: сажаем координату на грубую сетку, беря цвет из центра
+    // клетки. Вместе с постеризацией это и даёт спрайтовый вид — портрет
+    // начинает жить в одном языке с нарисованным гаражом.
+    if (uPixels > 1.0) {
+        float aspect = uSize.y / max(uSize.x, 1.0);
+        vec2 grid = vec2(uPixels, max(floor(uPixels * aspect), 1.0));
+        uv = (floor(uv * grid) + 0.5) / grid;
+    }
+
     vec4 src = texture(uTex, uv);
 
     // Яркость по восприятию, а не среднее по каналам.
