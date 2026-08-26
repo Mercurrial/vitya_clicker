@@ -88,6 +88,25 @@ class GameEngine {
     );
   }
 
+  /// Начислить за время отсутствия и сказать, сколько накапало.
+  ///
+  /// Единственная точка, где считается оффлайн: и запуск игры, и возврат из
+  /// фона зовут именно её. Раньше запуск считал по своей копии формулы,
+  /// которая не знала про ёмкость бака, — и после перезагрузки в двухлитровый
+  /// бак наливались десятки тысяч литров.
+  ({GameState state, double gained}) creditOffline(
+    GameState state,
+    Duration credited,
+    DateTime now,
+  ) {
+    if (credited <= Duration.zero) return (state: state, gained: 0.0);
+
+    final before = state.resources.ml;
+    var next = state.copyWith(lastUpdateTime: now.subtract(credited));
+    next = processTick(next, now);
+    return (state: next, gained: next.resources.ml - before);
+  }
+
   /// Сдать весь бак по текущей цене.
   ///
   /// Цена зависит от момента, поэтому продажа — это решение, а не рутина:

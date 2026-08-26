@@ -5,6 +5,7 @@
 library;
 
 import '../content/game_content.dart';
+import '../engine/game_engine.dart';
 import '../models/game_state.dart';
 import 'game_clock.dart';
 import 'game_serializer.dart';
@@ -67,13 +68,9 @@ Future<Bootstrap> bootstrapGame({
   // назад на засчитанное время и прогоняем одну итерацию. Так пассивный доход
   // остаётся единственной формулой — расходиться нечему.
   final offline = clock.since(serializer.lastSeenOf(data));
-  var gained = 0.0;
-  if (offline.credited > Duration.zero && state.mlPerSecond > 0) {
-    final before = state.resources.ml;
-    state = state.copyWith(lastUpdateTime: now.subtract(offline.credited));
-    state = const _TickOnly().apply(state, now);
-    gained = state.resources.ml - before;
-  }
+  final credited = const GameEngine().creditOffline(state, offline.credited, now);
+  state = credited.state;
+  final gained = credited.gained;
 
   return Bootstrap(
     state: state,
@@ -84,23 +81,3 @@ Future<Bootstrap> bootstrapGame({
   );
 }
 
-/// Тонкая обёртка, чтобы не тащить сюда весь движок ради одного тика.
-class _TickOnly {
-  const _TickOnly();
-
-  GameState apply(GameState state, DateTime now) {
-    final seconds =
-        now.difference(state.lastUpdateTime).inMilliseconds / 1000.0;
-    if (seconds <= 0) return state.copyWith(lastUpdateTime: now);
-    final produced = state.mlPerSecond * seconds;
-    return state.copyWith(
-      resources: state.resources.copyWith(
-        ml: state.resources.ml + produced,
-      ),
-      prestige: state.prestige.copyWith(
-        totalEverEarned: state.prestige.totalEverEarned + produced,
-      ),
-      lastUpdateTime: now,
-    );
-  }
-}

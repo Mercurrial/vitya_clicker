@@ -130,14 +130,27 @@ class GameNotifier extends Notifier<GameState> {
     saveNow();
   }
 
+  /// Полный сброс: стереть сейв и начать с нуля.
+  ///
+  /// Нужен и для честного тестирования баланса, и как выход для игрока,
+  /// который хочет пройти заново без похмелья.
+  Future<void> hardReset() async {
+    await ref.read(saveServiceProvider)?.wipe();
+    state = GameState.initial(
+      initialGenerators: ref.read(generatorsContentProvider),
+      initialUpgrades: ref.read(upgradesContentProvider),
+      lastUpdateTime: ref.read(timeProvider)(),
+    );
+    await saveNow();
+  }
+
   /// Начисление за отсутствие игрока. Считается тем же тиком — доход обязан
   /// быть чистой функцией состояния и времени.
   void applyOffline(Duration credited) {
-    if (credited <= Duration.zero) return;
     final engine = ref.read(gameEngineProvider);
-    final now = ref.read(timeProvider)();
-    state = state.copyWith(lastUpdateTime: now.subtract(credited));
-    state = engine.processTick(state, now);
+    state = engine
+        .creditOffline(state, credited, ref.read(timeProvider)())
+        .state;
   }
 }
 
