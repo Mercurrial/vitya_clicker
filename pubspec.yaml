@@ -25,6 +25,9 @@ flutter:
   assets:
     - assets/images/vitya/
 
+  shaders:
+    - shaders/poster.frag
+
   fonts:
     - family: Rubik
       fonts:

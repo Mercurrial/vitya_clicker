@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../theme/garage.dart';
+import 'poster_portrait.dart';
 
 /// Эпоха Вити — портрет растёт вместе с производством.
 ///
@@ -239,7 +240,7 @@ class _Frame extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(era.asset, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+                PosterPortrait(asset: era.asset),
                 // Свет лампы сверху — сажает фото в гараж.
                 const DecoratedBox(
                   decoration: BoxDecoration(
