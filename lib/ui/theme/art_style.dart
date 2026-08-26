@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../pixel/pixel_portrait.dart';
+
 /// Два визуальных языка, между которыми выбираем.
 ///
 /// Различие не косметическое: пиксель делает мир цельным (портрет живёт в том
@@ -17,16 +19,10 @@ enum ArtStyle {
         ArtStyle.poster => 'ПЛАКАТ',
       };
 
-  /// Ширина портрета в крупных пикселях (0 — без пикселизации).
-  double get portraitPixels => switch (this) {
-        ArtStyle.pixel => 52,
-        ArtStyle.poster => 0,
-      };
-
-  /// Сколько тонов оставить: пиксель любит жёсткую палитру.
-  double get portraitLevels => switch (this) {
-        ArtStyle.pixel => 5,
-        ArtStyle.poster => 4,
+  /// Как переводить фотографию Вити.
+  PixelPortraitStyle get portrait => switch (this) {
+        ArtStyle.pixel => PixelPortraitStyle.pixel,
+        ArtStyle.poster => PixelPortraitStyle.poster,
       };
 
   /// Радиус скруглений интерфейса.

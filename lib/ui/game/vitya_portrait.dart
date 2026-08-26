@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
-import 'poster_portrait.dart';
 
 /// Эпоха Вити — портрет растёт вместе с производством.
 ///
@@ -48,11 +48,8 @@ class VityaPortrait extends StatefulWidget {
 
   final double size;
 
-  /// Ширина портрета в крупных пикселях (0 — плакатный вид).
-  final double pixels;
-
-  /// Сколько тонов оставить в портрете.
-  final double levels;
+  /// Как переводить фотографию: спрайт или плакат.
+  final PixelPortraitStyle style;
 
   /// Радиус рамы: пиксельный стиль требует рубленых углов.
   final double radius;
@@ -62,8 +59,7 @@ class VityaPortrait extends StatefulWidget {
     required this.era,
     required this.onTap,
     this.size = 220,
-    this.pixels = 0,
-    this.levels = 4,
+    this.style = PixelPortraitStyle.pixel,
     this.radius = GR.card,
   });
 
@@ -155,8 +151,7 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
               child: _Frame(
                 era: widget.era,
                 size: widget.size,
-                pixels: widget.pixels,
-                levels: widget.levels,
+                style: widget.style,
                 radius: widget.radius,
               ),
             ),
@@ -225,15 +220,13 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
 class _Frame extends StatelessWidget {
   final VityaEra era;
   final double size;
-  final double pixels;
-  final double levels;
+  final PixelPortraitStyle style;
   final double radius;
 
   const _Frame({
     required this.era,
     required this.size,
-    required this.pixels,
-    required this.levels,
+    required this.style,
     required this.radius,
   });
 
@@ -268,11 +261,7 @@ class _Frame extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                PosterPortrait(
-                  asset: era.asset,
-                  pixels: pixels,
-                  levels: levels,
-                ),
+                PixelPortrait(asset: era.asset, style: style),
                 // Свет лампы сверху — сажает фото в гараж.
                 const DecoratedBox(
                   decoration: BoxDecoration(
