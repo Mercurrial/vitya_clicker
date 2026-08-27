@@ -1,21 +1,28 @@
 import 'package:equatable/equatable.dart';
+
 import '../engine/production.dart';
-import 'resources_state.dart';
+import 'achievements_state.dart';
 import 'clicker_state.dart';
-import 'generators_state.dart';
 import 'generator.dart';
+import 'generators_state.dart';
+import 'prestige_state.dart';
+import 'resources_state.dart';
 import 'upgrade.dart';
 import 'upgrades_state.dart';
-import 'prestige_state.dart';
 
+/// Полное состояние игры. Всё, что нужно для сейва и для расчёта дохода.
 class GameState extends Equatable {
   final ResourcesState resources;
   final ClickerState clicker;
   final GeneratorsState generators;
   final UpgradesState upgrades;
   final PrestigeState prestige;
+  final AchievementsState achievements;
   final DateTime lastUpdateTime;
-  final double goldPerSecond;
+
+  /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
+  /// от чего он зависит (аппараты, апгрейды, мудрость).
+  final double mlPerSecond;
 
   const GameState({
     required this.resources,
@@ -23,27 +30,31 @@ class GameState extends Equatable {
     required this.generators,
     required this.upgrades,
     required this.prestige,
+    required this.achievements,
     required this.lastUpdateTime,
-    required this.goldPerSecond,
+    required this.mlPerSecond,
   });
 
   factory GameState.initial({
     required List<Generator> initialGenerators,
     List<Upgrade>? initialUpgrades,
     PrestigeState prestige = const PrestigeState(),
+    AchievementsState achievements = const AchievementsState(),
     DateTime? lastUpdateTime,
   }) {
-    final genState = GeneratorsState(items: List.unmodifiable(initialGenerators));
-    final upgState = UpgradesState(
-        items: initialUpgrades != null ? List.unmodifiable(initialUpgrades) : const []);
+    final gens = GeneratorsState(items: List.unmodifiable(initialGenerators));
+    final ups = UpgradesState(
+      items: initialUpgrades != null ? List.unmodifiable(initialUpgrades) : const [],
+    );
     return GameState(
       resources: const ResourcesState(),
       clicker: const ClickerState(),
-      generators: genState,
-      upgrades: upgState,
+      generators: gens,
+      upgrades: ups,
       prestige: prestige,
+      achievements: achievements,
       lastUpdateTime: lastUpdateTime ?? DateTime.now(),
-      goldPerSecond: Production.goldPerSecond(genState, upgState, prestige),
+      mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
   }
 
@@ -53,32 +64,76 @@ class GameState extends Equatable {
     GeneratorsState? generators,
     UpgradesState? upgrades,
     PrestigeState? prestige,
+    AchievementsState? achievements,
     DateTime? lastUpdateTime,
   }) {
-    final nextGenerators = generators ?? this.generators;
-    final nextUpgrades = upgrades ?? this.upgrades;
+    final nextGens = generators ?? this.generators;
+    final nextUps = upgrades ?? this.upgrades;
     final nextPrestige = prestige ?? this.prestige;
+    final nextAch = achievements ?? this.achievements;
 
-    // goldPerSecond depends on generators, upgrades and prestige (shards).
-    final recompute = generators != null || upgrades != null || prestige != null;
-    final newGps = recompute
-        ? Production.goldPerSecond(nextGenerators, nextUpgrades, nextPrestige)
-        : goldPerSecond;
+    final recompute = generators != null ||
+        upgrades != null ||
+        prestige != null ||
+        achievements != null;
+    final nextRate = recompute
+        ? Production.mlPerSecond(nextGens, nextUps, nextPrestige, nextAch.multiplier)
+        : mlPerSecond;
 
     return GameState(
       resources: resources ?? this.resources,
       clicker: clicker ?? this.clicker,
-      generators: nextGenerators,
-      upgrades: nextUpgrades,
+      generators: nextGens,
+      upgrades: nextUps,
       prestige: nextPrestige,
+      achievements: nextAch,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
-      goldPerSecond: newGps,
+      mlPerSecond: nextRate,
     );
   }
 
+  /// Сколько влезает в бак. Растёт вместе с производством, иначе экспонента
+  /// обгоняет тару и игра превращается в дежурство у кнопки.
+  double get tankCapacity => Production.tankCapacity(upgrades, mlPerSecond);
+
+  /// На сколько времени хватит бака при текущем потоке.
+  Duration get tankBuffer => Production.tankBuffer(upgrades, mlPerSecond);
+
+  /// Бак полон — аппараты стоят, пора продавать.
+  bool get isTankFull => resources.ml >= tankCapacity - 1e-9;
+
+  /// Заполненность бака, 0..1 — для шкалы в интерфейсе.
+  double get tankFraction =>
+      tankCapacity <= 0 ? 0 : (resources.ml / tankCapacity).clamp(0.0, 1.0);
+
+  /// Ручная отдача за нажатие, в мл.
+  ///
+  /// Берётся большее из двух: плоская база (она держит самое начало, когда
+  /// аппаратов ещё нет) и доля секунды текущего производства (она не даёт
+  /// нажатию обесцениться позже). Так тап остаётся осмысленным на всей
+  /// дистанции, а не умирает через пять минут.
+  ///
+  /// Основная ценность тапа всё равно не тут, а в жаре — он множит весь поток.
+  double get tapYield {
+    final flat = clicker.baseTapPower *
+        upgrades.tapMultiplier *
+        prestige.globalMultiplier *
+        achievements.multiplier;
+    final share = mlPerSecond * Production.tapSeconds;
+    return flat > share ? flat : share;
+  }
+
   @override
-  List<Object?> get props =>
-      [resources, clicker, generators, upgrades, prestige, lastUpdateTime, goldPerSecond];
+  List<Object?> get props => [
+        resources,
+        clicker,
+        generators,
+        upgrades,
+        prestige,
+        achievements,
+        lastUpdateTime,
+        mlPerSecond,
+      ];
 
   @override
   bool get stringify => true;

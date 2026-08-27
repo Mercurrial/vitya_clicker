@@ -2,11 +2,13 @@ import 'package:equatable/equatable.dart';
 
 /// Модель апгрейда. Каждый апгрейд применяет множитель к конкретной цели.
 enum UpgradeTarget {
-  coreOutput,        // Множитель на базовую радиацию ядра
-  generatorOutput,   // Множитель на конкретный генератор (по generatorId)
-  allGenerators,     // Множитель на ВСЕ генераторы
-  synergyResonance,  // +10% ко всем за каждый тип генератора с 25+ штук
-  synergyCoupling,   // Fusion Core +1% за каждый Geothermal Tap
+  tapPower,          // Множитель на силу тапа
+  generatorOutput,   // Множитель на конкретный аппарат (по generatorId)
+  allGenerators,     // Множитель на ВСЕ аппараты
+  quality,           // Множитель на ЦЕНУ за литр (чистота, крепость)
+  tankCapacity,      // Множитель на ёмкость бака
+  synergyResonance,  // +10% ко всем за каждый тип аппарата с 25+ штук
+  synergyCoupling,   // «Дедов» +1% за каждую банку
 }
 
 class Upgrade extends Equatable {
