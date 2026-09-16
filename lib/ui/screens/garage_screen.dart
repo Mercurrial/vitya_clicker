@@ -213,8 +213,8 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   }
 }
 
-/// Кнопка смены визуального языка. Инструмент выбора, а не часть игры —
-/// уедет, как только стиль будет утверждён.
+/// Кнопка смены визуального языка. Выбор запоминается — игрок переключает
+/// его один раз под себя, а не каждый запуск заново.
 class _StyleToggle extends ConsumerWidget {
   final ArtStyle style;
   const _StyleToggle({required this.style});
@@ -223,8 +223,7 @@ class _StyleToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () =>
-          ref.read(artStyleProvider.notifier).state = style.next,
+      onTap: () => ref.read(artStyleProvider.notifier).toggle(),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
@@ -742,8 +741,6 @@ class _LampLight extends StatelessWidget {
   }
 }
 
-/// Счётчик литров. Плавно догоняет реальное значение, иначе при тике раз в
-/// 200 мс число дёргается скачками и «дешевит» ощущение.
 /// Нижняя полка: вкладки и списки покупок.
 class _Shelf extends StatelessWidget {
   final int tab;

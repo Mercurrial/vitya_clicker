@@ -11,11 +11,16 @@ import 'game_clock.dart';
 import 'game_serializer.dart';
 import 'prefs_storage.dart';
 import 'save.dart';
+import 'settings.dart';
 
 /// Что получилось при запуске.
 class Bootstrap {
   final GameState state;
   final SaveService saves;
+
+  /// Настройки интерфейса — их надо знать до первого кадра, иначе игрок
+  /// увидит стиль по умолчанию и через мгновение подмену на свой.
+  final SettingsStore settings;
 
   /// Сколько накапало, пока игра была закрыта (для экрана возвращения).
   final OfflineResult offline;
@@ -29,6 +34,7 @@ class Bootstrap {
   const Bootstrap({
     required this.state,
     required this.saves,
+    required this.settings,
     required this.offline,
     required this.offlineGain,
     required this.saveWasLost,
@@ -42,7 +48,8 @@ Future<Bootstrap> bootstrapGame({
   GameClock clock = const GameClock(),
   GameSerializer serializer = const GameSerializer(),
 }) async {
-  final saves = SaveService(storage: await PrefsSaveStorage.open());
+  final storages = await openStorages();
+  final saves = SaveService(storage: storages.saves);
   final loaded = await saves.load();
   final now = clock.nowUtc();
 
@@ -50,6 +57,7 @@ Future<Bootstrap> bootstrapGame({
     return Bootstrap(
       state: newGame(content: kGenerators, upgrades: kUpgrades, now: now),
       saves: saves,
+      settings: storages.settings,
       offline: OfflineResult.none,
       offlineGain: 0,
       saveWasLost: loaded.wasCorrupt,
@@ -75,6 +83,7 @@ Future<Bootstrap> bootstrapGame({
   return Bootstrap(
     state: state,
     saves: saves,
+    settings: storages.settings,
     offline: offline,
     offlineGain: gained,
     saveWasLost: false,

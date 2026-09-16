@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/settings.dart';
 import '../pixel/pixel_portrait.dart';
 
 /// Два визуальных языка, между которыми выбираем.
@@ -32,6 +33,35 @@ enum ArtStyle {
       };
 
   ArtStyle get next => this == ArtStyle.pixel ? ArtStyle.poster : ArtStyle.pixel;
+
+  /// Как стиль лежит в настройках. Пишем имя, а не индекс: порядок в enum
+  /// однажды поменяется, и сохранённая «1» молча превратится в другой стиль.
+  static ArtStyle fromName(String? name) => ArtStyle.values.firstWhere(
+        (s) => s.name == name,
+        orElse: () => ArtStyle.pixel,
+      );
 }
 
-final artStyleProvider = StateProvider<ArtStyle>((ref) => ArtStyle.pixel);
+/// Хранилище настроек. Подменяется в `main` через override; без него игра
+/// работает, но выбор стиля не переживёт перезапуск (так и в тестах).
+final settingsStoreProvider =
+    Provider<SettingsStore>((ref) => MemorySettingsStore());
+
+/// Выбранный стиль. Переключатель раньше жил в `StateProvider` и забывался при
+/// каждом запуске — плейтест поймал это первым же заходом.
+class ArtStyleNotifier extends Notifier<ArtStyle> {
+  @override
+  ArtStyle build() => ArtStyle.fromName(
+        ref.read(settingsStoreProvider).read(SettingsKeys.artStyle),
+      );
+
+  void set(ArtStyle style) {
+    state = style;
+    ref.read(settingsStoreProvider).write(SettingsKeys.artStyle, style.name);
+  }
+
+  void toggle() => set(state.next);
+}
+
+final artStyleProvider =
+    NotifierProvider<ArtStyleNotifier, ArtStyle>(ArtStyleNotifier.new);
