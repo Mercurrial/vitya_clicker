@@ -249,33 +249,72 @@ class _Still extends StatelessWidget {
     }
 
     return Flexible(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          SizedBox(
-            height: 18,
-            child: PixelImage(sprite: kSteamFrames[frame], size: 44),
-          ),
-          PixelImage(sprite: sprite, size: 56, rowShift: shift),
-          const SizedBox(height: 2),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: const Color(0xCC1A1410),
-              borderRadius: BorderRadius.circular(GR.pill),
-            ),
-            child: Text(
-              '$count',
-              style: GType.num(
-                size: 11,
-                weight: FontWeight.w700,
-                color: GColors.amber,
-              ),
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // Аппарат подгоняется под высоту полки, а не стоит фиксированным.
+          // Раньше ширина была прибита к 56 пикселям, и высокий спрайт в два
+          // ряда вылезал за край полки — ровно та «обрезанная вёрстка», на
+          // которую жаловался плейтест.
+          //
+          // Когда места совсем мало, лишнее отбрасывается по порядку
+          // важности: сам аппарат нужен всегда, счётчик — почти всегда, пар —
+          // украшение. Так сцена сжимается, а не рвётся.
+          final available = c.maxHeight;
+          final showSteam = available >= 58;
+          final showCounter = available >= 36;
+          final reserved = (showSteam ? _steamHeight : 0.0) +
+              (showCounter ? _counterHeight + 2 : 0.0);
+          final forSprite = math.max(6.0, available - reserved);
+          final width = math.min(
+            _maxStillWidth,
+            forSprite * sprite.width / sprite.height,
+          );
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (showSteam)
+                SizedBox(
+                  height: _steamHeight,
+                  child: PixelImage(sprite: kSteamFrames[frame], size: width * 0.8),
+                ),
+              PixelImage(sprite: sprite, size: width, rowShift: shift),
+              if (showCounter) ...[
+                const SizedBox(height: 2),
+                SizedBox(
+                  height: _counterHeight,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC1A1410),
+                      borderRadius: BorderRadius.circular(GR.pill),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: GType.num(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: GColors.amber,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
 }
+
+/// Что занимает место над и под аппаратом. Вынесено в константы, потому что
+/// эти же числа вычитаются из высоты полки — разъедутся, и спрайт снова
+/// полезет за край.
+const double _steamHeight = 18;
+const double _counterHeight = 16;
+
+/// Шире делать незачем: три аппарата в ряд на телефоне и так впритык.
+const double _maxStillWidth = 56;

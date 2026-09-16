@@ -232,9 +232,15 @@ class _MilestoneBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: GS.s2),
-        Text(
-          next != null ? '×$mult · до ×${mult * 2} осталось ${next - owned}' : '×$mult · предел',
-          style: GType.num(size: 10, color: GColors.textLo),
+        // Подпись короткая и гибкая: длинный вариант («до ×4 осталось 3»)
+        // выдавливал строку за край карточки на обычном телефоне.
+        Flexible(
+          child: Text(
+            next != null ? '×$mult · ещё ${next - owned} → ×${mult * 2}' : '×$mult · предел',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GType.num(size: 10, color: GColors.textLo),
+          ),
         ),
       ],
     );

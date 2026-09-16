@@ -125,9 +125,12 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    // Высота — по содержимому. Раньше здесь стоял множитель 1.28, подобранный
+    // на глаз под раму и табличку; стоило подписи стать на строку выше, и
+    // портрет вылезал за свой бокс жёлтой полосой. Капли летят поверх и в
+    // размер не входят — на то у Stack и Clip.none.
     return SizedBox(
       width: widget.size,
-      height: widget.size * 1.28,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,

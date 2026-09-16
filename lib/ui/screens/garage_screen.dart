@@ -688,26 +688,35 @@ class _PortraitWithHintState extends ConsumerState<_PortraitWithHint>
       animation: _pulse,
       builder: (context, child) {
         final t = Curves.easeInOut.transform(_pulse.value);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
+        // Подсказка лежит НАД сценой, а не в её колонке. Пока она была
+        // обычной строкой, она отъедала высоту у полок, и первая купленная
+        // банка сжималась до точки — видно на снимке экрана. Заодно пропал
+        // скачок вёрстки в момент, когда подсказка исчезает.
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topCenter,
           children: [
             Transform.scale(scale: 1 + 0.04 * t, child: child),
-            const SizedBox(height: GS.s2),
-            Opacity(
-              opacity: 0.55 + 0.45 * t,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: GColors.amber,
-                  borderRadius: BorderRadius.circular(GR.pill),
-                ),
-                child: Text(
-                  'ЖМИ ПО ВИТЕ — ОН ПОДКИНЕТ ДРОВ',
-                  style: GType.ui(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    color: GColors.onAmber,
-                    letterSpacing: 0.5,
+            Positioned(
+              bottom: -26,
+              child: Opacity(
+                opacity: 0.55 + 0.45 * t,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: GColors.amber,
+                    borderRadius: BorderRadius.circular(GR.pill),
+                  ),
+                  child: Text(
+                    'ЖМИ ПО ВИТЕ — ОН ПОДКИНЕТ ДРОВ',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GType.ui(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      color: GColors.onAmber,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ),
