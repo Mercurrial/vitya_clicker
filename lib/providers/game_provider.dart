@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
+import '../content/vitya_quotes.dart';
+import '../core/formatters.dart';
+import '../ui/widgets/vitya_toast.dart';
 import '../models/achievement.dart';
 import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
@@ -119,6 +122,24 @@ class GameNotifier extends Notifier<GameState> {
       next = engine.sell(next, now);
     }
 
+    // Сорт поднялся — это событие, его надо показать. Момент редкий, поэтому
+    // здесь уместна и реплика Вити.
+    if (next.sort.index > state.sort.index) {
+      ref.read(toastProvider.notifier).show(
+            kind: 'СОРТ ПОДНЯЛСЯ',
+            title: next.sort.name,
+            note: 'цена за литр ${Fmt.mult(next.sort.multiplier)}',
+            event: VityaEvent.gradeUp,
+          );
+    } else if (next.sort.index < state.sort.index) {
+      ref.read(toastProvider.notifier).show(
+            kind: 'СОРТ УПАЛ',
+            title: next.sort.name,
+            note: 'перегрели',
+            event: VityaEvent.overheat,
+          );
+    }
+
     final checked = engine.checkAchievements(next);
     if (checked.fresh.isNotEmpty) freshAchievements.addAll(checked.fresh);
 
@@ -138,7 +159,19 @@ class GameNotifier extends Notifier<GameState> {
   /// Сдать бак конкретному покупателю.
   void sellTo(Buyer buyer) {
     final engine = ref.read(gameEngineProvider);
-    state = engine.sellTo(state, buyer, ref.read(timeProvider)());
+    final now = ref.read(timeProvider)();
+    if (!engine.canSellTo(state, buyer)) return;
+
+    final volume = buyer.volumeFrom(state.resources.ml);
+    final revenue = engine.saleValueFor(state, buyer, now);
+    state = engine.sellTo(state, buyer, now);
+
+    ref.read(toastProvider.notifier).show(
+          kind: 'ПРОДАНО',
+          title: buyer.name,
+          note: '${Fmt.volume(volume)} · ${Fmt.money(revenue)}',
+          event: VityaEvent.sold,
+        );
   }
 
   /// Сдать бак соседу — он берёт всегда.
@@ -169,6 +202,13 @@ class GameNotifier extends Notifier<GameState> {
       ref.read(upgradesContentProvider),
       ref.read(timeProvider)(),
     );
+    ref.read(toastProvider.notifier).show(
+          kind: 'ПОХМЕЛЬЕ',
+          title: 'Мудрость: ${state.prestige.wisdom}',
+          note: 'гараж пуст, голова тяжёлая',
+          event: VityaEvent.hangover,
+        );
+
     // Событие необратимое — пишем сразу, не дожидаясь автосейва.
     saveNow();
   }

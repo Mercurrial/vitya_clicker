@@ -16,6 +16,7 @@ import '../theme/art_style.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
+import '../widgets/vitya_toast.dart';
 
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
 /// разъезжаются на пол-экрана и верстка ломается.
@@ -185,6 +186,18 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                     ),
                   ],
                 ),
+              ),
+            ),
+          ),
+          // Плашки событий — поверх сцены, но ниже переключателя.
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 44,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _kPhoneWidth),
+                child: const VityaToast(),
               ),
             ),
           ),
