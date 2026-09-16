@@ -7,15 +7,23 @@ import 'package:equatable/equatable.dart';
 /// Витя просыпается, гараж пуст, аппарата нет. Но осталась МУДРОСТЬ: она
 /// переживает любой сброс и ускоряет каждый следующий заход.
 ///
-/// Мудрость считается от суммарно нагнанного за всё время:
-///   мудрость = ⌊√(всего литров / 1e6)⌋
-/// Корень — намеренно: он делает первые заходы щедрыми, а поздние — плавными,
-/// иначе престиж либо не окупается, либо мгновенно ломает баланс.
+/// ## Почему логарифм, а не корень
+///
+/// Сначала мудрость считалась как √(всего нагнанного). Это выглядело разумно,
+/// но давало **положительную обратную связь**: мудрость множит производство,
+/// производство копит «всего нагнанное», из него снова растёт мудрость. За
+/// полчаса игры набегало 119 137 мудрости — то есть +595 685 % к производству,
+/// и игра кончалась.
+///
+/// Корень тут не спасает: корень от экспоненты — всё ещё экспонента.
+/// Логарифм спасает: **каждая следующая мудрость требует вдвое больше**
+/// нагнанного, поэтому награда растёт медленнее, чем разгоняется петля, и
+/// система приходит в равновесие вместо взрыва.
 class PrestigeState extends Equatable {
   /// Накопленная мудрость (перманентная).
   final int wisdom;
 
-  /// Сколько литров Витя нагнал за всё время, включая прошлые жизни.
+  /// Сколько миллилитров Витя нагнал за всё время, включая прошлые жизни.
   final double totalEverEarned;
 
   /// Сколько раз он уже просыпался с больной головой.
@@ -27,23 +35,27 @@ class PrestigeState extends Equatable {
     this.hangovers = 0,
   });
 
-  /// Каждая единица мудрости даёт +5 % ко всему производству.
-  static const double bonusPerWisdom = 0.05;
-
-  /// Шаг начисления мудрости: 1e9 мл — это ровно **тонна** самогона.
+  /// Каждая единица мудрости даёт +8 % ко всему производству.
   ///
-  /// Подобрано симуляцией: при росте цены 1.10 игрок набирает 7 мудрости к
-  /// 25-й минуте, 10 к 30-й и 14 к 35-й. Первое похмелье попадает в целевое
-  /// окно 25–35 минут и сразу даёт заметные +35…70 % к следующему заходу.
-  static const double mlPerWisdomStep = 1e9;
+  /// Больше, чем было (+5 %), — потому что и достаются они теперь куда реже.
+  static const double bonusPerWisdom = 0.08;
+
+  /// Первая мудрость приходит за тонну самогона (1e6 мл = 1000 л).
+  static const double firstWisdomMl = 1e6;
 
   double get globalMultiplier => 1.0 + bonusPerWisdom * wisdom;
 
-  /// Сколько мудрости было бы, если проспаться прямо сейчас.
-  int get potentialWisdom {
-    if (totalEverEarned <= 0) return 0;
-    return math.sqrt(totalEverEarned / mlPerWisdomStep).floor();
+  /// Сколько мудрости заслужено всей историей.
+  ///
+  /// `log2(1 + всего/тонна)`: первая тонна даёт единицу, дальше каждая
+  /// следующая ступень требует удвоения.
+  static int wisdomFor(double totalMl) {
+    if (totalMl <= 0) return 0;
+    final steps = math.log(1 + totalMl / firstWisdomMl) / math.ln2;
+    return steps.isFinite ? steps.floor() : 0;
   }
+
+  int get potentialWisdom => wisdomFor(totalEverEarned);
 
   /// Сколько мудрости добавится за похмелье прямо сейчас.
   int get pendingWisdom {
@@ -53,6 +65,18 @@ class PrestigeState extends Equatable {
 
   /// Есть ли смысл ложиться спать.
   bool get canPrestige => pendingWisdom > 0;
+
+  /// Сколько нужно нагнать до следующей мудрости.
+  double get nextWisdomAtMl =>
+      firstWisdomMl * (math.pow(2, potentialWisdom + 1) - 1);
+
+  /// Продвижение к следующей мудрости, 0..1 — для полосы в интерфейсе.
+  double get progressToNext {
+    final from = firstWisdomMl * (math.pow(2, potentialWisdom) - 1);
+    final to = nextWisdomAtMl;
+    if (to <= from) return 0;
+    return ((totalEverEarned - from) / (to - from)).clamp(0.0, 1.0);
+  }
 
   PrestigeState copyWith({int? wisdom, double? totalEverEarned, int? hangovers}) =>
       PrestigeState(

@@ -126,7 +126,7 @@ void main() {
     test('достижения переживают сброс вместе с мудростью', () {
       var s = fresh().copyWith(
         prestige: const PrestigeState(
-          totalEverEarned: 25 * PrestigeState.mlPerWisdomStep,
+          totalEverEarned: PrestigeState.firstWisdomMl * 31,
         ),
         achievements: const AchievementsState(
           unlocked: {'a_first_tap', 'a_first_still'},

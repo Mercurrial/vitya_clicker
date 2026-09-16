@@ -164,7 +164,10 @@ void main() {
       expect(result.data!['ml'], 0, reason: 'бак отдаём пустым');
       expect(result.data!['money'], closeTo(250, 1e-9), reason: '2500 мл по 0.1 ₽');
       expect(result.data!['lifetime'], 10000, reason: 'история в мл');
-      expect(result.data!['wisdom'], 3, reason: 'непричастные поля не трогаем');
+      // v4 пересчитывает мудрость по новой, логарифмической формуле: за
+      // 10 000 мл всей истории она ещё не заработана, каким бы ни было
+      // число в старом сейве.
+      expect(result.data!['wisdom'], 0);
       expect(result.data!.containsKey('litres'), isFalse);
       expect(result.data!['version'], kSaveVersion);
     });
@@ -176,6 +179,18 @@ void main() {
       expect(result.wasMigrated, isTrue);
       expect(result.data!['ml'], 0);
       expect(result.data!['money'], closeTo(500, 1e-9));
+    });
+
+    test('разогнавшаяся мудрость из старого сейва приводится в норму', () {
+      // Настоящий случай из плейтеста: 119 137 мудрости за полчаса.
+      const old = '{"version": 3, "ml": 0, "money": 0, '
+          '"lifetime": 4.79e20, "wisdom": 119137}';
+      final result = codec.decode(old);
+
+      expect(result.wasMigrated, isTrue);
+      final wisdom = result.data!['wisdom'] as int;
+      expect(wisdom, lessThan(60), reason: 'логарифм держит награду в узде');
+      expect(wisdom, greaterThan(30), reason: 'но заслуженное не отнимаем');
     });
   });
 

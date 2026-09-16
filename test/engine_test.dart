@@ -323,14 +323,14 @@ void main() {
     test('мудрость считается как корень из нагнанного', () {
       // 25 шагов по 1e7 мл ⇒ √25 = 5.
       const p = PrestigeState(
-        totalEverEarned: 25 * PrestigeState.mlPerWisdomStep,
+        totalEverEarned: PrestigeState.firstWisdomMl * 31,
       );
       expect(p.potentialWisdom, 5);
       expect(p.pendingWisdom, 5);
     });
 
     test('сбрасывает гараж, но сохраняет мудрость и историю', () {
-      const earned = 25 * PrestigeState.mlPerWisdomStep;
+      const earned = PrestigeState.firstWisdomMl * 31;
       var s = fresh(prestige: const PrestigeState(totalEverEarned: earned));
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
@@ -346,7 +346,26 @@ void main() {
     test('мудрость ускоряет следующий заход', () {
       final plain = fresh();
       final wise = fresh(prestige: const PrestigeState(wisdom: 10));
-      expect(wise.tapYield, closeTo(plain.tapYield * 1.5, 1e-9));
+      expect(
+        wise.tapYield,
+        closeTo(plain.tapYield * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
+      );
+    });
+
+    test('награда за мудрость растёт медленнее, чем разгоняется петля', () {
+      // Суть починки: раньше мудрость считалась корнем из нагнанного, и
+      // множитель убегал в шестизначные проценты. Теперь каждая следующая
+      // ступень требует вдвое больше — награда остаётся обозримой.
+      expect(PrestigeState.wisdomFor(1e6), 1, reason: 'первая тонна');
+      expect(PrestigeState.wisdomFor(1e9), 9);
+      expect(PrestigeState.wisdomFor(1e12), 19);
+      expect(PrestigeState.wisdomFor(4.79e20), lessThan(60));
+    });
+
+    test('удвоение нагнанного даёт ровно одну ступень', () {
+      final a = PrestigeState.wisdomFor(1e9);
+      final b = PrestigeState.wisdomFor(2e9);
+      expect(b - a, 1);
     });
   });
 }

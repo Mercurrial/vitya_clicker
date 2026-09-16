@@ -384,9 +384,7 @@ class _VityaTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.watch(gameProvider.select((s) => s.prestige));
     final pending = p.pendingWisdom;
-    final progress = (p.totalEverEarned /
-            ((p.wisdom + 1) * (p.wisdom + 1) * PrestigeState.mlPerWisdomStep))
-        .clamp(0.0, 1.0);
+    final progress = p.progressToNext;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),

@@ -11,10 +11,11 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
-const int kSaveVersion = 3;
+const int kSaveVersion = 4;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
@@ -75,6 +76,21 @@ class SaveCodec {
       final ml = json['ml'];
       final money = ml is num ? ml.toDouble() * 0.1 : 0.0;
       return {...json, 'ml': 0.0, 'money': money};
+    },
+
+    // v3 считала мудрость как корень из нагнанного, и она убегала в сотни
+    // тысяч — игра ломалась за полчаса. v4 считает логарифмом, поэтому
+    // накопленное надо пересчитать: иначе старые сейвы остались бы с
+    // множителем в шестизначные проценты.
+    //
+    // Формула продублирована намеренно: миграции обязаны быть неизменными во
+    // времени, а PrestigeState.wisdomFor будет меняться дальше.
+    3: (json) {
+      final lifetime = json['lifetime'];
+      final ml = lifetime is num ? lifetime.toDouble() : 0.0;
+      final wisdom =
+          ml <= 0 ? 0 : (math.log(1 + ml / 1e6) / math.ln2).floor();
+      return {...json, 'wisdom': wisdom < 0 ? 0 : wisdom};
     },
   };
 
