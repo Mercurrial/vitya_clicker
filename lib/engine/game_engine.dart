@@ -1,4 +1,5 @@
 import '../content/achievements.dart';
+import '../content/buyers.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -130,28 +131,62 @@ class GameEngine {
     return (state: next, gained: next.resources.ml - before);
   }
 
-  /// Сдать весь бак по текущей цене.
+  /// Двинуть сорт: жар в окне поднимает, перегрев жжёт, мимо — медленно сползает.
   ///
-  /// Цена зависит от момента, поэтому продажа — это решение, а не рутина:
-  /// на пике рынка тот же бак стоит заметно дороже.
-  GameState sell(GameState state, DateTime currentTime) {
-    final ml = state.resources.ml;
-    if (ml <= 0) return state;
+  /// Интерфейс присылает уже посчитанную дельту, движок про шкалу не знает и
+  /// остаётся чистым.
+  GameState advanceSort(GameState state, double delta) {
+    if (delta == 0) return state;
+    final next = state.sort.advance(delta);
+    return next == state.sort ? state : state.copyWith(sort: next);
+  }
 
-    final revenue = ml * Market.pricePerMl(currentTime, state.upgrades);
+  /// Возьмёт ли этот покупатель товар прямо сейчас.
+  bool canSellTo(GameState state, Buyer buyer) =>
+      state.resources.ml > 0 &&
+      state.resources.ml >= buyer.minMl &&
+      state.sort.index >= buyer.minSortIndex;
+
+  /// Сколько заплатит покупатель за то, что в баке.
+  ///
+  /// Цена складывается из рыночной за миллилитр, надбавки за **сорт** (чем
+  /// лучше нагнали, тем дороже) и коэффициента покупателя.
+  double saleValueFor(GameState state, Buyer buyer, DateTime currentTime) {
+    final volume = buyer.volumeFrom(state.resources.ml);
+    return volume *
+        Market.pricePerMl(currentTime, state.upgrades) *
+        state.sort.multiplier *
+        buyer.multiplier;
+  }
+
+  /// Сдать товар покупателю.
+  ///
+  /// Хорошие покупатели забирают вместе с товаром и сорт — его придётся
+  /// нарабатывать заново. Именно это делает «подождать и довести до кедрача»
+  /// ставкой, а не очевидностью.
+  GameState sellTo(GameState state, Buyer buyer, DateTime currentTime) {
+    if (!canSellTo(state, buyer)) return state;
+
+    final volume = buyer.volumeFrom(state.resources.ml);
+    final revenue = saleValueFor(state, buyer, currentTime);
 
     return state.copyWith(
       resources: state.resources.copyWith(
-        ml: 0,
+        ml: state.resources.ml - volume,
         money: state.resources.money + revenue,
       ),
+      sort: buyer.consumesSort ? state.sort.dropOneStep() : state.sort,
       lastUpdateTime: currentTime,
     );
   }
 
-  /// Сколько дадут за бак прямо сейчас.
+  /// Сдать бак соседу — он берёт всегда. Этим пользуется автопродажа.
+  GameState sell(GameState state, DateTime currentTime) =>
+      sellTo(state, kBuyers.first, currentTime);
+
+  /// Сколько дадут за бак у соседа прямо сейчас.
   double saleValue(GameState state, DateTime currentTime) =>
-      state.resources.ml * Market.pricePerMl(currentTime, state.upgrades);
+      saleValueFor(state, kBuyers.first, currentTime);
 
   /// Стоимость следующей штуки аппарата, в рублях.
   double generatorCost(Generator g) => formulas.calculateUpgradeCost(

@@ -11,7 +11,9 @@
 library;
 
 import '../content/achievements.dart';
+import '../content/sorts.dart';
 import '../models/achievements_state.dart';
+import '../models/sort_state.dart';
 import '../models/clicker_state.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -38,6 +40,10 @@ class GameSerializer {
           if (u.purchased) u.id,
       ],
       'achievements': s.achievements.unlocked.toList(),
+      // Сорт — свойство того, что стоит в баке, поэтому уходит в сейв вместе
+      // с объёмом: вернувшись, игрок находит свой товар таким, каким оставил.
+      'sortIndex': s.sort.index,
+      'sortProgress': s.sort.progress,
       'wisdom': s.prestige.wisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
@@ -88,6 +94,10 @@ class GameSerializer {
         money: _asDouble(json['money']),
       ),
       clicker: ClickerState(totalTaps: _asInt(json['taps'])),
+      sort: SortState(
+        index: _asInt(json['sortIndex']).clamp(0, kSorts.length - 1),
+        progress: _asDouble(json['sortProgress']).clamp(0.0, 1.0),
+      ),
     );
   }
 

@@ -3,84 +3,91 @@ import 'dart:math' as math;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-/// ГРАДУС — состояние аппарата.
+/// В каком состоянии жар под кубом.
+enum HeatStatus {
+  /// Мимо окна — сорт медленно сползает.
+  off,
+
+  /// В окне — сорт растёт.
+  inWindow,
+
+  /// Перегрев — сорт горит.
+  overheated,
+}
+
+/// ЖАР ПОД КУБОМ.
 ///
-/// Тап подкидывает жару, жар со временем спадает. Держишь стрелку в зелёной
-/// зоне — выход ×3, перегрел — брак.
+/// Тап подкидывает дров, жар остывает до тлеющих углей. Но главное не в самом
+/// жаре, а в **окне**: держишь стрелку внутри — растёт СОРТ самогона, а сорт
+/// напрямую умножает цену за литр и открывает хороших покупателей.
 ///
-/// Ключевая деталь: **зелёная зона медленно гуляет**. На живом аппарате режим
-/// не стоит на месте, и это же решает главную проблему кликеров — автокликер с
-/// ровной частотой зону не удержит, потому что она уезжает. Нужно смотреть на
-/// шкалу и подстраиваться, то есть тап становится навыком, а не долблением.
-///
-/// Механика намеренно НЕобязательная: аппараты всегда работают сами, зелёная
-/// зона — только бонус для того, кто сейчас в игре (idle-жанр награждает
-/// отсутствие, и мини-игра не должна этому противоречить).
+/// Окно медленно ходит по шкале. Из-за этого автокликер с ровной частотой его
+/// не удержит: нужно смотреть и подстраиваться. И из-за этого же появляется
+/// смысл ждать — раньше продать было выгодно всегда, потому что ожидание
+/// ничего не давало.
 class HeatController extends ChangeNotifier {
   /// Сколько жара добавляет одно нажатие.
-  static const double heatPerTap = 0.075;
+  static const double heatPerTap = 0.13;
 
   /// Скорость остывания в секунду.
-  static const double decayPerSecond = 0.20;
+  static const double decayPerSecond = 0.055;
 
-  /// Полуширина зелёной зоны.
-  static const double zoneHalfWidth = 0.08;
+  /// Ниже этого жар не падает — под кубом всегда тлеют угли.
+  static const double emberFloor = 0.28;
 
-  /// Выше этого — перегрев и брак.
-  static const double overheatAt = 0.94;
+  /// Ширина окна по шкале.
+  static const double windowSize = 0.16;
 
-  /// Множители выхода.
-  static const double greenMultiplier = 3.0;
-  static const double nearMultiplier = 1.5;
-  static const double coldMultiplier = 1.0;
-  static const double overheatMultiplier = 0.4;
+  /// Скорость хода окна в секунду.
+  static const double windowSpeed = 0.022;
+
+  static const double windowMin = 0.10;
+  static const double windowMax = 0.78;
+
+  /// Выше этого — перегрев, сорт горит.
+  static const double overheatAt = 0.90;
 
   late final Ticker _ticker;
   Duration _last = Duration.zero;
 
-  double _heat = 0.0;
-  double _seconds = 0.0;
+  double _heat = emberFloor;
+  double _windowPos = 0.46;
+  int _windowDir = 1;
 
   HeatController({required TickerProvider vsync}) {
     _ticker = vsync.createTicker(_onTick)..start();
   }
 
-  /// Текущий жар, 0..1.
   double get heat => _heat;
-
-  /// Центр зелёной зоны прямо сейчас (гуляет).
-  ///
-  /// Сумма двух синусов с некратными периодами: движение не выглядит
-  /// механическим, но остаётся плавным и честно читаемым по шкале.
-  double get zoneCenter {
-    final a = math.sin(_seconds * 0.55);
-    final b = math.sin(_seconds * 0.23 + 1.3);
-    final wave = (a * 0.65 + b * 0.35); // -1..1
-    return 0.54 + wave * 0.22; // ≈0.32..0.76
-  }
-
-  double get zoneStart => zoneCenter - zoneHalfWidth;
-  double get zoneEnd => zoneCenter + zoneHalfWidth;
+  double get windowStart => _windowPos;
+  double get windowEnd => _windowPos + windowSize;
 
   bool get isOverheated => _heat > overheatAt;
-  bool get isInZone => !isOverheated && (_heat - zoneCenter).abs() <= zoneHalfWidth;
+  bool get isInWindow =>
+      !isOverheated && _heat >= _windowPos && _heat <= _windowPos + windowSize;
 
-  /// Множитель к добыче за нажатие в текущем состоянии.
-  double get multiplier {
-    if (isOverheated) return overheatMultiplier;
-    final d = (_heat - zoneCenter).abs();
-    if (d <= zoneHalfWidth) return greenMultiplier;
-    if (d <= zoneHalfWidth * 2) return nearMultiplier;
-    return coldMultiplier;
-  }
+  HeatStatus get status => isOverheated
+      ? HeatStatus.overheated
+      : (isInWindow ? HeatStatus.inWindow : HeatStatus.off);
 
-  /// Подкинуть жару. Возвращает множитель, действовавший В МОМЕНТ нажатия, —
-  /// поэтому награда соответствует тому, что игрок видел на шкале.
-  double stoke() {
-    final applied = multiplier;
+  /// Подпись под шкалой.
+  String get label => switch (status) {
+        HeatStatus.overheated => 'ПЕРЕГРЕВ',
+        HeatStatus.inWindow => 'В САМЫЙ РАЗ',
+        HeatStatus.off => 'МИМО',
+      };
+
+  /// Что происходит с сортом — короткая подсказка рядом со шкалой.
+  String get sortHint => switch (status) {
+        HeatStatus.overheated => 'сорт горит',
+        HeatStatus.inWindow => 'сорт растёт',
+        HeatStatus.off => _heat < _windowPos ? 'мало жара' : 'жара много',
+      };
+
+  /// Подкинуть дров.
+  void stoke() {
     _heat = math.min(1.0, _heat + heatPerTap);
     notifyListeners();
-    return applied;
   }
 
   void _onTick(Duration elapsed) {
@@ -88,11 +95,18 @@ class HeatController extends ChangeNotifier {
         ? 0.016
         : (elapsed - _last).inMicroseconds / 1e6;
     _last = elapsed;
-    _seconds += dt;
 
-    if (_heat > 0) {
-      _heat = math.max(0.0, _heat - decayPerSecond * dt);
+    _heat = math.max(emberFloor, _heat - decayPerSecond * dt);
+
+    _windowPos += _windowDir * windowSpeed * dt;
+    if (_windowPos > windowMax) {
+      _windowPos = windowMax;
+      _windowDir = -1;
+    } else if (_windowPos < windowMin) {
+      _windowPos = windowMin;
+      _windowDir = 1;
     }
+
     notifyListeners();
   }
 

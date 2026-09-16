@@ -100,12 +100,13 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   void initState() {
     super.initState();
     _heat = HeatController(vsync: this);
-    // Жар живёт в интерфейсе, но множит пассивный поток в движке — поэтому
-    // текущее значение непрерывно отдаём в состояние игры.
+    // Жар живёт в интерфейсе, но ведёт СОРТ в движке — поэтому состояние
+    // относительно окна непрерывно отдаём в игру.
     _heat.addListener(_pushHeat);
   }
 
-  void _pushHeat() => ref.read(gameProvider.notifier).setHeat(_heat.multiplier);
+  void _pushHeat() =>
+      ref.read(heatStatusProvider.notifier).state = _heat.status;
 
   @override
   void dispose() {
@@ -115,15 +116,15 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   }
 
   ({String text, Color color}) _onTap() {
-    final applied = _heat.stoke();
-    final gained = ref.read(gameProvider).tapYield * applied;
-    ref.read(gameProvider.notifier).tap(heatMultiplier: applied);
+    _heat.stoke();
+    final gained = ref.read(gameProvider).tapYield;
+    ref.read(gameProvider.notifier).tap();
 
-    final color = _heat.isOverheated
-        ? GColors.hot
-        : applied >= HeatController.greenMultiplier
-            ? GColors.green
-            : GColors.brew;
+    final color = switch (_heat.status) {
+      HeatStatus.overheated => GColors.hot,
+      HeatStatus.inWindow => GColors.green,
+      HeatStatus.off => GColors.brew,
+    };
     return (text: '+${Fmt.volume(gained)}', color: color);
   }
 

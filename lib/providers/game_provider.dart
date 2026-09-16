@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../content/buyers.dart';
 import '../content/game_content.dart';
+import '../content/sorts.dart';
 import '../models/achievement.dart';
 import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
@@ -12,6 +14,7 @@ import '../engine/game_engine.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
 import '../models/upgrade.dart';
+import '../ui/game/heat_controller.dart' show HeatStatus;
 
 final timeProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -31,6 +34,9 @@ final clockProvider = Provider<GameClock>((ref) => const GameClock());
 /// что его должен видеть и движок (для тика), и интерфейс (чтобы показывать
 /// фактическую скорость, а не базовую).
 final heatMultiplierProvider = StateProvider<double>((ref) => 1.0);
+
+/// Состояние жара относительно окна — от него зависит, растёт сорт или горит.
+final heatStatusProvider = StateProvider<HeatStatus>((ref) => HeatStatus.off);
 
 final formulasProvider = Provider<Formulas>((ref) => const Formulas());
 
@@ -98,6 +104,15 @@ class GameNotifier extends Notifier<GameState> {
 
     var next = engine.processTick(state, now, heatMultiplier: _heatMultiplier);
 
+    // Сорт двигается тем же тиком: держишь жар в окне — растёт, перегрел —
+    // горит, отвлёкся — медленно сползает.
+    final dt = _tickInterval.inMilliseconds / 1000.0;
+    next = engine.advanceSort(next, switch (ref.read(heatStatusProvider)) {
+      HeatStatus.inWindow => kSortGainPerSecond * dt,
+      HeatStatus.overheated => -kSortBurnPerSecond * dt,
+      HeatStatus.off => -kSortDecayPerSecond * dt,
+    });
+
     // Автопродажа: открывается достижением, а не выдаётся сразу. Именно так
     // неудобство превращается в цель, из которой игрок выкупается.
     if (next.achievements.hasPerk(AchievementPerk.autoSell) && next.isTankFull) {
@@ -120,7 +135,13 @@ class GameNotifier extends Notifier<GameState> {
     );
   }
 
-  /// Сдать весь бак по текущей цене.
+  /// Сдать бак конкретному покупателю.
+  void sellTo(Buyer buyer) {
+    final engine = ref.read(gameEngineProvider);
+    state = engine.sellTo(state, buyer, ref.read(timeProvider)());
+  }
+
+  /// Сдать бак соседу — он берёт всегда.
   void sell() {
     final engine = ref.read(gameEngineProvider);
     state = engine.sell(state, ref.read(timeProvider)());

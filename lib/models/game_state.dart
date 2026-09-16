@@ -7,6 +7,7 @@ import 'generator.dart';
 import 'generators_state.dart';
 import 'prestige_state.dart';
 import 'resources_state.dart';
+import 'sort_state.dart';
 import 'upgrade.dart';
 import 'upgrades_state.dart';
 
@@ -18,6 +19,10 @@ class GameState extends Equatable {
   final UpgradesState upgrades;
   final PrestigeState prestige;
   final AchievementsState achievements;
+
+  /// Сорт того, что сейчас в баке. Поднимается жаром, горит от перегрева.
+  final SortState sort;
+
   final DateTime lastUpdateTime;
 
   /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
@@ -31,6 +36,7 @@ class GameState extends Equatable {
     required this.upgrades,
     required this.prestige,
     required this.achievements,
+    required this.sort,
     required this.lastUpdateTime,
     required this.mlPerSecond,
   });
@@ -53,6 +59,7 @@ class GameState extends Equatable {
       upgrades: ups,
       prestige: prestige,
       achievements: achievements,
+      sort: const SortState(),
       lastUpdateTime: lastUpdateTime ?? DateTime.now(),
       mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
@@ -65,6 +72,7 @@ class GameState extends Equatable {
     UpgradesState? upgrades,
     PrestigeState? prestige,
     AchievementsState? achievements,
+    SortState? sort,
     DateTime? lastUpdateTime,
   }) {
     final nextGens = generators ?? this.generators;
@@ -87,6 +95,7 @@ class GameState extends Equatable {
       upgrades: nextUps,
       prestige: nextPrestige,
       achievements: nextAch,
+      sort: sort ?? this.sort,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       mlPerSecond: nextRate,
     );
@@ -131,6 +140,7 @@ class GameState extends Equatable {
         upgrades,
         prestige,
         achievements,
+        sort,
         lastUpdateTime,
         mlPerSecond,
       ];
