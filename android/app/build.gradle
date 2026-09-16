@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.idle_game"
+    namespace = "com.mercurrial.vityagonit"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,10 +20,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.idle_game"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.mercurrial.vityagonit"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -32,8 +29,10 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Игра раздаётся файлом, а не через Google Play, поэтому хватает
+            // отладочного ключа: APK ставится сбоку и обновляется поверх, пока
+            // ключ не меняется. Появится Play — заведём свой keystore, но
+            // переустановка тогда потребует удалить старую сборку.
             signingConfig = signingConfigs.debug
         }
     }
