@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
+import 'garage_room.dart';
 import 'pixel_sprite.dart';
 import 'still_sprites.dart';
 
@@ -59,92 +60,61 @@ class _GarageSceneState extends ConsumerState<GarageScene>
     final owned = ref.watch(
       gameProvider.select(
         (s) => [
-          for (final g in s.generators.items)
-            if (g.ownedCount > 0) (id: g.id, count: g.ownedCount),
+          for (var i = 0; i < s.generators.items.length; i++)
+            if (s.generators.items[i].ownedCount > 0)
+              (id: s.generators.items[i].id, count: s.generators.items[i].ownedCount, tier: i),
         ],
       ),
     );
 
-    return LayoutBuilder(
-      builder: (context, c) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(GR.card),
-          child: Stack(
-            children: [
-              const Positioned.fill(child: _Wall()),
-              Positioned.fill(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: GS.s3),
-                      child: widget.hanging,
-                    ),
-                    Expanded(
-                      child: owned.isEmpty
-                          ? const _EmptyGarage()
-                          : _Shelves(
-                              items: owned,
-                              time: _time,
-                              heat: widget.heat,
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    // Помещение — по старшему аппарату: банка и коллайдер не стоят в одной
+    // комнате.
+    final stage = stageForTier(owned.isEmpty ? 0 : owned.last.tier);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(GR.card),
+      child: Stack(
+        children: [
+          Positioned.fill(child: RoomBackground(stage: stage)),
+          Positioned.fill(
+            child: SwingingLamp(time: _time, heat: widget.heat),
           ),
-        );
-      },
+          Positioned.fill(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: GS.s3),
+                  child: widget.hanging,
+                ),
+                Expanded(
+                  child: owned.isEmpty
+                      ? const _EmptyGarage()
+                      : _Shelves(
+                          items: owned,
+                          time: _time,
+                          heat: widget.heat,
+                        ),
+                ),
+              ],
+            ),
+          ),
+          // Табличка помещения. Мелкая и в углу: это подпись к сцене, а не
+          // заголовок.
+          Positioned(
+            left: GS.s2,
+            bottom: GS.s1,
+            child: Text(
+              stageName(stage),
+              style: GType.label().copyWith(
+                fontSize: 8,
+                color: GColors.textLo,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
-
-/// Кирпичная стена и пол — фон, который не отвлекает.
-class _Wall extends StatelessWidget {
-  const _Wall();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(painter: _WallPainter(), size: Size.infinite);
-  }
-}
-
-class _WallPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFF241C15),
-    );
-
-    // Кладка: намеренно очень контрастно-приглушённая, чтобы не спорить с
-    // аппаратами на переднем плане.
-    final brick = Paint()..color = const Color(0x14FFFFFF);
-    const bw = 26.0, bh = 13.0;
-    for (var y = 0.0, r = 0; y < size.height; y += bh, r++) {
-      final offset = r.isEven ? 0.0 : bw / 2;
-      for (var x = -bw; x < size.width; x += bw) {
-        canvas.drawRect(
-          Rect.fromLTWH(x + offset + 1, y + 1, bw - 2, bh - 2),
-          brick,
-        );
-      }
-    }
-
-    // Свет лампы сверху.
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(0, -0.9),
-          radius: 1.1,
-          colors: [Color(0x33FFD089), Color(0x00000000)],
-        ).createShader(Offset.zero & size),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WallPainter old) => false;
 }
 
 class _EmptyGarage extends StatelessWidget {
@@ -165,9 +135,12 @@ class _EmptyGarage extends StatelessWidget {
   }
 }
 
+/// То, что стоит в гараже.
+typedef _Owned = ({String id, int count, int tier});
+
 /// Полки с аппаратами. Заполняются снизу вверх по мере роста производства.
 class _Shelves extends StatelessWidget {
-  final List<({String id, int count})> items;
+  final List<_Owned> items;
   final double time;
   final double heat;
 
@@ -177,21 +150,25 @@ class _Shelves extends StatelessWidget {
   Widget build(BuildContext context) {
     // Новые аппараты — ближе к зрителю: показываем последние приобретения.
     final shown = items.length > 6 ? items.sublist(items.length - 6) : items;
+    final rows = (shown.length / 3).ceil();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(GS.s2, GS.s4, GS.s2, GS.s2),
+      // Снизу оставляем ровно полосу пола: нижний ряд обязан стоять на полу,
+      // а не висеть над ним.
+      padding: const EdgeInsets.fromLTRB(GS.s2, GS.s4, GS.s2, kFloorHeight),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          for (var row = 0; row < (shown.length / 3).ceil(); row++) ...[
+          for (var row = 0; row < rows; row++)
             Expanded(
               child: _ShelfRow(
                 items: shown.skip(row * 3).take(3).toList(),
                 time: time,
                 heat: heat,
+                // Нижний ряд стоит на полу — доски под ним не нужно.
+                onFloor: row == rows - 1,
               ),
             ),
-          ],
         ],
       ),
     );
@@ -199,11 +176,17 @@ class _Shelves extends StatelessWidget {
 }
 
 class _ShelfRow extends StatelessWidget {
-  final List<({String id, int count})> items;
+  final List<_Owned> items;
   final double time;
   final double heat;
+  final bool onFloor;
 
-  const _ShelfRow({required this.items, required this.time, required this.heat});
+  const _ShelfRow({
+    required this.items,
+    required this.time,
+    required this.heat,
+    required this.onFloor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -220,17 +203,17 @@ class _ShelfRow extends StatelessWidget {
             ],
           ),
         ),
-        // Сама полка.
-        Container(
-          height: 5,
-          margin: const EdgeInsets.only(top: 2),
-          decoration: const BoxDecoration(
-            color: Color(0xFF4A3524),
-            border: Border(
-              top: BorderSide(color: Color(0xFF6B4E33), width: 2),
+        if (!onFloor)
+          Container(
+            height: 5,
+            margin: const EdgeInsets.only(top: 2),
+            decoration: const BoxDecoration(
+              color: Color(0xFF4A3524),
+              border: Border(
+                top: BorderSide(color: Color(0xFF6B4E33), width: 2),
+              ),
             ),
           ),
-        ),
       ],
     );
   }

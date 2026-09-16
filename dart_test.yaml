@@ -1,0 +1,10 @@
+# Снимки сцены — инструмент разработки, а не проверка в общем прогоне: они
+# зависят от версии движка и ломались бы при каждом обновлении Flutter.
+#
+# Посмотреть/обновить:
+#   flutter test --tags golden --run-skipped --update-goldens
+#
+# `--run-skipped` обязателен: skip ниже выключает их и для явного --tags.
+tags:
+  golden:
+    skip: "снимки: flutter test --tags golden --run-skipped --update-goldens"
