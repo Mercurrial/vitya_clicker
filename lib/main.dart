@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bootstrap.dart';
 import 'providers/game_provider.dart';
+import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
 import 'ui/screens/welcome_back.dart';
 import 'ui/theme/art_style.dart';
@@ -81,18 +82,31 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Итог отсутствия показываем после первого кадра, иначе контекст ещё не
-    // готов к диалогу.
-    if (widget.boot.shouldGreet) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        showWelcomeBack(
-          context,
-          offline: widget.boot.offline,
-          gained: widget.boot.offlineGain,
-        );
-      });
+    // Диалоги показываем после первого кадра, иначе контекст ещё не готов.
+    //
+    // Порядок важен: сперва «что изменилось», потом «сколько накапало». Если
+    // поменялся баланс, игрок должен узнать об этом ДО того, как увидит
+    // цифры, — иначе он успеет решить, что игра сломалась.
+    if (widget.boot.hasBalanceNews || widget.boot.shouldGreet) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openIntro());
     }
+  }
+
+  Future<void> _openIntro() async {
+    if (!mounted) return;
+    if (widget.boot.hasBalanceNews) {
+      await showBalanceNews(context, widget.boot.balanceNews);
+      // Отметка о просмотре — это запись сейва с текущей версией баланса.
+      // Пока она не легла на диск, экран покажется снова; так честнее, чем
+      // потерять уведомление из-за закрытия приложения.
+      await ref.read(gameProvider.notifier).saveNow();
+    }
+    if (!mounted || !widget.boot.shouldGreet) return;
+    showWelcomeBack(
+      context,
+      offline: widget.boot.offline,
+      gained: widget.boot.offlineGain,
+    );
   }
 
   @override

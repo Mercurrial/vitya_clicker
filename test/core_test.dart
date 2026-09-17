@@ -202,7 +202,7 @@ void main() {
 
       // И проверяем, что дальше это даёт обозримую мудрость по ЛЮБОМУ
       // балансу — тест не должен ломаться от правки чисел.
-      final state = GameSerializer().fromJson(
+      final state = const GameSerializer().fromJson(
         result.data!,
         content: kGenerators,
         upgrades: kUpgrades,
