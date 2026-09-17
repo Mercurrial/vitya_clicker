@@ -322,15 +322,37 @@ class _Still extends StatelessWidget {
                 builder: (_, __) {
                   final speed = 1.0 + heat.heat;
                   final t = time.value;
-                  return PixelImage(
-                    sprite: sprite,
-                    size: width,
-                    // Жидкость колышется: сдвигаем только нижние строки.
-                    rowShift: (row) {
-                      if (row < sprite.height - 7) return 0;
-                      final phase = math.sin(t * 3.4 * speed + row);
-                      return phase > 0.6 ? 1 : (phase < -0.6 ? -1 : 0);
-                    },
+                  final status = heat.status;
+                  final frames = fireFramesFor(
+                    inWindow: status == HeatStatus.inWindow,
+                    overheated: status == HeatStatus.overheated,
+                  );
+
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      PixelImage(
+                        sprite: sprite,
+                        size: width,
+                        // Жидкость колышется: сдвигаем только нижние строки.
+                        rowShift: (row) {
+                          if (row < sprite.height - 7) return 0;
+                          final phase = math.sin(t * 3.4 * speed + row);
+                          return phase > 0.6 ? 1 : (phase < -0.6 ? -1 : 0);
+                        },
+                      ),
+                      // Огонь лижет аппарат снизу и немного заходит на него —
+                      // отдельной полосой он читался бы как подставка.
+                      Positioned(
+                        bottom: -2,
+                        child: PixelImage(
+                          sprite: frames[
+                              ((t * 9 * speed).floor()) % frames.length],
+                          size: width * 0.85,
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),

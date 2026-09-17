@@ -199,3 +199,85 @@ PixelSprite stillSpriteFor(String id) {
 
 /// Есть ли у аппарата открытый огонь — им управляем подсветкой от жара.
 bool stillHasFire(String id) => id == 'dedov' || id == 'tseh';
+
+/// Огонь под аппаратом.
+///
+/// Жар — центральная механика игры, но до сих пор он жил только в шкале:
+/// полоска ползала, а гараж выглядел одинаково и при тлеющих углях, и при
+/// перегреве. Огонь переносит механику в сцену — становится видно, что
+/// нажатия делают, не отрывая глаз от Вити.
+///
+/// Три состояния вместо плавной шкалы намеренно: пиксель-арт плохо переносит
+/// полутона, а игроку и нужно различать ровно три вещи — «мало», «в самый
+/// раз», «перегрел».
+const List<PixelSprite> kEmberFrames = [
+  PixelSprite([
+    '............',
+    '............',
+    '..f......f..',
+    '.ff.f..ff.f.',
+  ]),
+  PixelSprite([
+    '............',
+    '............',
+    '.f...f....f.',
+    '.ff.ff..f.ff',
+  ]),
+];
+
+/// Ровное пламя — жар в рабочем окне.
+const List<PixelSprite> kFlameFrames = [
+  PixelSprite([
+    '....f..f....',
+    '...fFf.fFf..',
+    '..fFFFFFFF..',
+    '.ffffffffff.',
+  ]),
+  PixelSprite([
+    '...f..f.f...',
+    '..fFf.fFFf..',
+    '..fFFFFFFf..',
+    '.ffffffffff.',
+  ]),
+  PixelSprite([
+    '.....ff.f...',
+    '..fFFf.fFf..',
+    '.fFFFFFFFF..',
+    '.ffffffffff.',
+  ]),
+];
+
+/// Ревущее пламя — перегрев. Выше, шире и с белым нутром.
+const List<PixelSprite> kBlazeFrames = [
+  PixelSprite([
+    '..f.fFf.f...',
+    '.fFfFwFfFf..',
+    'fFFFFwwFFFFf',
+    'fFFFFFFFFFFf',
+    'ffffffffffff',
+  ]),
+  PixelSprite([
+    '...fFf.f.f..',
+    '..fFwFfFFf..',
+    'fFFFwwFFFFFf',
+    'fFFFFFFFFFFf',
+    'ffffffffffff',
+  ]),
+  PixelSprite([
+    '.f.f.fFf.f..',
+    '.fFfFwwFfF..',
+    'fFFFwwFFFFFf',
+    'fFFFFFFFFFFf',
+    'ffffffffffff',
+  ]),
+];
+
+/// Какие кадры показывать при таком жаре.
+///
+/// Пороги совпадают с окном шкалы: то, что игрок видит под аппаратом, должно
+/// означать ровно то же, что и полоска сверху.
+List<PixelSprite> fireFramesFor({required bool inWindow, required bool overheated}) {
+  if (overheated) return kBlazeFrames;
+  if (inWindow) return kFlameFrames;
+  return kEmberFrames;
+}
