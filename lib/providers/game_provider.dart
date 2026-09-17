@@ -12,6 +12,7 @@ import '../models/achievement.dart';
 import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../core/save.dart';
+import '../core/save_code.dart';
 import '../engine/formulas.dart';
 import '../engine/game_engine.dart';
 import '../models/game_state.dart';
@@ -211,6 +212,42 @@ class GameNotifier extends Notifier<GameState> {
 
     // Событие необратимое — пишем сразу, не дожидаясь автосейва.
     saveNow();
+  }
+
+  /// Свернуть текущий прогресс в строку.
+  ///
+  /// Берём состояние из памяти, а не с диска: игрок жмёт «скопировать» ровно
+  /// затем, чтобы сохранить то, что видит сейчас, а автосейв мог не успеть.
+  String exportCode() {
+    final json = ref.read(serializerProvider).toJson(
+          state,
+          lastSeenMillis: ref.read(clockProvider).nowMillis(),
+        );
+    return encodeSaveCode(const SaveCodec().encode(json));
+  }
+
+  /// Принять прогресс из строки.
+  ///
+  /// Возвращает `null`, если получилось, иначе — почему нет. Состояние
+  /// применяется сразу: заставлять игрока перезапускать игру после переноса
+  /// значит дать ему лишний повод усомниться, что перенос вообще случился.
+  Future<SaveCodeError?> importCode(String? code) async {
+    final parsed = decodeSaveCode(code);
+    if (!parsed.isOk) return parsed.error;
+
+    // Через тот же кодек, что и обычная загрузка: код может быть записан
+    // старой версией игры, и миграции обязаны отработать.
+    final loaded = const SaveCodec().decode(parsed.save);
+    if (loaded.isEmpty || loaded.wasCorrupt) return SaveCodeError.damaged;
+
+    state = ref.read(serializerProvider).fromJson(
+          loaded.data!,
+          content: ref.read(generatorsContentProvider),
+          upgrades: ref.read(upgradesContentProvider),
+          now: ref.read(timeProvider)(),
+        );
+    await saveNow();
+    return null;
   }
 
   /// Полный сброс: стереть сейв и начать с нуля.

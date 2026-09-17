@@ -16,6 +16,7 @@ import '../theme/art_style.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
+import '../widgets/transfer_progress.dart';
 import '../widgets/vitya_toast.dart';
 
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
@@ -480,6 +481,8 @@ class _VityaTab extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: GS.s3),
+        const TransferProgress(),
         const SizedBox(height: GS.s6),
         _WideButton(
           label: 'НАЧАТЬ ЗАНОВО',
