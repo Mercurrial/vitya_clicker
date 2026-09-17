@@ -51,6 +51,19 @@ class PixelPainter extends CustomPainter {
     this.rowShift,
   });
 
+  /// Рисует спрайт двумя приёмами, и оба нужны.
+  ///
+  /// **Слияние в отрезки.** Подряд идущие пиксели одного символа — это один
+  /// прямоугольник, а не десять. В спрайтах гаража таких полос много: корпус,
+  /// жидкость, тени.
+  ///
+  /// **Группировка по цвету.** Отрезки собираются в контур на каждый цвет и
+  /// уходят одним вызовом. Палитра маленькая, поэтому вместо сотен вызовов
+  /// получается около десятка.
+  ///
+  /// Замер до правки: один аппарат стоил 67 мкс — 84 % отведённого бюджета,
+  /// и это на настольной машине. Шесть аппаратов по шестьдесят кадров в
+  /// секунду телефон бы не вытянул.
   @override
   void paint(Canvas canvas, Size size) {
     if (sprite.width == 0 || size.isEmpty) return;
@@ -62,26 +75,39 @@ class PixelPainter extends CustomPainter {
     final ox = ((size.width - drawnW) / 2).floorToDouble();
     final oy = ((size.height - drawnH) / 2).floorToDouble();
 
-    final paint = Paint()..isAntiAlias = false;
+    final byColour = <Color, Path>{};
 
     for (var y = 0; y < sprite.height; y++) {
       final row = sprite.rows[y];
       final shift = rowShift?.call(y) ?? 0;
-      for (var x = 0; x < row.length; x++) {
-        final color = palette[row[x]];
-        if (color == null) continue; // '.' и незнакомые символы — прозрачно
-        paint.color = color;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            ox + (x + shift) * scale,
-            oy + y * scale,
-            scale,
-            scale,
-          ),
-          paint,
+      final top = oy + y * scale;
+
+      var x = 0;
+      while (x < row.length) {
+        final symbol = row[x];
+        final colour = palette[symbol];
+        if (colour == null) {
+          x++; // '.' и незнакомые символы — прозрачно
+          continue;
+        }
+
+        var end = x + 1;
+        while (end < row.length && row[end] == symbol) {
+          end++;
+        }
+
+        (byColour[colour] ??= Path()).addRect(
+          Rect.fromLTWH(ox + (x + shift) * scale, top, (end - x) * scale, scale),
         );
+        x = end;
       }
     }
+
+    final paint = Paint()..isAntiAlias = false;
+    byColour.forEach((colour, path) {
+      paint.color = colour;
+      canvas.drawPath(path, paint);
+    });
   }
 
   @override

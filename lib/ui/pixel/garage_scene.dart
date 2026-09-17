@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
+import '../game/heat_controller.dart';
 import 'garage_room.dart';
 import 'pixel_sprite.dart';
 import 'still_sprites.dart';
@@ -17,8 +19,16 @@ import 'still_sprites.dart';
 /// аппарат физически встаёт на полку, кипит и парит, поэтому прогресс читается
 /// глазами, а не только цифрами.
 class GarageScene extends ConsumerStatefulWidget {
-  /// Текущий жар: подсвечивает огонь под аппаратами и ускоряет кипение.
-  final double heat;
+  /// Жар приходит КОНТРОЛЛЕРОМ, а не числом.
+  ///
+  /// Числом он приходил раньше, и ради его обновления сцену оборачивали в
+  /// `AnimatedBuilder`. Контроллер уведомляет каждый кадр, поэтому всё дерево
+  /// сцены перестраивалось шестьдесят раз в секунду — вместе с селектором
+  /// Riverpod и каждым аппаратом. Замер показал кадр в 18 мс при бюджете 16.
+  ///
+  /// Теперь на жар подписаны только те двое, кто от него рисуется: лампа и
+  /// аппараты.
+  final HeatController heat;
 
   /// Что висит на стене — портрет Вити. Он часть сцены, а не отдельный блок:
   /// так гараж читается как единое место, а не как набор панелей.
@@ -33,8 +43,19 @@ class GarageScene extends ConsumerStatefulWidget {
 class _GarageSceneState extends ConsumerState<GarageScene>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
-  double _time = 0;
   Duration _prev = Duration.zero;
+
+  /// Время сцены живёт в уведомителе, а не в поле состояния.
+  ///
+  /// Раньше каждый кадр звал `setState`, и Flutter перестраивал всё дерево
+  /// сцены шестьдесят раз в секунду: комнату, полки, каждый аппарат с его
+  /// LayoutBuilder — плюс селектор Riverpod, который на каждый вызов собирал
+  /// новый список. Анимации при этом подвержены только два художника: лампа
+  /// и аппараты.
+  ///
+  /// Теперь кадр двигает одно число, на него подписаны только эти двое, а
+  /// дерево виджетов перестраивается лишь когда реально меняется игра.
+  final ValueNotifier<double> _time = ValueNotifier(0);
 
   @override
   void initState() {
@@ -45,13 +66,13 @@ class _GarageSceneState extends ConsumerState<GarageScene>
   void _onTick(Duration now) {
     final dt = _prev == Duration.zero ? 0.016 : (now - _prev).inMicroseconds / 1e6;
     _prev = now;
-    _time += dt;
-    if (mounted) setState(() {});
+    _time.value += dt;
   }
 
   @override
   void dispose() {
     _ticker.dispose();
+    _time.dispose();
     super.dispose();
   }
 
@@ -75,9 +96,18 @@ class _GarageSceneState extends ConsumerState<GarageScene>
       borderRadius: BorderRadius.circular(GR.card),
       child: Stack(
         children: [
+          // RepaintBoundary тут пробовался и НЕ помог: замер не изменился в
+          // пределах шума, а лишний слой стоит памяти. Комната и так рисуется
+          // один раз — её painter возвращает shouldRepaint == false.
           Positioned.fill(child: RoomBackground(stage: stage)),
           Positioned.fill(
-            child: SwingingLamp(time: _time, heat: widget.heat),
+            child: ListenableBuilder(
+              listenable: Listenable.merge([_time, widget.heat]),
+              builder: (_, __) => SwingingLamp(
+                time: _time.value,
+                heat: widget.heat.heat,
+              ),
+            ),
           ),
           Positioned.fill(
             child: Column(
@@ -141,8 +171,8 @@ typedef _Owned = ({String id, int count, int tier});
 /// Полки с аппаратами. Заполняются снизу вверх по мере роста производства.
 class _Shelves extends StatelessWidget {
   final List<_Owned> items;
-  final double time;
-  final double heat;
+  final ValueListenable<double> time;
+  final HeatController heat;
 
   const _Shelves({required this.items, required this.time, required this.heat});
 
@@ -177,8 +207,8 @@ class _Shelves extends StatelessWidget {
 
 class _ShelfRow extends StatelessWidget {
   final List<_Owned> items;
-  final double time;
-  final double heat;
+  final ValueListenable<double> time;
+  final HeatController heat;
   final bool onFloor;
 
   const _ShelfRow({
@@ -223,8 +253,8 @@ class _ShelfRow extends StatelessWidget {
 class _Still extends StatelessWidget {
   final String id;
   final int count;
-  final double time;
-  final double heat;
+  final ValueListenable<double> time;
+  final HeatController heat;
 
   const _Still({
     required this.id,
@@ -236,17 +266,7 @@ class _Still extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sprite = stillSpriteFor(id);
-
-    // Кипение ускоряется вместе с жаром — видно, что тапы что-то делают.
-    final speed = 1.0 + heat;
-    final frame = ((time * 2.2 * speed).floor()) % kSteamFrames.length;
-
-    // Жидкость слегка колышется: сдвигаем только нижние строки.
-    int shift(int row) {
-      if (row < sprite.height - 7) return 0;
-      final phase = math.sin(time * 3.4 * speed + row);
-      return phase > 0.6 ? 1 : (phase < -0.6 ? -1 : 0);
-    }
+    final animation = Listenable.merge([time, heat]);
 
     return Flexible(
       child: LayoutBuilder(
@@ -274,12 +294,46 @@ class _Still extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              // На время подписаны только эти двое. Остальное в аппарате —
+              // счётчик, отступы, раскладка — от кадра не зависит и
+              // перестраиваться каждые 16 мс не должно.
+              // Подписаны на кадр только эти двое. Счётчик, отступы и
+              // раскладка от времени не зависят и перестраиваться не должны.
               if (showSteam)
                 SizedBox(
                   height: _steamHeight,
-                  child: PixelImage(sprite: kSteamFrames[frame], size: width * 0.8),
+                  child: ListenableBuilder(
+                    listenable: animation,
+                    builder: (_, __) {
+                      // Кипение ускоряется вместе с жаром — видно, что тапы
+                      // что-то делают.
+                      final speed = 1.0 + heat.heat;
+                      final frame = ((time.value * 2.2 * speed).floor()) %
+                          kSteamFrames.length;
+                      return PixelImage(
+                        sprite: kSteamFrames[frame],
+                        size: width * 0.8,
+                      );
+                    },
+                  ),
                 ),
-              PixelImage(sprite: sprite, size: width, rowShift: shift),
+              ListenableBuilder(
+                listenable: animation,
+                builder: (_, __) {
+                  final speed = 1.0 + heat.heat;
+                  final t = time.value;
+                  return PixelImage(
+                    sprite: sprite,
+                    size: width,
+                    // Жидкость колышется: сдвигаем только нижние строки.
+                    rowShift: (row) {
+                      if (row < sprite.height - 7) return 0;
+                      final phase = math.sin(t * 3.4 * speed + row);
+                      return phase > 0.6 ? 1 : (phase < -0.6 ? -1 : 0);
+                    },
+                  );
+                },
+              ),
               if (showCounter) ...[
                 const SizedBox(height: 2),
                 SizedBox(

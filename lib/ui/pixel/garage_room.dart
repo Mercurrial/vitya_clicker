@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
@@ -421,6 +422,39 @@ class _LampPainter extends CustomPainter {
 
   _LampPainter({required this.time, required this.heat, required this.pivotX});
 
+  /// Готовый градиент света, посчитанный один раз на размер и яркость.
+  ///
+  /// Раньше шейдер собирался заново каждый кадр — а это самая дорогая
+  /// операция в отрисовке. Свет при этом не меняет форму: он только ездит
+  /// вместе с лампой. Значит, можно построить его однажды и двигать холст,
+  /// а не пересобирать градиент шестьдесят раз в секунду.
+  static ui.Shader? _cachedLight;
+  static Size? _cachedSize;
+  static int? _cachedWarmth;
+
+  static ui.Shader _light(Size size, double warmth) {
+    // Яркость округляем: на глаз шага в сотую не видно, а кэш от этого
+    // перестаёт промахиваться на каждом кадре.
+    final key = (warmth * 100).round();
+    if (_cachedLight != null && _cachedSize == size && _cachedWarmth == key) {
+      return _cachedLight!;
+    }
+    final rect = Offset.zero & size;
+    _cachedLight = RadialGradient(
+      center: Alignment.center,
+      radius: 1.25,
+      colors: [
+        const Color(0xFFFFD089).withOpacity(key / 100),
+        const Color(0xFFFFD089).withOpacity(key / 100 * 0.25),
+        const Color(0x00000000),
+      ],
+      stops: const [0.0, 0.28, 1.0],
+    ).createShader(rect);
+    _cachedSize = size;
+    _cachedWarmth = key;
+    return _cachedLight!;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
@@ -428,25 +462,18 @@ class _LampPainter extends CustomPainter {
     final dx = SwingingLamp.swing(time, heat);
     final bulb = Offset(pivot.dx + dx, 34);
 
-    // Свет. Идёт от лампочки и ездит вместе с ней.
+    // Свет. Форма постоянна, меняется только положение — поэтому двигаем
+    // холст, а не пересобираем градиент.
     final warmth = 0.28 + 0.16 * heat.clamp(0.0, 1.0);
+    final shift = Offset(bulb.dx - size.width / 2, bulb.dy - size.height / 2);
+    canvas.save();
+    canvas.translate(shift.dx, shift.dy);
     canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = RadialGradient(
-          center: Alignment(
-            (bulb.dx / size.width) * 2 - 1,
-            (bulb.dy / size.height) * 2 - 1,
-          ),
-          radius: 1.25,
-          colors: [
-            const Color(0xFFFFD089).withOpacity(warmth),
-            const Color(0xFFFFD089).withOpacity(warmth * 0.25),
-            const Color(0x00000000),
-          ],
-          stops: const [0.0, 0.28, 1.0],
-        ).createShader(Offset.zero & size),
+      // Расширяем на величину сдвига, иначе у края появится несвёченная полоса.
+      (Offset.zero & size).inflate(size.longestSide),
+      Paint()..shader = _light(size, warmth),
     );
+    canvas.restore();
 
     // Провод.
     canvas.drawPath(

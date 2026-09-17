@@ -12,50 +12,59 @@ class HeatGauge extends StatelessWidget {
   final HeatController controller;
   const HeatGauge({super.key, required this.controller});
 
+  /// Подписи и шкала обновляются по-разному — и это главное здесь.
+  ///
+  /// Шкала ползёт непрерывно, ей нужен каждый кадр. Подписи меняются раз в
+  /// несколько секунд, и раньше они перестраивались вместе со шкалой: два
+  /// текста, Row и Column шестьдесят раз в секунду на ровном месте.
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final status = controller.status;
-        final accent = switch (status) {
-          HeatStatus.overheated => GColors.hot,
-          HeatStatus.inWindow => GColors.green,
-          HeatStatus.off => GColors.textMid,
-        };
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('ЖАР ПОД КУБОМ', style: GType.label()),
-                Text(
-                  '${controller.label} · ${controller.sortHint}',
-                  style: GType.num(size: 10, weight: FontWeight.w500, color: accent),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ValueListenableBuilder<HeatStatus>(
+          valueListenable: controller.statusNotifier,
+          builder: (context, status, _) => Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('ЖАР ПОД КУБОМ', style: GType.label()),
+              Text(
+                '${controller.label} · ${controller.sortHint}',
+                style: GType.num(
+                  size: 10,
+                  weight: FontWeight.w500,
+                  color: _accentFor(status),
                 ),
-              ],
-            ),
-            const SizedBox(height: GS.s1),
-            SizedBox(
-              height: 18,
-              child: CustomPaint(
-                painter: _GaugePainter(
-                  heat: controller.heat,
-                  windowStart: controller.windowStart,
-                  windowEnd: controller.windowEnd,
-                  accent: accent,
-                ),
-                size: Size.infinite,
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: GS.s1),
+        SizedBox(
+          height: 18,
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) => CustomPaint(
+              painter: _GaugePainter(
+                heat: controller.heat,
+                windowStart: controller.windowStart,
+                windowEnd: controller.windowEnd,
+                accent: _accentFor(controller.status),
+              ),
+              size: Size.infinite,
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
+
+  static Color _accentFor(HeatStatus status) => switch (status) {
+        HeatStatus.overheated => GColors.hot,
+        HeatStatus.inWindow => GColors.green,
+        HeatStatus.off => GColors.textMid,
+      };
 }
 
 class _GaugePainter extends CustomPainter {

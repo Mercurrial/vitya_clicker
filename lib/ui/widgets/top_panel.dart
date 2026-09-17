@@ -245,12 +245,15 @@ class _SortStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: heat,
-      builder: (context, _) {
+    // Полоска сорта зависит от жара только цветом подсказки, а он меняется
+    // вместе со статусом — раз в несколько секунд. Подписка на сам контроллер
+    // перестраивала бы её каждый кадр.
+    return ValueListenableBuilder<HeatStatus>(
+      valueListenable: heat.statusNotifier,
+      builder: (context, status, _) {
         final sort = state.sort;
         final index = sort.index;
-        final hintColor = switch (heat.status) {
+        final hintColor = switch (status) {
           HeatStatus.overheated => GColors.hot,
           HeatStatus.inWindow => GColors.green,
           HeatStatus.off => GColors.textLo,

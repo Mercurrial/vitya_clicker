@@ -156,18 +156,19 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                       flex: MediaQuery.of(context).size.height < 760 ? 3 : 5,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: GS.s3),
-                        child: AnimatedBuilder(
-                          animation: _heat,
-                          builder: (context, _) => GarageScene(
-                            heat: _heat.heat,
-                            hanging: _PortraitWithHint(
-                              portrait: VityaPortrait(
-                                era: era,
-                                onTap: _onTap,
-                                size: 116,
-                                style: style.portrait,
-                                radius: style.radius * 0.6,
-                              ),
+                        // Без AnimatedBuilder намеренно: сцена подписывается
+                        // на жар сама, и только теми частями, которые от него
+                        // рисуются. Обёртка здесь перестраивала бы всё дерево
+                        // сцены шестьдесят раз в секунду.
+                        child: GarageScene(
+                          heat: _heat,
+                          hanging: _PortraitWithHint(
+                            portrait: VityaPortrait(
+                              era: era,
+                              onTap: _onTap,
+                              size: 116,
+                              style: style.portrait,
+                              radius: style.radius * 0.6,
                             ),
                           ),
                         ),

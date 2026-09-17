@@ -54,6 +54,15 @@ class HeatController extends ChangeNotifier {
   double _windowPos = 0.46;
   int _windowDir = 1;
 
+  /// Состояние относительно окна отдельным уведомителем.
+  ///
+  /// Сам контроллер уведомляет каждый кадр — этого требует движущаяся шкала.
+  /// Но подписи («В САМЫЙ РАЗ», «сорт растёт») меняются раз в несколько
+  /// секунд, и перестраивать их шестьдесят раз в секунду незачем. Замер
+  /// показал, что именно такие мелочи и съедали кадр.
+  final ValueNotifier<HeatStatus> statusNotifier =
+      ValueNotifier(HeatStatus.off);
+
   HeatController({required TickerProvider vsync}) {
     _ticker = vsync.createTicker(_onTick)..start();
   }
@@ -87,6 +96,7 @@ class HeatController extends ChangeNotifier {
   /// Подкинуть дров.
   void stoke() {
     _heat = math.min(1.0, _heat + heatPerTap);
+    statusNotifier.value = status;
     notifyListeners();
   }
 
@@ -107,11 +117,13 @@ class HeatController extends ChangeNotifier {
       _windowDir = 1;
     }
 
+    statusNotifier.value = status;
     notifyListeners();
   }
 
   @override
   void dispose() {
+    statusNotifier.dispose();
     _ticker.dispose();
     super.dispose();
   }
