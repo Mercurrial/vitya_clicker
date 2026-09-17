@@ -44,7 +44,7 @@ class _BuyButtonState extends State<BuyButton> {
         scale: _down ? 0.94 : 1.0,
         duration: const Duration(milliseconds: 110),
         child: Container(
-          constraints: const BoxConstraints(minWidth: 92, minHeight: 40),
+          constraints: const BoxConstraints(minWidth: 78, minHeight: 40),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: GS.s3),
           decoration: BoxDecoration(
@@ -260,8 +260,14 @@ class _MilestoneBar extends StatelessWidget {
   }
 }
 
-/// Строка апгрейда. Список, а не сетка: русские названия длинные, в две
-/// колонки они превращаются в кашу из переносов.
+/// Строка апгрейда.
+///
+/// Купленные по умолчанию скрыты: список рос с каждой покупкой, и найти в
+/// нём то, что ещё можно взять, становилось всё труднее. Развернуть их можно
+/// кнопкой — иногда хочется посмотреть, что уже есть.
+///
+/// Список, а не сетка: русские названия длинные, в две колонки они
+/// превращаются в кашу из переносов.
 class UpgradeRow extends StatelessWidget {
   final String name;
   final String effect;

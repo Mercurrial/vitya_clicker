@@ -2,7 +2,7 @@ import 'package:equatable/equatable.dart';
 
 /// Модель апгрейда. Каждый апгрейд применяет множитель к конкретной цели.
 enum UpgradeTarget {
-  tapPower,          // Множитель на силу тапа
+  heatControl,       // Шире окно жара — держать легче
   generatorOutput,   // Множитель на конкретный аппарат (по generatorId)
   allGenerators,     // Множитель на ВСЕ аппараты
   quality,           // Множитель на ЦЕНУ за литр (чистота, крепость)

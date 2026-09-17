@@ -21,32 +21,19 @@ class GameEngine {
     return room > 0 ? room : 0.0;
   }
 
-  /// Нажатие по Вите — подкинуть дров под аппарат.
+  /// Отметить касание — только для счётчика и достижений.
   ///
-  /// Главная ценность тапа не здесь, а в жаре: он множит ВСЁ производство
-  /// (см. [processTick]). Прямая отдача нужна лишь для того, чтобы нажатие
-  /// ощущалось, и она считается как доля секунды производства — поэтому не
-  /// отмирает с ростом империи, как отмирала бы константа.
-  GameState processTap(
-    GameState state,
-    DateTime currentTime, {
-    double heatMultiplier = 1.0,
-  }) {
-    // В полный бак не налить — это и есть сигнал «пора продавать».
-    final gain = _clampToRoom(state, state.tapYield * heatMultiplier);
-    if (gain <= 0) {
-      return state.copyWith(
-        clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
-        lastUpdateTime: currentTime,
-      );
-    }
-
+  /// Самогона касание НЕ даёт, и это главное решение всей переделки. Пока
+  /// давало, выигрывал тот, кто быстрее долбит по экрану: спам приносил
+  /// больше любой осмысленной игры, а «подождать хороший сорт» становилось
+  /// проигрышной стратегией. Навыка в этом не было — только выносливость.
+  ///
+  /// Теперь касание влияет на производство единственным путём — через жар
+  /// (см. [processTick] и его множитель). Жар держат зажимом, поэтому долбить
+  /// по экрану бессмысленно физически.
+  GameState registerTouch(GameState state, DateTime currentTime) {
     return state.copyWith(
-      resources: state.resources.copyWith(ml: state.resources.ml + gain),
       clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
-      prestige: state.prestige.copyWith(
-        totalEverEarned: state.prestige.totalEverEarned + gain,
-      ),
       lastUpdateTime: currentTime,
     );
   }

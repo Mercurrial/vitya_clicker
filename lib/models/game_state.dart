@@ -115,23 +115,6 @@ class GameState extends Equatable {
   double get tankFraction =>
       tankCapacity <= 0 ? 0 : (resources.ml / tankCapacity).clamp(0.0, 1.0);
 
-  /// Ручная отдача за нажатие, в мл.
-  ///
-  /// Берётся большее из двух: плоская база (она держит самое начало, когда
-  /// аппаратов ещё нет) и доля секунды текущего производства (она не даёт
-  /// нажатию обесцениться позже). Так тап остаётся осмысленным на всей
-  /// дистанции, а не умирает через пять минут.
-  ///
-  /// Основная ценность тапа всё равно не тут, а в жаре — он множит весь поток.
-  double get tapYield {
-    final flat = clicker.baseTapPower *
-        upgrades.tapMultiplier *
-        prestige.globalMultiplier *
-        achievements.multiplier;
-    final share = mlPerSecond * Production.tapSeconds;
-    return flat > share ? flat : share;
-  }
-
   @override
   List<Object?> get props => [
         resources,

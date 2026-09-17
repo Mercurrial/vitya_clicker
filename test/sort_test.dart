@@ -81,66 +81,29 @@ void main() {
     });
   });
 
-  group('Покупатели', () {
-    Buyer byId(String id) => kBuyers.firstWhere((b) => b.id == id);
+  group('Покупатель', () {
+    test('берёт весь бак и не трогает сорт', () {
+      // Покупателей было трое, и это выглядело выбором. На деле сосед брал
+      // всё и всегда, оптовик отличался на четверть цены, а свадьба забирала
+      // два литра — смешные деньги через десять минут игры. Три кнопки
+      // означали три раза прочитать одно и то же.
+      expect(kBuyers.length, 1, reason: 'покупатель должен остаться один');
 
-    test('сосед берёт всегда, даже первач', () {
-      expect(engine.canSellTo(withTank(100), byId('petrovich')), isTrue);
+      final buyer = kBuyers.single;
+      var s = fresh().copyWith(sort: const SortState(index: 3));
+      s = s.copyWith(resources: s.resources.copyWith(ml: 5000));
+
+      expect(engine.canSellTo(s, buyer), isTrue);
+      final after = engine.sellTo(s, buyer, t0);
+
+      expect(after.resources.ml, 0, reason: 'забирает весь бак');
+      expect(after.resources.money, greaterThan(0));
+      expect(after.sort.index, 3,
+          reason: 'сорт тратится ожиданием, а не продажей');
     });
 
-    test('оптовик требует сорт и объём', () {
-      final optovik = byId('optovik');
-      expect(engine.canSellTo(withTank(5000, sortIndex: 1), optovik), isFalse,
-          reason: 'сорт низкий');
-      expect(engine.canSellTo(withTank(100, sortIndex: 3), optovik), isFalse,
-          reason: 'объёма мало');
-      expect(engine.canSellTo(withTank(5000, sortIndex: 2), optovik), isTrue);
-    });
-
-    test('свадьба берёт только лучшее и только немного', () {
-      final svadba = byId('svadba');
-      expect(engine.canSellTo(withTank(9000, sortIndex: 2), svadba), isFalse);
-
-      final s = withTank(9000, sortIndex: 4);
-      expect(engine.canSellTo(s, svadba), isTrue);
-
-      final after = engine.sellTo(s, svadba, t0);
-      expect(after.resources.ml, 9000 - 2000, reason: 'забирает не больше 2 л·10³');
-    });
-
-    test('сосед не трогает сорт, а хорошие покупатели его расходуют', () {
-      final s = withTank(5000, sortIndex: 3);
-
-      final toNeighbour = engine.sellTo(s, byId('petrovich'), t0);
-      expect(toNeighbour.sort.index, 3, reason: 'сосед в сортах не разбирается');
-
-      final toWholesale = engine.sellTo(s, byId('optovik'), t0);
-      expect(toWholesale.sort.index, 2, reason: 'репутация уходит с товаром');
-    });
-
-    test('выгоднее довести сорт, чем сдавать сразу соседу', () {
-      // Именно эта разница делает ожидание осмысленным.
-      final now = withTank(2000, sortIndex: 0);
-      final later = withTank(2000, sortIndex: 3);
-
-      final quick = engine.saleValueFor(now, byId('petrovich'), t0);
-      final patient = engine.saleValueFor(later, byId('svadba'), t0);
-
-      expect(patient, greaterThan(quick * 5));
-    });
-
-    test('недоступному покупателю продать нельзя', () {
-      final s = withTank(5000, sortIndex: 0);
-      expect(engine.sellTo(s, byId('svadba'), t0), same(s));
-    });
-
-    test('продажа переводит объём в деньги', () {
-      final s = withTank(5000, sortIndex: 2);
-      final expected = engine.saleValueFor(s, kBuyers.first, t0);
-      final after = engine.sellTo(s, kBuyers.first, t0);
-
-      expect(after.resources.ml, 0);
-      expect(after.resources.money, closeTo(expected, 1e-6));
+    test('пустой бак продать нельзя', () {
+      expect(engine.canSellTo(fresh(), kBuyers.single), isFalse);
     });
   });
 }

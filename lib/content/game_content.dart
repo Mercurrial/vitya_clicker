@@ -82,30 +82,34 @@ Balance? _ladderFor;
 /// Описания сухие, как патчноут: смешно от формулировки, а не оттого, что
 /// шутку объяснили.
 const List<Upgrade> kUpgrades = [
-  // --- Руки ---
+  // --- Жар: держать окно легче ---
+  //
+  // Раньше эти три улучшения множили силу нажатия. Нажатие больше не даёт
+  // самогон, так что множить стало нечего — но ось осталась нужной: она
+  // улучшает то единственное, ради чего игрок касается экрана.
   Upgrade(
     id: 'tap_ruka',
     name: 'Крепкая рука',
-    description: 'Ручная отдача ×2',
+    description: 'Окно жара шире на 40%',
     cost: 40,
-    target: UpgradeTarget.tapPower,
-    multiplier: 2,
+    target: UpgradeTarget.heatControl,
+    multiplier: 1.4,
   ),
   Upgrade(
     id: 'tap_mozol',
     name: 'Трудовая мозоль',
-    description: 'Ручная отдача ×2',
+    description: 'Окно жара шире ещё на 40%',
     cost: 1200,
-    target: UpgradeTarget.tapPower,
-    multiplier: 2,
+    target: UpgradeTarget.heatControl,
+    multiplier: 1.4,
   ),
   Upgrade(
     id: 'tap_hvatka',
     name: 'Дедовская хватка',
-    description: 'Ручная отдача ×3',
+    description: 'Окно жара шире ещё вдвое',
     cost: 30000,
-    target: UpgradeTarget.tapPower,
-    multiplier: 3,
+    target: UpgradeTarget.heatControl,
+    multiplier: 2.0,
   ),
 
   // --- Ёмкость бака ---

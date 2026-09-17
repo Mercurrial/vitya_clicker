@@ -27,7 +27,7 @@ void main() {
     }
     s = engine.buyGenerator(s, 'bidon', now);
     s = engine.buyUpgrade(s, 'tap_ruka', now);
-    s = engine.processTap(s, now);
+    s = engine.registerTouch(s, now);
     return s;
   }
 
@@ -53,7 +53,6 @@ void main() {
 
       final bought = after.upgrades.items.where((u) => u.purchased).map((u) => u.id);
       expect(bought, contains('tap_ruka'));
-      expect(after.tapYield, closeTo(before.tapYield, 1e-9));
     });
 
     test('мудрость и история переживают сохранение', () {

@@ -92,7 +92,8 @@ class GameNotifier extends Notifier<GameState> {
     await saves.save(json);
   }
 
-  /// Текущий жар под аппаратом — множит ВЕСЬ пассивный поток.
+  /// Множитель СЕРИИ — множит ВЕСЬ пассивный поток. Это единственное, что
+  /// даёт активная игра.
   double get _heatMultiplier => ref.read(heatMultiplierProvider);
 
   void setHeat(double multiplier) =>
@@ -132,14 +133,10 @@ class GameNotifier extends Notifier<GameState> {
             note: 'цена за литр ${Fmt.mult(next.sort.multiplier)}',
             event: VityaEvent.gradeUp,
           );
-    } else if (next.sort.index < state.sort.index) {
-      ref.read(toastProvider.notifier).show(
-            kind: 'СОРТ УПАЛ',
-            title: next.sort.name,
-            note: 'перегрели',
-            event: VityaEvent.overheat,
-          );
     }
+    // Падение сорта и обычную продажу больше не объявляем: плашки сыпались
+    // десятками за сеанс и превращались в шум, который перестают читать.
+    // Остаётся редкое и важное — поднялся сорт, случилось похмелье.
 
     final checked = engine.checkAchievements(next);
     if (checked.fresh.isNotEmpty) freshAchievements.addAll(checked.fresh);
@@ -147,14 +144,11 @@ class GameNotifier extends Notifier<GameState> {
     state = checked.state;
   }
 
-  /// Нажатие по Вите. [heatMultiplier] приходит от шкалы ГРАДУСА.
-  void tap({double heatMultiplier = 1.0}) {
+  /// Игрок коснулся гаража. Самогона это не даёт — только счётчик и
+  /// достижения; производство двигает жар, а его держат зажимом.
+  void registerTouch() {
     final engine = ref.read(gameEngineProvider);
-    state = engine.processTap(
-      state,
-      ref.read(timeProvider)(),
-      heatMultiplier: heatMultiplier,
-    );
+    state = engine.registerTouch(state, ref.read(timeProvider)());
   }
 
   /// Сдать бак конкретному покупателю.
@@ -162,17 +156,8 @@ class GameNotifier extends Notifier<GameState> {
     final engine = ref.read(gameEngineProvider);
     final now = ref.read(timeProvider)();
     if (!engine.canSellTo(state, buyer)) return;
-
-    final volume = buyer.volumeFrom(state.resources.ml);
-    final revenue = engine.saleValueFor(state, buyer, now);
     state = engine.sellTo(state, buyer, now);
 
-    ref.read(toastProvider.notifier).show(
-          kind: 'ПРОДАНО',
-          title: buyer.name,
-          note: '${Fmt.volume(volume)} · ${Fmt.money(revenue)}',
-          event: VityaEvent.sold,
-        );
   }
 
   /// Сдать бак соседу — он берёт всегда.

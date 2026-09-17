@@ -12,7 +12,7 @@ import '../game/heat_controller.dart';
 import '../game/heat_gauge.dart';
 import '../game/vitya_portrait.dart';
 import '../pixel/garage_scene.dart';
-import '../theme/art_style.dart';
+import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
@@ -101,13 +101,15 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   void initState() {
     super.initState();
     _heat = HeatController(vsync: this);
-    // Жар живёт в интерфейсе, но ведёт СОРТ в движке — поэтому состояние
-    // относительно окна непрерывно отдаём в игру.
+    // Жар живёт в интерфейсе, но двигает и СОРТ, и всё производство —
+    // поэтому и состояние окна, и множитель серии непрерывно отдаём в игру.
     _heat.addListener(_pushHeat);
   }
 
-  void _pushHeat() =>
-      ref.read(heatStatusProvider.notifier).state = _heat.status;
+  void _pushHeat() {
+    ref.read(heatStatusProvider.notifier).state = _heat.status;
+    ref.read(heatMultiplierProvider.notifier).state = _heat.multiplier;
+  }
 
   @override
   void dispose() {
@@ -116,25 +118,18 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
     super.dispose();
   }
 
-  ({String text, Color color}) _onTap() {
-    _heat.stoke();
-    final gained = ref.read(gameProvider).tapYield;
-    ref.read(gameProvider.notifier).tap();
-
-    final color = switch (_heat.status) {
-      HeatStatus.overheated => GColors.hot,
-      HeatStatus.inWindow => GColors.green,
-      HeatStatus.off => GColors.brew,
-    };
-    return (text: '+${Fmt.volume(gained)}', color: color);
+  void _startStoking() {
+    _heat.startStoking();
+    ref.read(gameProvider.notifier).registerTouch();
   }
+
+  void _stopStoking() => _heat.stopStoking();
 
   @override
   Widget build(BuildContext context) {
     final era = ref.watch(
       gameProvider.select((s) => _eraFor(s.prestige.totalEverEarned)),
     );
-    final style = ref.watch(artStyleProvider);
 
     return ColoredBox(
       color: GColors.bg,
@@ -161,27 +156,42 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                         // на жар сама, и только теми частями, которые от него
                         // рисуются. Обёртка здесь перестраивала бы всё дерево
                         // сцены шестьдесят раз в секунду.
-                        child: GarageScene(
-                          heat: _heat,
-                          hanging: _PortraitWithHint(
-                            portrait: VityaPortrait(
-                              era: era,
-                              onTap: _onTap,
-                              // 98, а не 116: при 116 портрет съедал шестьдесят
-                              // процентов сцены, и на аппараты оставалось
-                              // столько, что первая банка выходила ростом в
-                              // полтора сантиметра. Витя главный, но гараж —
-                              // не только он.
-                              size: 98,
-                              style: style.portrait,
-                              radius: style.radius * 0.6,
+                        // Зажимать можно ВЕЗДЕ по сцене, а не только по
+                        // портрету. Целиться в маленькую картинку, чтобы
+                        // подкинуть дров, было неинтуитивно: гараж — это и
+                        // есть кнопка.
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) => _startStoking(),
+                          onTapUp: (_) => _stopStoking(),
+                          onTapCancel: _stopStoking,
+                          onLongPressDown: (_) => _startStoking(),
+                          onLongPressUp: _stopStoking,
+                          onLongPressCancel: _stopStoking,
+                          child: GarageScene(
+                            heat: _heat,
+                            hanging: _PortraitWithHint(
+                              portrait: VityaPortrait(
+                                era: era,
+                                onPress: _startStoking,
+                                onRelease: _stopStoking,
+                                // 98, а не 116: при 116 портрет съедал шестьдесят
+                                // процентов сцены, и на аппараты оставалось
+                                // столько, что первая банка выходила ростом в
+                                // полтора сантиметра. Витя главный, но гараж —
+                                // не только он.
+                                size: 98,
+                                style: PixelPortraitStyle.pixel,
+                                radius: 0,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(GS.s6, GS.s3, GS.s6, GS.s3),
+                      padding:
+                          const EdgeInsets.fromLTRB(GS.s6, GS.s3, GS.s6, GS.s3),
                       child: HeatGauge(controller: _heat),
                     ),
                     Expanded(
@@ -208,37 +218,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
               ),
             ),
           ),
-          // Переключатель стиля — временный, чтобы выбрать язык игры глазами.
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            right: 10,
-            child: _StyleToggle(style: style),
-          ),
         ],
-      ),
-    );
-  }
-}
-
-/// Кнопка смены визуального языка. Выбор запоминается — игрок переключает
-/// его один раз под себя, а не каждый запуск заново.
-class _StyleToggle extends ConsumerWidget {
-  final ArtStyle style;
-  const _StyleToggle({required this.style});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => ref.read(artStyleProvider.notifier).toggle(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: GColors.wellBg,
-          borderRadius: BorderRadius.circular(style.radius > 0 ? GR.pill : 0),
-          border: Border.all(color: GColors.border),
-        ),
-        child: Text(style.label, style: GType.label()),
       ),
     );
   }
@@ -319,7 +299,9 @@ class _AchievementRowView extends StatelessWidget {
             Text(row.title.toUpperCase(), style: GType.label()),
             const SizedBox(width: GS.s2),
             Text(
-              done ? 'ряд закрыт · ${Fmt.mult(kRowMultiplier)}' : 'ряд: ${Fmt.mult(kRowMultiplier)}',
+              done
+                  ? 'ряд закрыт · ${Fmt.mult(kRowMultiplier)}'
+                  : 'ряд: ${Fmt.mult(kRowMultiplier)}',
               style: GType.num(
                 size: 10,
                 color: done ? GColors.green : GColors.textLo,
@@ -331,7 +313,8 @@ class _AchievementRowView extends StatelessWidget {
         Row(
           children: [
             for (final a in row.items) ...[
-              Expanded(child: _AchievementCell(a: a, done: unlocked.contains(a.id))),
+              Expanded(
+                  child: _AchievementCell(a: a, done: unlocked.contains(a.id))),
               if (a != row.items.last) const SizedBox(width: GS.s2),
             ],
           ],
@@ -505,7 +488,8 @@ class _VityaTab extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmPrestige(BuildContext context, WidgetRef ref, int pending) async {
+  Future<void> _confirmPrestige(
+      BuildContext context, WidgetRef ref, int pending) async {
     final ok = await _ask(
       context,
       title: 'Лечь проспаться?',
@@ -547,7 +531,8 @@ class _VityaTab extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Отмена', style: GType.ui(size: 14, color: GColors.textMid)),
+            child: Text('Отмена',
+                style: GType.ui(size: 14, color: GColors.textMid)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -638,7 +623,9 @@ class _WideButton extends StatelessWidget {
               : null,
           color: enabled && !danger ? null : GColors.wellBg,
           border: Border.all(
-            color: danger ? GColors.hot : (enabled ? GColors.amber : GColors.border),
+            color: danger
+                ? GColors.hot
+                : (enabled ? GColors.amber : GColors.border),
           ),
         ),
         child: Text(
@@ -711,7 +698,8 @@ class _PortraitWithHintState extends ConsumerState<_PortraitWithHint>
               child: Opacity(
                 opacity: 0.55 + 0.45 * t,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                   decoration: BoxDecoration(
                     color: GColors.amber,
                     borderRadius: BorderRadius.circular(GR.pill),
@@ -921,39 +909,53 @@ class _StillsTab extends ConsumerWidget {
   }
 }
 
+/// Показывать ли уже купленные улучшения.
+///
+/// По умолчанию нет. Список рос с каждой покупкой, купленное копилось сверху,
+/// и найти то, что ещё можно взять, становилось всё труднее — а именно за
+/// этим на вкладку и заходят.
+final showBoughtUpgradesProvider = StateProvider<bool>((ref) => false);
+
 class _UpgradesTab extends ConsumerWidget {
   const _UpgradesTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
+    final showBought = ref.watch(showBoughtUpgradesProvider);
     // Улучшения тоже покупаются за деньги.
     final money = state.resources.money;
 
+    final bought = state.upgrades.items.where((u) => u.purchased).length;
+
     // Показываем только те, что уже имеют смысл: иначе список пугает.
     final visible = state.upgrades.items.where((u) {
-      if (u.purchased) return true;
+      if (u.purchased) return showBought;
       return money >= u.cost * 0.35;
     }).toList();
 
-    if (visible.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(GS.s6),
-          child: Text(
-            'Пока нечего улучшать.\nГони дальше.',
-            textAlign: TextAlign.center,
-            style: GType.body(),
-          ),
-        ),
-      );
-    }
+    // Кнопка «показать купленное» идёт последней строкой списка, а не над
+    // ним: сверху она отодвигала бы то, ради чего на вкладку заходят.
+    final extra = bought > 0 ? 1 : 0;
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),
-      itemCount: visible.length,
+      itemCount: visible.isEmpty ? 1 + extra : visible.length + extra,
       separatorBuilder: (_, __) => const SizedBox(height: GS.s2),
       itemBuilder: (context, i) {
+        if (visible.isEmpty && i == 0) {
+          return Padding(
+            padding: const EdgeInsets.all(GS.s6),
+            child: Text(
+              'Пока нечего улучшать.\nГони дальше.',
+              textAlign: TextAlign.center,
+              style: GType.body(),
+            ),
+          );
+        }
+        if (i >= visible.length) {
+          return _ToggleBought(count: bought, showing: showBought);
+        }
         final u = visible[i];
         return UpgradeRow(
           name: u.name,
@@ -964,6 +966,38 @@ class _UpgradesTab extends ConsumerWidget {
           onBuy: () => ref.read(gameProvider.notifier).buyUpgrade(u.id),
         );
       },
+    );
+  }
+}
+
+/// Кнопка «показать купленное».
+class _ToggleBought extends ConsumerWidget {
+  final int count;
+  final bool showing;
+
+  const _ToggleBought({required this.count, required this.showing});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        ref.read(showBoughtUpgradesProvider.notifier).state = !showing;
+      },
+      child: Container(
+        height: 40,
+        alignment: Alignment.center,
+        margin: const EdgeInsets.only(top: GS.s2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(GR.pill),
+          border: Border.all(color: GColors.border),
+        ),
+        child: Text(
+          showing ? 'СКРЫТЬ КУПЛЕННОЕ' : 'ПОКАЗАТЬ КУПЛЕННОЕ · $count',
+          style: GType.label(),
+        ),
+      ),
     );
   }
 }

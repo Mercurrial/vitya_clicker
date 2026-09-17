@@ -157,8 +157,13 @@ void main() {
         (tester) async {
       await openOn(tester, withStills({'banka': 1}), const Size(375, 812));
 
-      // Самое длинное название лестницы: если влезло оно, влезут и остальные.
+      // Берём САМОЕ длинное название лестницы, а не первое. На первом всё
+      // влезало, а «Бидон эмалированный» уже обрезался многоточием.
+      final longest = kGeneratorNames
+          .map((g) => g.name)
+          .reduce((a, b) => a.length >= b.length ? a : b);
       final label = find.text('Трёхлитровая банка');
+      expect(longest.length, greaterThan(0));
       expect(label, findsOneWidget);
 
       // Сравнивать с шириной отрисованного текста нельзя: в тестах шрифт
@@ -169,7 +174,9 @@ void main() {
       // «Трёхлитровая банка» — самое длинное название лестницы, настоящим
       // шрифтом в 14 кегль оно занимает около 125 точек. Берём 150 с запасом.
       // Разрастётся кружок или кнопка цены — проверка упадёт.
-      const needed = 150.0;
+      // «Трубопровод «Дружба-2»» — 22 знака; настоящим шрифтом в 13 кегль это
+      // около 145 точек. Берём 160 с запасом.
+      const needed = 160.0;
       final available = tester.renderObject<RenderBox>(label).size.width;
 
       expect(available, greaterThanOrEqualTo(needed),

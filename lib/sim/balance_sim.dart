@@ -59,7 +59,11 @@ class PlayStyle {
   /// Нажатий в минуту. Ноль — игра оставлена в фоне.
   final double tapsPerMinute;
 
-  /// Средний множитель жара, пока игрок за экраном.
+  /// Средний множитель СЕРИИ за партию.
+  ///
+  /// Это не «жар под кубом», а то, во что он превращается: удержание в окне
+  /// копит серию, серия множит производство. Внимательный игрок держит её
+  /// почти на максимуме, фоновый — не держит вовсе.
   final double heat;
 
   /// Какую долю времени игрок реально смотрит в игру.
@@ -85,7 +89,7 @@ class PlayStyle {
   static const tryhard = PlayStyle(
     name: 'считает',
     tapsPerMinute: 90,
-    heat: 1.6,
+    heat: 2.7,
     attention: 0.9,
     rule: BuyRule.payback,
     prestigeAt: 0.5,
@@ -95,7 +99,7 @@ class PlayStyle {
   static const casual = PlayStyle(
     name: 'обычный',
     tapsPerMinute: 30,
-    heat: 1.25,
+    heat: 1.8,
     attention: 0.5,
     rule: BuyRule.cheapest,
     prestigeAt: 1.0,
@@ -298,10 +302,12 @@ class BalanceSim {
       state = engine.processTick(state, now, heatMultiplier: style.heat);
       if (produced > roomBefore) overflowed += produced - roomBefore;
 
-      // --- Нажатия ------------------------------------------------------
+      // --- Касания ------------------------------------------------------
+      // Самогона они не дают: вся польза активной игры уже учтена множителем
+      // жара выше. Считаем их только ради достижений на количество касаний.
       tapBudget += style.tapsPerMinute * style.attention * dt / 60;
       while (tapBudget >= 1) {
-        state = engine.processTap(state, now, heatMultiplier: style.heat);
+        state = engine.registerTouch(state, now);
         tapBudget -= 1;
       }
 

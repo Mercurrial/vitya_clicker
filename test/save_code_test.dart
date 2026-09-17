@@ -158,7 +158,7 @@ void main() {
       }
       notifier.buyGenerator('bidon');
       notifier.buyUpgrade('tap_ruka');
-      notifier.tap();
+      notifier.registerTouch();
       final before = container.read(gameProvider);
 
       final code = notifier.exportCode();

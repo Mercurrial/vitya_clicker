@@ -353,12 +353,6 @@ class _Still extends StatelessWidget {
                       PixelImage(
                         sprite: sprite,
                         size: width,
-                        // Жидкость колышется: сдвигаем только нижние строки.
-                        rowShift: (row) {
-                          if (row < sprite.height - 7) return 0;
-                          final phase = math.sin(t * 3.4 * speed + row);
-                          return phase > 0.6 ? 1 : (phase < -0.6 ? -1 : 0);
-                        },
                       ),
                       // Огонь лижет аппарат снизу и немного заходит на него —
                       // отдельной полосой он читался бы как подставка.

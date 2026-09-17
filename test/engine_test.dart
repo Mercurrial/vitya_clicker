@@ -18,34 +18,17 @@ void main() {
         lastUpdateTime: t0,
       );
 
-  group('Тап', () {
-    test('даёт базовую силу и считает нажатия', () {
-      final s = engine.processTap(fresh(), t0);
-      expect(s.resources.ml, Balance.current.baseTapMl);
+  group('Касание', () {
+    test('считается, но самогона не даёт', () {
+      // Главное решение переделки: спам по экрану больше не приносит ничего.
+      // Раньше он приносил больше любой осмысленной игры.
+      final before = fresh();
+      final s = engine.registerTouch(before, t0);
+
       expect(s.clicker.totalTaps, 1);
-      expect(s.prestige.totalEverEarned, Balance.current.baseTapMl);
-    });
-
-    test('градус умножает добычу', () {
-      final s = engine.processTap(fresh(), t0, heatMultiplier: 3.0);
-      expect(s.resources.ml, Balance.current.baseTapMl * 3);
-    });
-
-    test('отдача не обесценивается: растёт вместе с производством', () {
-      var s = fresh();
-      final atStart = s.tapYield;
-
-      // Разгоняем пассивный доход.
-      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
-      for (var i = 0; i < 40; i++) {
-        s = engine.buyGenerator(s, 'banka', t0);
-      }
-      expect(s.mlPerSecond, greaterThan(0));
-
-      // Именно это чинит «через пять минут тап стал бесполезен»: отдача — доля
-      // текущего потока, а не константа.
-      expect(s.tapYield, greaterThan(atStart));
-      expect(s.tapYield, closeTo(s.mlPerSecond * Production.tapSeconds, 1e-9));
+      expect(s.resources.ml, before.resources.ml,
+          reason: 'касание налило самогон — значит, спам снова выгоден');
+      expect(s.prestige.totalEverEarned, before.prestige.totalEverEarned);
     });
   });
 
@@ -113,9 +96,7 @@ void main() {
     test('апгрейд тапа удваивает силу и покупается один раз', () {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
-      final before = s.tapYield;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
-      expect(s.tapYield, closeTo(before * 2, 1e-9));
 
       final spent = s.resources.money;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
@@ -201,7 +182,7 @@ void main() {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(ml: s.tankCapacity));
       final before = s.resources.ml;
-      s = engine.processTap(s, t0);
+      s = engine.registerTouch(s, t0);
 
       expect(s.resources.ml, before);
       expect(s.clicker.totalTaps, 1, reason: 'нажатие всё равно засчитано');
@@ -353,9 +334,20 @@ void main() {
         prestige: PrestigeState(claimedMl: PrestigeState.firstWisdomMl * 1023),
       );
       expect(wise.prestige.wisdom, 10);
+
+      // Раньше мудрость проверялась через отдачу нажатия. Нажатие больше не
+      // даёт самогон, поэтому смотрим туда, где мудрость действительно
+      // работает, — на производство.
+      var rich = plain.copyWith(resources: plain.resources.copyWith(money: 1e6));
+      rich = engine.buyGenerator(rich, 'banka', t0);
+      var richWise = wise.copyWith(
+        resources: wise.resources.copyWith(money: 1e6),
+      );
+      richWise = engine.buyGenerator(richWise, 'banka', t0);
+
       expect(
-        wise.tapYield,
-        closeTo(plain.tapYield * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
+        richWise.mlPerSecond,
+        closeTo(rich.mlPerSecond * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
       );
     });
 

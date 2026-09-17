@@ -17,9 +17,9 @@ class UpgradesState extends Equatable {
   }
 
   /// Суммарный множитель силы тапа от купленных апгрейдов
-  double get tapMultiplier {
+  double get heatControlMultiplier {
     return items
-        .where((u) => u.purchased && u.target == UpgradeTarget.tapPower)
+        .where((u) => u.purchased && u.target == UpgradeTarget.heatControl)
         .fold(1.0, (product, u) => product * u.multiplier);
   }
 

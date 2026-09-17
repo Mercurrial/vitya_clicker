@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../core/formatters.dart';
 import '../theme/garage.dart';
 import 'heat_controller.dart';
 
@@ -35,7 +36,7 @@ class HeatGauge extends StatelessWidget {
               // край жёлто-чёрной лентой.
               Flexible(
                 child: Text(
-                  '${controller.label} · ${controller.sortHint}',
+                  '${controller.label} · ${controller.hint}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -50,6 +51,48 @@ class HeatGauge extends StatelessWidget {
           ),
         ),
         const SizedBox(height: GS.s1),
+        // СЕРИЯ — то, ради чего вообще держат палец. Её обязано быть видно
+        // рядом со шкалой: без неё зажим выглядит бессмысленным.
+        AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final mult = controller.multiplier;
+            return Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(GR.pill),
+                    child: SizedBox(
+                      height: 5,
+                      child: Stack(
+                        children: [
+                          const ColoredBox(
+                            color: GColors.wellBg,
+                            child: SizedBox.expand(),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: controller.series.clamp(0.0, 1.0),
+                            child: const ColoredBox(color: GColors.amber),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: GS.s2),
+                Text(
+                  '${Fmt.mult(mult)} СЕРИЯ',
+                  style: GType.num(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    color: mult > 1.05 ? GColors.amber : GColors.textLo,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: GS.s2),
         SizedBox(
           height: 18,
           child: AnimatedBuilder(

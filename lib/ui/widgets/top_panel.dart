@@ -314,7 +314,7 @@ class _SortStrip extends StatelessWidget {
             ),
             const SizedBox(width: GS.s2),
             Text(
-              heat.sortHint,
+              heat.hint,
               style: GType.ui(size: 9, color: hintColor),
             ),
           ],

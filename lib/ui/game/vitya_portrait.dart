@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -27,15 +25,6 @@ extension _EraAsset on VityaEra {
       };
 }
 
-/// Один всплеск: брызги + улетающая цифра.
-class _Splash {
-  final AnimationController ctrl;
-  final List<Offset> drops;
-  final String text;
-  final Color textColor;
-  _Splash(this.ctrl, this.drops, this.text, this.textColor);
-}
-
 /// Портрет Вити — цель нажатия.
 ///
 /// Правило игры: на тапе НЕТ шуток (их видят тысячи раз, любая умрёт), только
@@ -44,7 +33,11 @@ class VityaPortrait extends StatefulWidget {
   final VityaEra era;
 
   /// Возвращает текст для всплывающей цифры (например «+12 Л») и цвет.
-  final ({String text, Color color}) Function() onTap;
+  /// Палец лёг на экран — начать поддув.
+  final VoidCallback onPress;
+
+  /// Отпустили — угли подхватывают.
+  final VoidCallback onRelease;
 
   final double size;
 
@@ -57,7 +50,8 @@ class VityaPortrait extends StatefulWidget {
   const VityaPortrait({
     super.key,
     required this.era,
-    required this.onTap,
+    required this.onPress,
+    required this.onRelease,
     this.size = 220,
     this.style = PixelPortraitStyle.pixel,
     this.radius = GR.card,
@@ -70,8 +64,6 @@ class VityaPortrait extends StatefulWidget {
 class _VityaPortraitState extends State<VityaPortrait>
     with TickerProviderStateMixin {
   late final AnimationController _press;
-  final List<_Splash> _splashes = [];
-  final math.Random _rng = math.Random();
 
   @override
   void initState() {
@@ -85,43 +77,21 @@ class _VityaPortraitState extends State<VityaPortrait>
 
   @override
   void dispose() {
-    for (final s in _splashes) {
-      s.ctrl.dispose();
-    }
     _press.dispose();
     super.dispose();
   }
 
-  void _handleTap() {
-    final result = widget.onTap();
-
-    // Отдача: быстрое сжатие, мягкий возврат.
-    _press.forward(from: 0).then((_) {
-      if (mounted) _press.reverse();
-    });
-
+  /// Портрет больше не выдаёт цифру за нажатие: самогона касание не даёт.
+  /// Осталась только отдача — она нужна, чтобы зажим ощущался.
+  void _pressDown() {
+    widget.onPress();
+    _press.forward(from: 0);
     HapticFeedback.lightImpact();
+  }
 
-    final drops = List.generate(7, (i) {
-      final angle = -math.pi / 2 + (_rng.nextDouble() - 0.5) * 2.2;
-      final dist = 50 + _rng.nextDouble() * 60;
-      return Offset(math.cos(angle) * dist, math.sin(angle) * dist);
-    });
-
-    final ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 750),
-    );
-    final splash = _Splash(ctrl, drops, result.text, result.color);
-    setState(() => _splashes.add(splash));
-
-    ctrl.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        ctrl.dispose();
-        if (mounted) setState(() => _splashes.remove(splash));
-      }
-    });
-    ctrl.forward();
+  void _pressUp() {
+    widget.onRelease();
+    _press.reverse();
   }
 
   @override
@@ -135,15 +105,19 @@ class _VityaPortraitState extends State<VityaPortrait>
     //
     // Высота тоже по содержимому: до этого стоял множитель 1.28, подобранный
     // на глаз, и стоило подписи стать на строку выше, портрет вылезал за свой
-    // бокс жёлтой полосой. Капли летят поверх и в размер не входят — на то у
-    // Stack и Clip.none.
+    // бокс жёлтой полосой.
     return Stack(
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => _handleTap(),
+          onTapDown: (_) => _pressDown(),
+          onTapUp: (_) => _pressUp(),
+          onTapCancel: _pressUp,
+          onLongPressDown: (_) => _pressDown(),
+          onLongPressUp: _pressUp,
+          onLongPressCancel: _pressUp,
           child: AnimatedBuilder(
             animation: _press,
             builder: (context, child) {
@@ -165,65 +139,9 @@ class _VityaPortraitState extends State<VityaPortrait>
             ),
           ),
         ),
-        for (final s in _splashes) ..._splashWidgets(s),
       ],
     );
   }
-
-  List<Widget> _splashWidgets(_Splash s) => [
-        // Капли самогона.
-        for (final d in s.drops)
-          AnimatedBuilder(
-            animation: s.ctrl,
-            builder: (_, __) {
-              final t = Curves.easeOut.transform(s.ctrl.value);
-              // Лёгкая гравитация: капли летят вверх и опадают.
-              final dy = d.dy * t + 90 * t * t;
-              return IgnorePointer(
-                child: Transform.translate(
-                  offset: Offset(d.dx * t, dy),
-                  child: Opacity(
-                    opacity: (1 - t).clamp(0.0, 1.0),
-                    child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: GColors.brew,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        // Цифра добычи.
-        AnimatedBuilder(
-          animation: s.ctrl,
-          builder: (_, __) {
-            final t = Curves.easeOut.transform(s.ctrl.value);
-            return IgnorePointer(
-              child: Transform.translate(
-                offset: Offset(0, -widget.size * 0.42 - 70 * t),
-                child: Opacity(
-                  opacity: (1 - t * t).clamp(0.0, 1.0),
-                  child: Text(
-                    s.text,
-                    style: GType.num(
-                      size: 22,
-                      weight: FontWeight.w700,
-                      color: s.textColor,
-                      shadows: const [
-                        Shadow(color: Color(0xCC000000), blurRadius: 8)
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ];
 }
 
 /// Рама портрета: медный кант, тёплый свет сверху, табличка снизу.
