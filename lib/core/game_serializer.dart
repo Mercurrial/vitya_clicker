@@ -11,6 +11,7 @@
 library;
 
 import '../content/achievements.dart';
+import '../content/balance.dart';
 import '../content/sorts.dart';
 import '../models/achievements_state.dart';
 import '../models/sort_state.dart';
@@ -44,9 +45,16 @@ class GameSerializer {
       // с объёмом: вернувшись, игрок находит свой товар таким, каким оставил.
       'sortIndex': s.sort.index,
       'sortProgress': s.sort.progress,
-      'wisdom': s.prestige.wisdom,
+      // Факт, а не оценка: сколько было нагнано на момент последнего
+      // похмелья. Мудрость из него вычисляется — см. PrestigeState.
+      'claimedMl': s.prestige.claimedMl,
+      'bonusWisdom': s.prestige.bonusWisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
+      // Под каким балансом игрок в последний раз видел игру. По этому числу
+      // при обновлении показывается список изменений и начисляется
+      // компенсация.
+      'balanceVersion': kBalanceVersion,
       'lastSeen': lastSeenMillis,
     };
   }
@@ -81,7 +89,8 @@ class GameSerializer {
       initialUpgrades: ups,
       achievements: AchievementsState(unlocked: unlocked),
       prestige: PrestigeState(
-        wisdom: _asInt(json['wisdom']),
+        claimedMl: _asDouble(json['claimedMl']),
+        bonusWisdom: _asInt(json['bonusWisdom']),
         totalEverEarned: _asDouble(json['lifetime']),
         hangovers: _asInt(json['hangovers']),
       ),
@@ -99,6 +108,15 @@ class GameSerializer {
         progress: _asDouble(json['sortProgress']).clamp(0.0, 1.0),
       ),
     );
+  }
+
+  /// Под какой версией баланса сейв был записан.
+  ///
+  /// Старые сейвы поля не имеют — для них это 1, то есть «до того, как баланс
+  /// стали версионировать».
+  int balanceVersionOf(Map<String, dynamic> json) {
+    final v = json['balanceVersion'];
+    return v is int && v > 0 ? v : 1;
   }
 
   /// Момент последнего выхода — для расчёта оффлайн-дохода.

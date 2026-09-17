@@ -1,4 +1,5 @@
 import '../content/achievements.dart';
+import '../content/balance.dart';
 import '../content/buyers.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
@@ -188,10 +189,13 @@ class GameEngine {
   double saleValue(GameState state, DateTime currentTime) =>
       saleValueFor(state, kBuyers.first, currentTime);
 
+  /// Скорость удорожания — одна на всю игру, из баланса.
+  double get _growth => Balance.current.costGrowth;
+
   /// Стоимость следующей штуки аппарата, в рублях.
   double generatorCost(Generator g) => formulas.calculateUpgradeCost(
         g.baseCost,
-        g.costGrowthFactor,
+        _growth,
         g.ownedCount,
       );
 
@@ -217,14 +221,14 @@ class GameEngine {
   /// Сколько штук игрок может позволить прямо сейчас.
   int affordableCount(GameState state, Generator g) => formulas.maxAffordable(
         g.baseCost,
-        g.costGrowthFactor,
+        _growth,
         g.ownedCount,
         state.resources.money,
       );
 
   /// Цена пачки в [count] штук.
   double bulkCost(Generator g, int count) =>
-      formulas.bulkCost(g.baseCost, g.costGrowthFactor, g.ownedCount, count);
+      formulas.bulkCost(g.baseCost, _growth, g.ownedCount, count);
 
   /// Купить сразу несколько штук.
   ///
@@ -290,10 +294,7 @@ class GameEngine {
     return GameState.initial(
       initialGenerators: initialGenerators,
       initialUpgrades: initialUpgrades,
-      prestige: state.prestige.copyWith(
-        wisdom: state.prestige.potentialWisdom,
-        hangovers: state.prestige.hangovers + 1,
-      ),
+      prestige: state.prestige.claimAll(),
       // Достижения — мета-слой: они переживают похмелье вместе с мудростью,
       // иначе открытые ими функции отбирались бы обратно.
       achievements: state.achievements,

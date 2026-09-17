@@ -15,7 +15,7 @@ import 'dart:math' as math;
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
-const int kSaveVersion = 4;
+const int kSaveVersion = 5;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
@@ -91,6 +91,29 @@ class SaveCodec {
       final wisdom =
           ml <= 0 ? 0 : (math.log(1 + ml / 1e6) / math.ln2).floor();
       return {...json, 'wisdom': wisdom < 0 ? 0 : wisdom};
+    },
+
+    // v4 хранила мудрость числом — то есть ОЦЕНКУ, а не факт. Из-за этого
+    // каждая правка формулы требовала новой миграции и действовала только на
+    // тех, кто обновился.
+    //
+    // v5 хранит факт: сколько было нагнано на момент последнего похмелья.
+    // Мудрость из него вычисляется при каждой загрузке, поэтому следующая
+    // правка формулы применится у всех и сразу.
+    //
+    // Обратный перевод точен: wisdomFor(1e6·(2^w − 1)) == w. Множитель 1e6 —
+    // это firstWisdomMl НА МОМЕНТ v4, и он тут зашит намеренно: миграция
+    // обязана читать то, что реально лежит у игрока, а не то, чему равна
+    // константа сегодня.
+    4: (json) {
+      final w = json['wisdom'];
+      final wisdom = w is num ? w.toInt() : 0;
+      final claimed = wisdom <= 0 ? 0.0 : 1e6 * (math.pow(2, wisdom) - 1);
+      return {
+        ...json,
+        'claimedMl': claimed,
+        'bonusWisdom': 0,
+      }..remove('wisdom');
     },
   };
 

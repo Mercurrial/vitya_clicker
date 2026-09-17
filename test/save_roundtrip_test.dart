@@ -57,10 +57,12 @@ void main() {
     });
 
     test('мудрость и история переживают сохранение', () {
+      // Мудрость 7 задаётся не числом, а фактом: столько нагнано и забрано.
+      final claimed = PrestigeState.firstWisdomMl * 127;
       var s = build().copyWith(
-        prestige: const PrestigeState(
-          wisdom: 7,
-          totalEverEarned: 5e7,
+        prestige: PrestigeState(
+          claimedMl: claimed,
+          totalEverEarned: claimed,
           hangovers: 3,
         ),
       );
@@ -71,7 +73,7 @@ void main() {
         now: now,
       );
       expect(s.prestige.wisdom, 7);
-      expect(s.prestige.totalEverEarned, 5e7);
+      expect(s.prestige.claimedMl, closeTo(claimed, 1e-6));
       expect(s.prestige.hangovers, 3);
     });
 
@@ -132,7 +134,6 @@ void main() {
         id: 'novyi',
         name: 'Новый аппарат',
         baseCost: 1,
-        costGrowthFactor: 1.1,
         baseProduction: 1,
       );
       final s = ser.fromJson(

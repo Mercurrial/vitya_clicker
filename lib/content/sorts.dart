@@ -8,9 +8,15 @@
 /// **сжигает**, а хорошие покупатели требуют сорт и **сбрасывают его на
 /// ступень**. Появляется настоящий выбор — сдать сейчас дёшево и сохранить
 /// сорт или доводить до «Дедова запаса» ради свадьбы.
+/// ## Почему тут int, а не Color
+///
+/// Контент и движок не импортируют Flutter — ни одной строкой. Это не
+/// чистоплюйство: из-за единственного `import 'package:flutter/painting.dart'`
+/// ради типа [Color] симулятор баланса переставал запускаться вне приложения
+/// («dart:ui is not available on this platform»), а значит, прогнать партию в
+/// обычном Dart было невозможно. Цвет здесь — просто число ARGB, а в [Color]
+/// его превращает интерфейс.
 library;
-
-import 'package:flutter/painting.dart';
 
 class Sort {
   final String name;
@@ -18,9 +24,9 @@ class Sort {
   /// Множитель к цене за литр.
   final double multiplier;
 
-  /// Цвета для шкалы и пипок: от тусклого к золотому.
-  final Color from;
-  final Color to;
+  /// Цвета для шкалы и пипок: от тусклого к золотому, ARGB.
+  final int from;
+  final int to;
 
   const Sort({
     required this.name,
@@ -30,37 +36,45 @@ class Sort {
   });
 }
 
+/// Проверка, что никто не сломает развязку случайно.
+///
+/// Если в этот файл снова попадёт `import 'package:flutter/...'`, симулятор
+/// перестанет запускаться — а сломается это далеко отсюда и непонятно почему.
+/// Поэтому цвета так и остаются числами; превращать их в `Color` — работа
+/// интерфейса, для этого в `lib/ui/theme/garage.dart` есть `GColors.of`.
+const bool kContentIsFlutterFree = true;
+
 /// Лестница сортов — от мутного первача до дедова запаса.
 const List<Sort> kSorts = [
   Sort(
     name: 'Первач',
     multiplier: 1.0,
-    from: Color(0xFF4E6B8A),
-    to: Color(0xFF6A8CAF),
+    from: 0xFF4E6B8A,
+    to: 0xFF6A8CAF,
   ),
   Sort(
     name: 'Средняк',
     multiplier: 1.25,
-    from: Color(0xFF7A6E5E),
-    to: Color(0xFFA89681),
+    from: 0xFF7A6E5E,
+    to: 0xFFA89681,
   ),
   Sort(
     name: 'Двойной перегон',
     multiplier: 1.6,
-    from: Color(0xFFB0975F),
-    to: Color(0xFFD8C48A),
+    from: 0xFFB0975F,
+    to: 0xFFD8C48A,
   ),
   Sort(
     name: 'На кедраче',
     multiplier: 2.1,
-    from: Color(0xFFB87C24),
-    to: Color(0xFFE8A33D),
+    from: 0xFFB87C24,
+    to: 0xFFE8A33D,
   ),
   Sort(
     name: 'Дедов запас',
     multiplier: 2.8,
-    from: Color(0xFFE8A33D),
-    to: Color(0xFFFFD089),
+    from: 0xFFE8A33D,
+    to: 0xFFFFD089,
   ),
 ];
 

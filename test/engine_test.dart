@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/engine/production.dart';
@@ -20,14 +21,14 @@ void main() {
   group('Тап', () {
     test('даёт базовую силу и считает нажатия', () {
       final s = engine.processTap(fresh(), t0);
-      expect(s.resources.ml, kBaseTapMl);
+      expect(s.resources.ml, Balance.current.baseTapMl);
       expect(s.clicker.totalTaps, 1);
-      expect(s.prestige.totalEverEarned, kBaseTapMl);
+      expect(s.prestige.totalEverEarned, Balance.current.baseTapMl);
     });
 
     test('градус умножает добычу', () {
       final s = engine.processTap(fresh(), t0, heatMultiplier: 3.0);
-      expect(s.resources.ml, kBaseTapMl * 3);
+      expect(s.resources.ml, Balance.current.baseTapMl * 3);
     });
 
     test('отдача не обесценивается: растёт вместе с производством', () {
@@ -106,7 +107,7 @@ void main() {
       s = engine.buyGenerator(s, 'banka', t0);
       final second = engine.generatorCost(s.generators.items.first);
       expect(second, greaterThan(first));
-      expect(second / first, closeTo(kCostGrowth, 1e-9));
+      expect(second / first, closeTo(Balance.current.costGrowth, 1e-9));
     });
 
     test('апгрейд тапа удваивает силу и покупается один раз', () {
@@ -320,9 +321,9 @@ void main() {
       expect(engine.prestige(s, kGenerators, kUpgrades, t0), same(s));
     });
 
-    test('мудрость считается как корень из нагнанного', () {
-      // 25 шагов по 1e7 мл ⇒ √25 = 5.
-      const p = PrestigeState(
+    test('мудрость считается логарифмом от нагнанного', () {
+      // log2(1 + 31) = 5: каждая следующая мудрость требует удвоения.
+      final p = PrestigeState(
         totalEverEarned: PrestigeState.firstWisdomMl * 31,
       );
       expect(p.potentialWisdom, 5);
@@ -330,8 +331,8 @@ void main() {
     });
 
     test('сбрасывает гараж, но сохраняет мудрость и историю', () {
-      const earned = PrestigeState.firstWisdomMl * 31;
-      var s = fresh(prestige: const PrestigeState(totalEverEarned: earned));
+      final earned = PrestigeState.firstWisdomMl * 31;
+      var s = fresh(prestige: PrestigeState(totalEverEarned: earned));
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
 
@@ -345,7 +346,13 @@ void main() {
 
     test('мудрость ускоряет следующий заход', () {
       final plain = fresh();
-      final wise = fresh(prestige: const PrestigeState(wisdom: 10));
+      // Мудрость не задаётся напрямую — она ВЫЧИСЛЯЕТСЯ из забранной истории.
+      // Именно это и делает правку баланса безопасной, поэтому тест ходит
+      // через тот же путь, что и игра.
+      final wise = fresh(
+        prestige: PrestigeState(claimedMl: PrestigeState.firstWisdomMl * 1023),
+      );
+      expect(wise.prestige.wisdom, 10);
       expect(
         wise.tapYield,
         closeTo(plain.tapYield * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
@@ -356,15 +363,22 @@ void main() {
       // Суть починки: раньше мудрость считалась корнем из нагнанного, и
       // множитель убегал в шестизначные проценты. Теперь каждая следующая
       // ступень требует вдвое больше — награда остаётся обозримой.
-      expect(PrestigeState.wisdomFor(1e6), 1, reason: 'первая тонна');
-      expect(PrestigeState.wisdomFor(1e9), 9);
-      expect(PrestigeState.wisdomFor(1e12), 19);
-      expect(PrestigeState.wisdomFor(4.79e20), lessThan(60));
+      // Проверяем СВОЙСТВО формулы, а не конкретные числа: масштаб задаётся
+      // балансом и будет меняться, а «каждая ступень вдвое дороже» — нет.
+      final first = PrestigeState.firstWisdomMl;
+      expect(PrestigeState.wisdomFor(first), 1, reason: 'первая порция');
+      expect(PrestigeState.wisdomFor(first * 3), 2);
+      expect(PrestigeState.wisdomFor(first * 7), 3);
+      expect(PrestigeState.wisdomFor(first * 1023), 10);
+
+      // Настоящее число из плейтеста: даже оно остаётся обозримым.
+      expect(PrestigeState.wisdomFor(4.79e20), lessThan(80));
     });
 
     test('удвоение нагнанного даёт ровно одну ступень', () {
-      final a = PrestigeState.wisdomFor(1e9);
-      final b = PrestigeState.wisdomFor(2e9);
+      final first = PrestigeState.firstWisdomMl;
+      final a = PrestigeState.wisdomFor(first * 1023);
+      final b = PrestigeState.wisdomFor(first * 2047);
       expect(b - a, 1);
     });
   });

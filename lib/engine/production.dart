@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import '../content/balance.dart';
 import '../models/generator.dart';
 import '../models/generators_state.dart';
 import '../models/prestige_state.dart';
@@ -23,11 +26,11 @@ class Production {
   static const String _menteeId = 'dedov';
   static const String _mentorId = 'banka';
 
-  /// Минимальная ёмкость — два литра, пока производства почти нет.
-  static const double baseTankMl = 2000;
+  /// Минимальная ёмкость — пока производства почти нет.
+  static double get baseTankMl => Balance.current.baseTankMl;
 
-  /// Сколько секунд производства держит бак без улучшений (две минуты).
-  static const double baseBufferSeconds = 120;
+  /// Сколько секунд производства держит бак без улучшений.
+  static double get baseBufferSeconds => Balance.current.baseBufferSeconds;
 
   /// Ёмкость бака.
   ///
@@ -40,11 +43,16 @@ class Production {
   /// Привязка к потоку это лечит: улучшения увеличивают не литры, а часы, на
   /// которые можно уйти. Нижняя граница нужна для самого начала, когда
   /// аппаратов ещё нет.
+  /// Потолок обязателен. Улучшения бака перемножаются (×2·×3·×4·×5 = ×120), и
+  /// без ограничения запас доходил до четырёх часов производства. Симулятор
+  /// показал, чем это кончается: бак перестаёт наполняться за сеанс, продажа
+  /// перестаёт быть решением, а вместе с ней обесцениваются рынок и сорт.
   static double tankCapacity(UpgradesState ups, double mlPerSecond) {
-    final buffer = baseBufferSeconds *
+    final grown = baseBufferSeconds *
         ups.items
             .where((u) => u.purchased && u.target == UpgradeTarget.tankCapacity)
             .fold(1.0, (product, u) => product * u.multiplier);
+    final buffer = math.min(grown, Balance.current.maxBufferSeconds);
     final byFlow = mlPerSecond * buffer;
     return byFlow > baseTankMl ? byFlow : baseTankMl;
   }
@@ -61,10 +69,10 @@ class Production {
   ///
   /// Именно доля от текущего потока, а не константа: константу экспоненциальный
   /// рост генераторов обесценивает за считанные минуты, а доля живёт всегда.
-  static const double tapSeconds = 0.25;
+  static double get tapSeconds => Balance.current.tapSeconds;
 
   /// Количества, на которых доход аппарата удваивается.
-  static const List<int> milestones = [10, 25, 50, 100];
+  static List<int> get milestones => Balance.current.milestones;
 
   static int milestoneSteps(int owned) {
     var steps = 0;

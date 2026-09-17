@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../content/balance.dart';
 import '../models/upgrade.dart';
 import '../models/upgrades_state.dart';
 
@@ -12,8 +13,8 @@ import '../models/upgrades_state.dart';
 class Market {
   const Market._();
 
-  /// Базовая цена: 100 ₽ за литр, то есть 0.1 ₽ за миллилитр.
-  static const double basePricePerMl = 0.1;
+  /// Базовая цена за миллилитр — из баланса (100 ₽ за литр).
+  static double get basePricePerMl => Balance.current.basePricePerMl;
 
   /// Насколько сильно рынок ходит вверх-вниз.
   static const double swing = 0.35;

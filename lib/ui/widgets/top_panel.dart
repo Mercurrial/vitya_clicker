@@ -9,6 +9,7 @@ import '../../engine/market.dart';
 import '../../models/game_state.dart';
 import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
+import '../theme/content_colors.dart';
 import '../theme/garage.dart';
 
 /// Верх экрана: касса, рынок, бак, сорт и покупатели.
@@ -178,7 +179,7 @@ class _TankBar extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: full
                             ? const [GColors.hot, GColors.hot]
-                            : [sort.current.from, sort.current.to],
+                            : [sort.current.fromColor, sort.current.toColor],
                       ),
                     ),
                   ),
@@ -287,7 +288,7 @@ class _SortStrip extends StatelessWidget {
               style: GType.num(
                 size: 11,
                 weight: FontWeight.w700,
-                color: sort.current.to,
+                color: sort.current.toColor,
               ),
             ),
             const SizedBox(width: GS.s2),
@@ -301,7 +302,7 @@ class _SortStrip extends StatelessWidget {
                       const ColoredBox(color: GColors.wellBg, child: SizedBox.expand()),
                       FractionallySizedBox(
                         widthFactor: (sort.progress).clamp(0.0, 1.0),
-                        child: ColoredBox(color: sort.current.to),
+                        child: ColoredBox(color: sort.current.toColor),
                       ),
                     ],
                   ),
