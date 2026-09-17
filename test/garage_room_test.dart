@@ -65,6 +65,41 @@ void main() {
     });
   });
 
+  group('Перерисовка', () {
+    testWidgets('комната перерисовывается только при смене стадии',
+        (tester) async {
+      // Комната — самый дорогой рисунок в сцене: кирпич, пятна, обстановка.
+      // Она обязана рисоваться один раз на стадию. Заведи в ней кто-нибудь
+      // анимацию — перерисовка вернётся шестьдесят раз в секунду и потеряется
+      // незаметно, поэтому контракт закреплён тестом.
+      //
+      // Проверка не по секундомеру: она отвечает на вопрос «просят ли
+      // перерисовать», а не «сколько это заняло», и потому не зависит от того,
+      // чем занята машина.
+      CustomPainter painterOf() =>
+          tester.widget<CustomPaint>(find.byType(CustomPaint).first).painter!;
+
+      Future<void> show(GarageStage stage) => tester.pumpWidget(
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: RoomBackground(stage: stage),
+            ),
+          );
+
+      await show(GarageStage.garage);
+      final first = painterOf();
+
+      await show(GarageStage.garage);
+      expect(painterOf().shouldRepaint(first), isFalse,
+          reason: 'та же стадия — перерисовывать нечего');
+
+      await show(GarageStage.plant);
+      expect(painterOf().shouldRepaint(first), isTrue,
+          reason: 'смена стадии обязана перерисовать комнату');
+    });
+  });
+
   group('Отрисовка', () {
     testWidgets('комната рисуется на всех стадиях и не падает на нулевом размере',
         (tester) async {

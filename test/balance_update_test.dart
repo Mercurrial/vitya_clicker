@@ -187,6 +187,38 @@ void main() {
       expect(p.canPrestige, isFalse);
     });
 
+    test('повторный запуск до сохранения не удваивает подарок', () {
+      // Опасный случай: игра начислила компенсацию, показала экран, и её
+      // закрыли до того, как сейв лёг на диск. При следующем запуске сейв
+      // всё ещё помечен старой версией — компенсация посчитается снова.
+      //
+      // Удвоения быть не должно: подарок считается от версии В СЕЙВЕ и
+      // применяется к только что загруженному состоянию, а не к тому, что
+      // уже лежит в памяти.
+      final claimed = PrestigeState.firstWisdomMl * 7;
+      final oldSave = {
+        ...ser.toJson(
+          GameState.initial(
+            initialGenerators: kGenerators,
+            initialUpgrades: kUpgrades,
+            prestige: PrestigeState(claimedMl: claimed, totalEverEarned: claimed),
+            lastUpdateTime: now,
+          ),
+          lastSeenMillis: 1,
+        ),
+      }..remove('balanceVersion'); // сейв с той поры, когда пометки не было
+
+      final gift = compensationSince(ser.balanceVersionOf(oldSave));
+      expect(gift, greaterThan(0));
+
+      PrestigeState afterLaunch() =>
+          load(oldSave).prestige.withCompensation(gift);
+
+      expect(afterLaunch().bonusWisdom, gift);
+      expect(afterLaunch().bonusWisdom, gift,
+          reason: 'второй запуск с тем же сейвом обязан дать столько же');
+    });
+
     test('компенсация переживает сохранение', () {
       final claimed = PrestigeState.firstWisdomMl * 7;
       final s = GameState.initial(
