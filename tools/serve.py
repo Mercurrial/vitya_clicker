@@ -19,7 +19,11 @@ import socketserver
 import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "web")
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8770
+
+# Порт: аргументом, переменной окружения или по умолчанию. Переменная нужна
+# инструментам, которые сами подбирают свободный порт и сообщают его через
+# окружение, — с жёстко зашитым номером они спотыкаются о уже занятый.
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PORT", 8770))
 
 _UNREGISTER_SW = """<script>
 (function () {

@@ -167,7 +167,12 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                             portrait: VityaPortrait(
                               era: era,
                               onTap: _onTap,
-                              size: 116,
+                              // 98, а не 116: при 116 портрет съедал шестьдесят
+                              // процентов сцены, и на аппараты оставалось
+                              // столько, что первая банка выходила ростом в
+                              // полтора сантиметра. Витя главный, но гараж —
+                              // не только он.
+                              size: 98,
                               style: style.portrait,
                               radius: style.radius * 0.6,
                             ),

@@ -126,7 +126,15 @@ class StillRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GType.title()),
+                // Название — главное в строке. На экране 375 точек «Трёхлитровая
+                // банка» не влезала и обрезалась многоточием; кружок и кнопка
+                // цены ужаты ради неё, а не наоборот.
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GType.ui(size: 14, weight: FontWeight.w600),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   owned > 0 ? '+${Fmt.rate(output)}' : 'ещё не куплен',
@@ -151,13 +159,18 @@ class StillRow extends StatelessWidget {
   }
 }
 
+/// Ещё не открытый аппарат.
+///
+/// Ниже настоящей строки намеренно: таких подряд может идти несколько, и
+/// занимать столько же места, сколько купленный аппарат, им незачем —
+/// получится список из пустых плашек.
 class _LockedRow extends StatelessWidget {
   const _LockedRow();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 64,
+      height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: GColors.surface1,
@@ -178,8 +191,8 @@ class _CountBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = owned > 0;
     return Container(
-      width: 46,
-      height: 46,
+      width: 40,
+      height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -236,7 +249,7 @@ class _MilestoneBar extends StatelessWidget {
         // выдавливал строку за край карточки на обычном телефоне.
         Flexible(
           child: Text(
-            next != null ? '×$mult · ещё ${next - owned} → ×${mult * 2}' : '×$mult · предел',
+            next != null ? 'ещё ${next - owned} до ×${mult * 2}' : '×$mult · предел',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: GType.num(size: 10, color: GColors.textLo),

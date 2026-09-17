@@ -229,7 +229,21 @@ class _ShelfRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               for (final it in items)
-                _Still(id: it.id, count: it.count, time: time, heat: heat),
+                _Still(
+                  id: it.id,
+                  count: it.count,
+                  time: time,
+                  heat: heat,
+                  // Чем меньше аппаратов в ряду, тем крупнее каждый. Первая
+                  // купленная банка в одиночестве посреди гаража терялась
+                  // точкой — а это ровно тот момент, когда игроку важнее
+                  // всего увидеть, что он что-то приобрёл.
+                  maxWidth: switch (items.length) {
+                    1 => 104.0,
+                    2 => 76.0,
+                    _ => _maxStillWidth,
+                  },
+                ),
             ],
           ),
         ),
@@ -256,11 +270,15 @@ class _Still extends StatelessWidget {
   final ValueListenable<double> time;
   final HeatController heat;
 
+  /// Насколько крупным позволено быть этому аппарату.
+  final double maxWidth;
+
   const _Still({
     required this.id,
     required this.count,
     required this.time,
     required this.heat,
+    required this.maxWidth,
   });
 
   @override
@@ -286,7 +304,7 @@ class _Still extends StatelessWidget {
               (showCounter ? _counterHeight + 2 : 0.0);
           final forSprite = math.max(6.0, available - reserved);
           final width = math.min(
-            _maxStillWidth,
+            maxWidth,
             forSprite * sprite.width / sprite.height,
           );
 
@@ -392,5 +410,6 @@ class _Still extends StatelessWidget {
 const double _steamHeight = 18;
 const double _counterHeight = 16;
 
-/// Шире делать незачем: три аппарата в ряд на телефоне и так впритык.
+/// Предел для полного ряда: три аппарата в ряд на телефоне и так впритык.
+/// Когда их меньше, каждому достаётся больше — см. `maxWidth` у `_Still`.
 const double _maxStillWidth = 56;

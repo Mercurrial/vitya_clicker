@@ -67,7 +67,8 @@ class VityaPortrait extends StatefulWidget {
   State<VityaPortrait> createState() => _VityaPortraitState();
 }
 
-class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateMixin {
+class _VityaPortraitState extends State<VityaPortrait>
+    with TickerProviderStateMixin {
   late final AnimationController _press;
   final List<_Splash> _splashes = [];
   final math.Random _rng = math.Random();
@@ -125,43 +126,47 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    // Высота — по содержимому. Раньше здесь стоял множитель 1.28, подобранный
-    // на глаз под раму и табличку; стоило подписи стать на строку выше, и
-    // портрет вылезал за свой бокс жёлтой полосой. Капли летят поверх и в
-    // размер не входят — на то у Stack и Clip.none.
-    return SizedBox(
-      width: widget.size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (_) => _handleTap(),
-            child: AnimatedBuilder(
-              animation: _press,
-              builder: (context, child) {
-                final t = _press.value;
-                // Squash & stretch: чуть сжимается по вертикали и расплывается
-                // по горизонтали — приём из классической анимации, из-за него
-                // нажатие ощущается «мясистым».
-                return Transform.scale(
-                  scaleX: 1 + 0.035 * t,
-                  scaleY: 1 - 0.055 * t,
-                  child: child,
-                );
-              },
-              child: _Frame(
-                era: widget.era,
-                size: widget.size,
-                style: widget.style,
-                radius: widget.radius,
-              ),
+    // Размер — по содержимому, без обёртки с заданной шириной.
+    //
+    // Раньше тут стоял SizedBox(width: size), и он же ограничивал подпись:
+    // «В. — директор производства» в ширину рамы не влезает и рвётся ровно
+    // по тире. Ширину задаёт сама рама внутри, а табличке позволено выступать
+    // за её края — так её и вешают.
+    //
+    // Высота тоже по содержимому: до этого стоял множитель 1.28, подобранный
+    // на глаз, и стоило подписи стать на строку выше, портрет вылезал за свой
+    // бокс жёлтой полосой. Капли летят поверх и в размер не входят — на то у
+    // Stack и Clip.none.
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => _handleTap(),
+          child: AnimatedBuilder(
+            animation: _press,
+            builder: (context, child) {
+              final t = _press.value;
+              // Squash & stretch: чуть сжимается по вертикали и расплывается
+              // по горизонтали — приём из классической анимации, из-за него
+              // нажатие ощущается «мясистым».
+              return Transform.scale(
+                scaleX: 1 + 0.035 * t,
+                scaleY: 1 - 0.055 * t,
+                child: child,
+              );
+            },
+            child: _Frame(
+              era: widget.era,
+              size: widget.size,
+              style: widget.style,
+              radius: widget.radius,
             ),
           ),
-          for (final s in _splashes) ..._splashWidgets(s),
-        ],
-      ),
+        ),
+        for (final s in _splashes) ..._splashWidgets(s),
+      ],
     );
   }
 
@@ -208,7 +213,9 @@ class _VityaPortraitState extends State<VityaPortrait> with TickerProviderStateM
                       size: 22,
                       weight: FontWeight.w700,
                       color: s.textColor,
-                      shadows: const [Shadow(color: Color(0xCC000000), blurRadius: 8)],
+                      shadows: const [
+                        Shadow(color: Color(0xCC000000), blurRadius: 8)
+                      ],
                     ),
                   ),
                 ),
@@ -254,9 +261,13 @@ class _Frame extends StatelessWidget {
                   : const [GColors.copper, GColors.copperDim],
             ),
             boxShadow: [
-              const BoxShadow(color: Color(0x99000000), blurRadius: 22, offset: Offset(0, 10)),
+              const BoxShadow(
+                  color: Color(0x99000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 10)),
               if (grand)
-                const BoxShadow(color: GColors.amberGlow, blurRadius: 34, spreadRadius: 2),
+                const BoxShadow(
+                    color: GColors.amberGlow, blurRadius: 34, spreadRadius: 2),
             ],
           ),
           child: ClipRRect(
@@ -271,7 +282,11 @@ class _Frame extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x33FFD089), Color(0x00000000), Color(0x4D14100C)],
+                      colors: [
+                        Color(0x33FFD089),
+                        Color(0x00000000),
+                        Color(0x4D14100C)
+                      ],
                       stops: [0.0, 0.45, 1.0],
                     ),
                   ),
@@ -282,7 +297,25 @@ class _Frame extends StatelessWidget {
         ),
         const SizedBox(height: GS.s2),
         // Табличка как в музее — сухо и серьёзно, в этом и шутка.
-        Text(era.caption, style: GType.label()),
+        //
+        // Шире рамы намеренно: «В. — директор производства» в ширину портрета
+        // не влезает и рвётся ровно по тире, отчего подпись читается как
+        // обрывок. Табличке позволено выступать за раму — так её и вешают.
+        //
+        // Ширину задаёт сама рама (Container выше), а не обёртка вокруг всего
+        // портрета — поэтому подписи никто не мешает быть шире, и колонка
+        // просто становится по ней.
+        //
+        // OverflowBox тут не годится: в колонке он получает неограниченную
+        // высоту, растягивается на бесконечность и утаскивает за экран всю
+        // сцену. Проверено — пропал и портрет, и полки с аппаратами.
+        Text(
+          era.caption,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          softWrap: false,
+          style: GType.label(),
+        ),
       ],
     );
   }

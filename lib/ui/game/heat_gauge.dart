@@ -29,12 +29,21 @@ class HeatGauge extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('ЖАР ПОД КУБОМ', style: GType.label()),
-              Text(
-                '${controller.label} · ${controller.sortHint}',
-                style: GType.num(
-                  size: 10,
-                  weight: FontWeight.w500,
-                  color: _accentFor(status),
+              const SizedBox(width: GS.s2),
+              // Состояние — гибкое. «В САМЫЙ РАЗ · сорт растёт» вместе с
+              // заголовком не влезает в узкий телефон, и строка вылезала за
+              // край жёлто-чёрной лентой.
+              Flexible(
+                child: Text(
+                  '${controller.label} · ${controller.sortHint}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: GType.num(
+                    size: 10,
+                    weight: FontWeight.w500,
+                    color: _accentFor(status),
+                  ),
                 ),
               ),
             ],
