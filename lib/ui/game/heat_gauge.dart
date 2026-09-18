@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/formatters.dart';
 import '../theme/garage.dart';
+import '../widgets/fill_bar.dart';
 import 'heat_controller.dart';
 
 /// Шкала ЖАРА ПОД КУБОМ.
@@ -60,23 +61,10 @@ class HeatGauge extends StatelessWidget {
             return Row(
               children: [
                 Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(GR.pill),
-                    child: SizedBox(
-                      height: 5,
-                      child: Stack(
-                        children: [
-                          const ColoredBox(
-                            color: GColors.wellBg,
-                            child: SizedBox.expand(),
-                          ),
-                          FractionallySizedBox(
-                            widthFactor: controller.series.clamp(0.0, 1.0),
-                            child: const ColoredBox(color: GColors.amber),
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: FillBar(
+                    value: controller.series,
+                    height: 5,
+                    color: GColors.amber,
                   ),
                 ),
                 const SizedBox(width: GS.s2),
