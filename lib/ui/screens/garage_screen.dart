@@ -12,6 +12,8 @@ import '../game/heat_controller.dart';
 import '../game/heat_gauge.dart';
 import '../game/vitya_portrait.dart';
 import '../pixel/garage_scene.dart';
+import '../pixel/goal_icons.dart';
+import '../pixel/pixel_sprite.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
@@ -29,57 +31,56 @@ const int kBuyMax = -1;
 /// Сколько штук берём за одно нажатие: 1, 10, 100 или максимум.
 final buyAmountProvider = StateProvider<int>((ref) => 1);
 
-/// Переключатель количества. Появляется только после достижения, которое его
-/// открывает: автоматизация в жанре зарабатывается, а не выдаётся.
-class _BuyAmountSelector extends ConsumerWidget {
-  final int mode;
-  const _BuyAmountSelector({required this.mode});
+/// Сколько штук берём за одно нажатие.
+const List<(int, String)> kBuyModes = [
+  (1, '×1'),
+  (10, '×10'),
+  (100, '×100'),
+  (kBuyMax, 'МАКС'),
+];
 
-  static const _options = [
-    (1, '×1'),
-    (10, '×10'),
-    (100, '×100'),
-    (kBuyMax, 'МАКС'),
-  ];
+/// Кнопка количества — одна, по кругу.
+///
+/// Раньше это был ряд из четырёх кнопок отдельной строкой под вкладками. Он
+/// съедал высоту у списка аппаратов ради выбора, который делают раз в десять
+/// минут. Теперь это одна кнопка в строке вкладок: нажатие переключает режим
+/// по кругу.
+///
+/// Появляется только после достижения, которое её открывает: автоматизация в
+/// жанре зарабатывается, а не выдаётся.
+class _BuyAmountButton extends ConsumerWidget {
+  const _BuyAmountButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: GColors.wellBg,
-        borderRadius: BorderRadius.circular(GR.pill),
-      ),
-      child: Row(
-        children: [
-          for (final (value, label) in _options)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  ref.read(buyAmountProvider.notifier).state = value;
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  height: 30,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: value == mode ? GColors.copper : null,
-                    borderRadius: BorderRadius.circular(GR.pill),
-                  ),
-                  child: Text(
-                    label,
-                    style: GType.num(
-                      size: 11,
-                      weight: FontWeight.w700,
-                      color: value == mode ? GColors.textHi : GColors.textMid,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
+    final mode = ref.watch(buyAmountProvider);
+    final i = kBuyModes.indexWhere((m) => m.$1 == mode);
+    final label = i < 0 ? kBuyModes.first.$2 : kBuyModes[i].$2;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        final next = kBuyModes[(i + 1) % kBuyModes.length].$1;
+        ref.read(buyAmountProvider.notifier).state = next;
+      },
+      child: Container(
+        height: 46,
+        constraints: const BoxConstraints(minWidth: 56),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: GS.s2),
+        decoration: BoxDecoration(
+          color: GColors.copper,
+          borderRadius: BorderRadius.circular(GR.pill),
+        ),
+        child: Text(
+          label,
+          style: GType.num(
+            size: 12,
+            weight: FontWeight.w700,
+            color: GColors.textHi,
+          ),
+        ),
       ),
     );
   }
@@ -121,9 +122,13 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   void _startStoking() {
     _heat.startStoking();
     ref.read(gameProvider.notifier).registerTouch();
+    setState(() {}); // портрет показывает отдачу
   }
 
-  void _stopStoking() => _heat.stopStoking();
+  void _stopStoking() {
+    _heat.stopStoking();
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,21 +165,25 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                         // портрету. Целиться в маленькую картинку, чтобы
                         // подкинуть дров, было неинтуитивно: гараж — это и
                         // есть кнопка.
-                        child: GestureDetector(
+                        // Listener, а не GestureDetector.
+                        //
+                        // GestureDetector прогоняет касание через арену
+                        // жестов: распознаватели там спорят, кто его заберёт,
+                        // и решение откладывается. Для «зажал — отпустил» это
+                        // только мешает — зажим не начинался вовсе. Listener
+                        // отдаёт сырые события указателя сразу и без споров,
+                        // а именно они нам и нужны.
+                        child: Listener(
                           behavior: HitTestBehavior.opaque,
-                          onTapDown: (_) => _startStoking(),
-                          onTapUp: (_) => _stopStoking(),
-                          onTapCancel: _stopStoking,
-                          onLongPressDown: (_) => _startStoking(),
-                          onLongPressUp: _stopStoking,
-                          onLongPressCancel: _stopStoking,
+                          onPointerDown: (_) => _startStoking(),
+                          onPointerUp: (_) => _stopStoking(),
+                          onPointerCancel: (_) => _stopStoking(),
                           child: GarageScene(
                             heat: _heat,
                             hanging: _PortraitWithHint(
                               portrait: VityaPortrait(
                                 era: era,
-                                onPress: _startStoking,
-                                onRelease: _stopStoking,
+                                pressed: _heat.isStoking,
                                 // 98, а не 116: при 116 портрет съедал шестьдесят
                                 // процентов сцены, и на аппараты оставалось
                                 // столько, что первая банка выходила ростом в
@@ -354,17 +363,16 @@ class _AchievementCell extends StatelessWidget {
                 ? const [BoxShadow(color: GColors.amberGlow, blurRadius: 10)]
                 : null,
           ),
-          child: Text(
-            done ? a.name : a.hint,
-            textAlign: TextAlign.center,
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-            style: GType.ui(
-              size: 9,
-              weight: done ? FontWeight.w700 : FontWeight.w400,
-              color: done ? GColors.textHi : GColors.textLo,
-              height: 1.15,
-            ),
+          // Значок вместо текста в девять пунктов. Текст в такой ячейке
+          // читать было невозможно, а отличить одну цель от другой с первого
+          // взгляда — тем более. Название осталось во всплывающей подсказке.
+          //
+          // Незакрытая цель показывается тем же значком, но приглушённым:
+          // силуэт видно, поэтому понятно, про что она, а «уже взято» и
+          // «ещё нет» различаются мгновенно.
+          child: Opacity(
+            opacity: done ? 1.0 : 0.28,
+            child: PixelImage(sprite: goalIcon(a.id), size: 34),
           ),
         ),
       ),
@@ -781,7 +789,7 @@ class _Shelf extends StatelessWidget {
   }
 }
 
-class _Tabs extends StatelessWidget {
+class _Tabs extends ConsumerWidget {
   final int index;
   final ValueChanged<int> onChanged;
   const _Tabs({required this.index, required this.onChanged});
@@ -789,41 +797,106 @@ class _Tabs extends StatelessWidget {
   static const _labels = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ЦЕЛИ', 'ВИТЯ'];
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: GColors.wellBg,
-        borderRadius: BorderRadius.circular(GR.pill),
-      ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _labels.length; i++)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: gEase,
-                  height: 38,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: i == index ? GColors.copper : null,
-                    borderRadius: BorderRadius.circular(GR.pill),
-                  ),
-                  child: Text(
-                    _labels[i],
-                    // Четыре вкладки на телефоне — подпись должна влезать.
-                    style: GType.tab().copyWith(
-                      fontSize: 11,
-                      color: i == index ? GColors.textHi : GColors.textMid,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(gameProvider);
+    final money = state.resources.money;
+
+    // Сколько улучшений можно взять прямо сейчас. Без этого числа вкладку
+    // приходится открывать наугад: вдруг там что-то появилось.
+    final affordableUpgrades = state.upgrades.items
+        .where((u) => !u.purchased && money >= u.cost)
+        .length;
+
+    final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: GColors.wellBg,
+              borderRadius: BorderRadius.circular(GR.pill),
+            ),
+            child: Row(
+              children: [
+                for (var i = 0; i < _labels.length; i++)
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onChanged(i),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: gEase,
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: i == index ? GColors.copper : null,
+                          borderRadius: BorderRadius.circular(GR.pill),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _labels[i],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                // Четыре вкладки на телефоне — подпись должна
+                                // влезать.
+                                style: GType.tab().copyWith(
+                                  fontSize: 10,
+                                  color: i == index
+                                      ? GColors.textHi
+                                      : GColors.textMid,
+                                ),
+                              ),
+                            ),
+                            if (i == 1 && affordableUpgrades > 0) ...[
+                              const SizedBox(width: 3),
+                              _Badge(count: affordableUpgrades),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+              ],
             ),
+          ),
+        ),
+        // Количество — рядом со вкладками, а не отдельной строкой под ними.
+        // Отдельная строка съедала высоту у списка ради четырёх кнопок,
+        // которыми пользуются раз в десять минут.
+        if (bulk) ...[
+          const SizedBox(width: GS.s2),
+          const _BuyAmountButton(),
         ],
+      ],
+    );
+  }
+}
+
+/// Кружок с числом на вкладке: «тут есть что взять».
+class _Badge extends StatelessWidget {
+  final int count;
+  const _Badge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: GColors.amber,
+        borderRadius: BorderRadius.circular(GR.pill),
+      ),
+      child: Text(
+        '$count',
+        style: GType.num(
+          size: 9,
+          weight: FontWeight.w700,
+          color: GColors.onAmber,
+        ),
       ),
     );
   }
@@ -859,11 +932,6 @@ class _StillsTab extends ConsumerWidget {
 
     return Column(
       children: [
-        if (bulk)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, 0),
-            child: _BuyAmountSelector(mode: mode),
-          ),
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s6),

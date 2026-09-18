@@ -40,29 +40,41 @@ enum HeatStatus {
 /// Самое раздражающее, что может сделать такая механика, — обнулить всё
 /// потому, что игрок потянулся к магазину. Поэтому:
 ///
-/// * **Угли.** Отпустил палец — жар держится ещё [emberSeconds] секунд и
-///   только потом начинает падать. Угли не гаснут мгновенно.
-/// * **Серия тает, а не обнуляется.** Вне окна она сползает за [seriesFadeSeconds],
-///   и этого с запасом хватает, чтобы что-то купить.
+/// * **Запас держит СЕРИЯ, а не жар.** Первая версия тормозила сам жар
+///   («угли держат три секунды»), и это оказалось грубой ошибкой: отпускаешь,
+///   а полоска стоит — управлять нечем. Между действием и реакцией паузы быть
+///   не должно. Спасать надо было награду, а не управление.
+/// * **Серия тает, а не обнуляется.** Первые [seriesGraceSeconds] секунд вне
+///   окна её вообще не трогают, дальше она сползает за [seriesFadeSeconds].
 /// * **Обнуляет её только перегрев.** Это единственное настоящее наказание,
 ///   и оно за настоящую ошибку, а не за поход в магазин.
 /// * **Покупка подкидывает жару** (см. [stokeOnPurchase]): купил аппарат —
 ///   Витя его растопил. Магазин не мешает серии, а помогает.
 class HeatController extends ChangeNotifier {
   /// Насколько быстро растёт жар, пока палец на экране.
-  static const double risePerSecond = 0.42;
+  ///
+  /// Медленнее, чем кажется нужным. При 0.42 окно проскакивалось за полсекунды
+  /// и вести жар было невозможно — только дёргать наугад.
+  static const double risePerSecond = 0.28;
 
   /// Скорость остывания в секунду, когда не поддувают.
-  static const double decayPerSecond = 0.30;
-
-  /// Сколько секунд после отпускания жар ещё держится.
   ///
-  /// Это и есть запас на «отвлёкся»: вместе с таянием серии он даёт около
-  /// тринадцати секунд, чтобы спокойно зайти в магазин.
-  static const double emberSeconds = 3.0;
+  /// Жар обязан реагировать НЕМЕДЛЕННО. Сначала тут стояла задержка («угли
+  /// держат три секунды»), и это была ошибка: отпустил — а полоска стоит.
+  /// Управления не получалось вовсе, потому что между действием и реакцией
+  /// не должно быть паузы.
+  static const double decayPerSecond = 0.20;
+
+  /// Сколько секунд после выхода из окна серия ещё не тает.
+  ///
+  /// Вот сюда и переехал запас прочности. Спасать надо было СЕРИЮ — чтобы она
+  /// не срывалась, пока игрок тянется к магазину, — а не жар, который для
+  /// этого обязан оставаться отзывчивым. Две разные вещи, и склеивать их
+  /// было нельзя.
+  static const double seriesGraceSeconds = 3.0;
 
   /// За сколько секунд вне окна серия сползает с максимума до нуля.
-  static const double seriesFadeSeconds = 10.0;
+  static const double seriesFadeSeconds = 14.0;
 
   /// За сколько секунд ровной работы серия набирается до предела.
   static const double seriesFillSeconds = 45.0;
@@ -76,8 +88,9 @@ class HeatController extends ChangeNotifier {
   /// Импульс жара за покупку — «растопил новый аппарат».
   static const double purchaseStoke = 0.18;
 
-  /// Ширина окна по шкале.
-  static const double windowSize = 0.18;
+  /// Ширина окна по шкале. Шире прежнего: держать должно быть можно, а не
+  /// «теоретически возможно».
+  static const double windowSize = 0.24;
 
   /// Скорость хода окна в секунду.
   static const double windowSpeed = 0.022;
@@ -101,8 +114,8 @@ class HeatController extends ChangeNotifier {
   /// Поддувают ли прямо сейчас.
   bool _stoking = false;
 
-  /// Сколько секунд углям ещё держать жар.
-  double _embers = 0.0;
+  /// Сколько секунд серии ещё позволено не таять.
+  double _grace = 0.0;
 
   /// Состояние относительно окна отдельным уведомителем.
   ///
@@ -156,11 +169,10 @@ class HeatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Прекратить поддув — угли подхватывают.
+  /// Прекратить поддув. Жар сразу пойдёт вниз — так и задумано.
   void stopStoking() {
     if (!_stoking) return;
     _stoking = false;
-    _embers = emberSeconds;
     notifyListeners();
   }
 
@@ -170,7 +182,7 @@ class HeatController extends ChangeNotifier {
   /// что ради него приходится снимать палец.
   void stokeOnPurchase() {
     _heat = math.min(1.0, _heat + purchaseStoke);
-    _embers = math.max(_embers, emberSeconds);
+    _grace = math.max(_grace, seriesGraceSeconds);
     statusNotifier.value = status;
     notifyListeners();
   }
@@ -182,10 +194,9 @@ class HeatController extends ChangeNotifier {
     _last = elapsed;
 
     // --- Жар ---------------------------------------------------------
+    // Без задержек в обе стороны: держишь — растёт, отпустил — падает.
     if (_stoking) {
       _heat = math.min(1.0, _heat + risePerSecond * dt);
-    } else if (_embers > 0) {
-      _embers -= dt; // угли держат
     } else {
       _heat = math.max(0.0, _heat - decayPerSecond * dt);
     }
@@ -195,10 +206,18 @@ class HeatController extends ChangeNotifier {
       case HeatStatus.overheated:
         // Единственное настоящее наказание — и оно за настоящую ошибку.
         _series = 0.0;
+        _grace = 0.0;
       case HeatStatus.inWindow:
         _series = math.min(1.0, _series + dt / seriesFillSeconds);
+        _grace = seriesGraceSeconds;
       case HeatStatus.off:
-        _series = math.max(0.0, _series - dt / seriesFadeSeconds);
+        // Пара секунд форы: этого хватает, чтобы сходить в магазин, и мало,
+        // чтобы отойти от игры совсем.
+        if (_grace > 0) {
+          _grace -= dt;
+        } else {
+          _series = math.max(0.0, _series - dt / seriesFadeSeconds);
+        }
     }
 
     // --- Окно --------------------------------------------------------

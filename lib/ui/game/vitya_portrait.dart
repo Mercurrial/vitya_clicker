@@ -25,19 +25,20 @@ extension _EraAsset on VityaEra {
       };
 }
 
-/// Портрет Вити — цель нажатия.
+/// Портрет Вити.
 ///
-/// Правило игры: на тапе НЕТ шуток (их видят тысячи раз, любая умрёт), только
-/// ощущение — отдача, брызги, цифра, хаптика.
+/// Жестов не ловит: зона касания одна и она снаружи, на всей сцене. Отсюда
+/// только отдача — сжатие в момент зажима, чтобы касание ощущалось.
 class VityaPortrait extends StatefulWidget {
   final VityaEra era;
 
-  /// Возвращает текст для всплывающей цифры (например «+12 Л») и цвет.
-  /// Палец лёг на экран — начать поддув.
-  final VoidCallback onPress;
-
-  /// Отпустили — угли подхватывают.
-  final VoidCallback onRelease;
+  /// Держат ли сейчас палец. Портрет САМ жесты не ловит.
+  ///
+  /// Ловил — и это был баг: вложенный GestureDetector выигрывал арену у
+  /// внешнего, тот получал onTapCancel и тут же отменял поддув, начатый
+  /// внутренним. Зажим не работал вовсе. Зона касания должна быть одна, и она
+  /// снаружи — на всей сцене.
+  final bool pressed;
 
   final double size;
 
@@ -50,8 +51,7 @@ class VityaPortrait extends StatefulWidget {
   const VityaPortrait({
     super.key,
     required this.era,
-    required this.onPress,
-    required this.onRelease,
+    required this.pressed,
     this.size = 220,
     this.style = PixelPortraitStyle.pixel,
     this.radius = GR.card,
@@ -81,17 +81,16 @@ class _VityaPortraitState extends State<VityaPortrait>
     super.dispose();
   }
 
-  /// Портрет больше не выдаёт цифру за нажатие: самогона касание не даёт.
-  /// Осталась только отдача — она нужна, чтобы зажим ощущался.
-  void _pressDown() {
-    widget.onPress();
-    _press.forward(from: 0);
-    HapticFeedback.lightImpact();
-  }
-
-  void _pressUp() {
-    widget.onRelease();
-    _press.reverse();
+  @override
+  void didUpdateWidget(VityaPortrait old) {
+    super.didUpdateWidget(old);
+    if (widget.pressed == old.pressed) return;
+    if (widget.pressed) {
+      _press.forward();
+      HapticFeedback.lightImpact();
+    } else {
+      _press.reverse();
+    }
   }
 
   @override
@@ -110,33 +109,24 @@ class _VityaPortraitState extends State<VityaPortrait>
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => _pressDown(),
-          onTapUp: (_) => _pressUp(),
-          onTapCancel: _pressUp,
-          onLongPressDown: (_) => _pressDown(),
-          onLongPressUp: _pressUp,
-          onLongPressCancel: _pressUp,
-          child: AnimatedBuilder(
-            animation: _press,
-            builder: (context, child) {
-              final t = _press.value;
-              // Squash & stretch: чуть сжимается по вертикали и расплывается
-              // по горизонтали — приём из классической анимации, из-за него
-              // нажатие ощущается «мясистым».
-              return Transform.scale(
-                scaleX: 1 + 0.035 * t,
-                scaleY: 1 - 0.055 * t,
-                child: child,
-              );
-            },
-            child: _Frame(
-              era: widget.era,
-              size: widget.size,
-              style: widget.style,
-              radius: widget.radius,
-            ),
+        AnimatedBuilder(
+          animation: _press,
+          builder: (context, child) {
+            final t = _press.value;
+            // Squash & stretch: чуть сжимается по вертикали и расплывается
+            // по горизонтали — приём из классической анимации, из-за него
+            // нажатие ощущается «мясистым».
+            return Transform.scale(
+              scaleX: 1 + 0.035 * t,
+              scaleY: 1 - 0.055 * t,
+              child: child,
+            );
+          },
+          child: _Frame(
+            era: widget.era,
+            size: widget.size,
+            style: widget.style,
+            radius: widget.radius,
           ),
         ),
       ],
