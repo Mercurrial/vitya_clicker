@@ -33,4 +33,8 @@ class MemorySettingsStore implements SettingsStore {
 /// приводила к молча потерянной настройке.
 abstract final class SettingsKeys {
   static const artStyle = 'art_style';
+
+  /// Докуда дошло обучение. В настройках, а не в сейве: это не прогресс
+  /// гаража, и поднимать ради него версию формата сохранения незачем.
+  static const tutorial = 'tutorial_step';
 }

@@ -74,7 +74,7 @@ Flutter 3.24.3 / Dart 3.5.3.
 
 ```bash
 flutter pub get
-flutter test        # ~184 теста: движок, баланс, сейвы, вёрстка
+flutter test        # ~193 теста: движок, баланс, сейвы, вёрстка, обучение
 flutter analyze     # должно быть чисто
 flutter run         # на подключённом устройстве
 ```
@@ -168,4 +168,5 @@ lib/
 менять экономику после релиза: подробности — в шапке `balance.dart`.
 
 Документы: [docs/DESIGN.md](docs/DESIGN.md) — почему игра устроена так,
-[docs/ROADMAP.md](docs/ROADMAP.md) — что дальше.
+[docs/ROADMAP.md](docs/ROADMAP.md) — что дальше,
+[docs/RELEASE.md](docs/RELEASE.md) — как выпустить версию.

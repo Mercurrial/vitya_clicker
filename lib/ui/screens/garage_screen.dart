@@ -19,6 +19,7 @@ import '../theme/garage.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/transfer_progress.dart';
+import '../widgets/tutorial_hint.dart';
 import '../widgets/vitya_toast.dart';
 
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
@@ -173,28 +174,45 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                         // только мешает — зажим не начинался вовсе. Listener
                         // отдаёт сырые события указателя сразу и без споров,
                         // а именно они нам и нужны.
-                        child: Listener(
-                          behavior: HitTestBehavior.opaque,
-                          onPointerDown: (_) => _startStoking(),
-                          onPointerUp: (_) => _stopStoking(),
-                          onPointerCancel: (_) => _stopStoking(),
-                          child: GarageScene(
-                            heat: _heat,
-                            hanging: _PortraitWithHint(
-                              portrait: VityaPortrait(
-                                era: era,
-                                pressed: _heat.isStoking,
-                                // 98, а не 116: при 116 портрет съедал шестьдесят
-                                // процентов сцены, и на аппараты оставалось
-                                // столько, что первая банка выходила ростом в
-                                // полтора сантиметра. Витя главный, но гараж —
-                                // не только он.
-                                size: 98,
-                                style: PixelPortraitStyle.pixel,
-                                radius: 0,
+                        // Подсказка обучения лежит ПОВЕРХ сцены, а не строкой
+                        // над шкалой. Строкой она отнимала высоту у гаража:
+                        // аппараты мельчали, а на узком экране вёрстка
+                        // переполнялась. И исчезая, она бы дёргала всё
+                        // остальное.
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: (_) => _startStoking(),
+                                onPointerUp: (_) => _stopStoking(),
+                                onPointerCancel: (_) => _stopStoking(),
+                                child: GarageScene(
+                                  heat: _heat,
+                                  hanging: _Hanging(
+                                    portrait: VityaPortrait(
+                                      era: era,
+                                      pressed: _heat.isStoking,
+                                      // 98, а не 116: при 116 портрет съедал
+                                      // шестьдесят процентов сцены, и первая
+                                      // банка выходила ростом в полтора
+                                      // сантиметра. Витя главный, но гараж —
+                                      // не только он.
+                                      size: 98,
+                                      style: PixelPortraitStyle.pixel,
+                                      radius: 0,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: GS.s3,
+                              child: TutorialHint(heat: _heat),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -651,87 +669,17 @@ class _WideButton extends StatelessWidget {
   }
 }
 
-/// Портрет с подсказкой для самого начала.
+/// Что висит на стене гаража.
 ///
-/// Без неё игра не сообщает главного: что жать надо по Вите. Тестировавший
-/// нашёл это перебором — значит подсказки не хватало. Она живёт ровно до
-/// первого нажатия и больше не появляется.
-class _PortraitWithHint extends ConsumerStatefulWidget {
+/// Раньше тут была мигающая плашка «ЖМИ ПО ВИТЕ». Её заменило обучение:
+/// подсказка теперь одна на всю игру, живёт внизу сцены и меняется по ходу
+/// дела вместо того, чтобы висеть над портретом и толкать вёрстку.
+class _Hanging extends StatelessWidget {
   final Widget portrait;
-  const _PortraitWithHint({required this.portrait});
+  const _Hanging({required this.portrait});
 
   @override
-  ConsumerState<_PortraitWithHint> createState() => _PortraitWithHintState();
-}
-
-class _PortraitWithHintState extends ConsumerState<_PortraitWithHint>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final taps = ref.watch(gameProvider.select((s) => s.clicker.totalTaps));
-    if (taps > 0) return widget.portrait;
-
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, child) {
-        final t = Curves.easeInOut.transform(_pulse.value);
-        // Подсказка лежит НАД сценой, а не в её колонке. Пока она была
-        // обычной строкой, она отъедала высоту у полок, и первая купленная
-        // банка сжималась до точки — видно на снимке экрана. Заодно пропал
-        // скачок вёрстки в момент, когда подсказка исчезает.
-        return Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.topCenter,
-          children: [
-            Transform.scale(scale: 1 + 0.04 * t, child: child),
-            Positioned(
-              bottom: -26,
-              child: Opacity(
-                opacity: 0.55 + 0.45 * t,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: GColors.amber,
-                    borderRadius: BorderRadius.circular(GR.pill),
-                  ),
-                  child: Text(
-                    'ЖМИ ПО ВИТЕ — ОН ПОДКИНЕТ ДРОВ',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GType.ui(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      color: GColors.onAmber,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-      child: widget.portrait,
-    );
-  }
+  Widget build(BuildContext context) => portrait;
 }
 
 /// Тёплый свет лампы под потолком гаража.
