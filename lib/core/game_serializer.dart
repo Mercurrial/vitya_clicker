@@ -160,25 +160,14 @@ class GameSerializer {
   }
 }
 
-/// Состояние для новой игры.
-///
-/// Витя начинает НЕ с пустого гаража, а с одной трёхлитровой банкой. Это не
-/// подарок, а необходимость: касание больше не даёт самогон, и без стартового
-/// производства игрок заперт навсегда — заработать первые пятнадцать рублей
-/// нечем. Симулятор упёрся в это сразу: ноль ступеней за четыре часа.
-///
-/// Заодно это честнее по смыслу. Игра называется «Витя гонит» — он уже гонит,
-/// когда мы к нему заходим, а не сидит в пустом гараже в ожидании игрока.
+/// Состояние для новой игры. Стартовый набор — [startingGenerators].
 GameState newGame({
   required List<Generator> content,
   required List<Upgrade> upgrades,
   required DateTime now,
 }) =>
     GameState.initial(
-      initialGenerators: [
-        for (final g in content)
-          g.id == kGeneratorNames.first.id ? g.copyWith(ownedCount: 1) : g,
-      ],
+      initialGenerators: startingGenerators(content),
       initialUpgrades: upgrades,
       lastUpdateTime: now,
     );

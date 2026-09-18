@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../content/buyers.dart';
+import '../../content/events.dart';
 import '../../core/formatters.dart';
 import '../../engine/market.dart';
 import '../../models/game_state.dart';
@@ -11,6 +12,7 @@ import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
 import '../theme/content_colors.dart';
 import '../theme/garage.dart';
+import 'fill_bar.dart';
 
 /// Верх экрана: касса, рынок, бак, сорт и покупатели.
 ///
@@ -61,7 +63,11 @@ class _TopPanelState extends ConsumerState<TopPanel>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(gameProvider);
-    final now = DateTime.now();
+    // Часы берём из провайдера, а не из DateTime.now(). От времени тут зависит
+    // не только цена, но и то, стоит ли в гараже гость, — а появление целой
+    // карточки сделало бы снимок экрана флакающим: тест то ловил бы событие,
+    // то нет, в зависимости от того, в какую минуту его запустили.
+    final now = ref.read(timeProvider)();
     final price = Market.pricePerLitre(now, state.upgrades) * state.sort.multiplier;
     final rising = Market.wave(now) >= 1.0;
 
@@ -165,30 +171,17 @@ class _TankBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(7),
-          child: SizedBox(
-            height: 14,
-            child: Stack(
-              children: [
-                const ColoredBox(color: GColors.wellBg, child: SizedBox.expand()),
-                FractionallySizedBox(
-                  widthFactor: (state.tankFraction).clamp(0.0, 1.0),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: full
-                            ? const [GColors.hot, GColors.hot]
-                            : [sort.current.fromColor, sort.current.toColor],
-                      ),
-                    ),
-                  ),
-                ),
-                // Насечки, как на мерной таре.
-                const Positioned.fill(child: CustomPaint(painter: _TicksPainter())),
-              ],
-            ),
+        FillBar(
+          value: state.tankFraction,
+          height: 14,
+          radius: 7,
+          gradient: LinearGradient(
+            colors: full
+                ? const [GColors.hot, GColors.hot]
+                : [sort.current.fromColor, sort.current.toColor],
           ),
+          // Насечки, как на мерной таре.
+          overlay: const CustomPaint(painter: _TicksPainter()),
         ),
         const SizedBox(height: 3),
         Row(
@@ -296,20 +289,10 @@ class _SortStrip extends StatelessWidget {
             ),
             const SizedBox(width: GS.s2),
             Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(GR.pill),
-                child: SizedBox(
-                  height: 3,
-                  child: Stack(
-                    children: [
-                      const ColoredBox(color: GColors.wellBg, child: SizedBox.expand()),
-                      FractionallySizedBox(
-                        widthFactor: (sort.progress).clamp(0.0, 1.0),
-                        child: ColoredBox(color: sort.current.toColor),
-                      ),
-                    ],
-                  ),
-                ),
+              child: FillBar(
+                value: sort.progress,
+                height: 3,
+                color: sort.current.toColor,
               ),
             ),
             const SizedBox(width: GS.s2),
@@ -324,8 +307,11 @@ class _SortStrip extends StatelessWidget {
   }
 }
 
-/// Три покупателя. Заблокированные показывают, чего им не хватает — это и есть
-/// подсказка, ради чего стоит поднимать сорт.
+/// Покупатели: Петрович всегда и гость по случаю.
+///
+/// Гость появляется сам и уходит по таймеру — карточка одна и та же, меняется
+/// только содержимое. Заблокированная карточка показывает, чего не хватает:
+/// это и есть подсказка, ради чего стоит доводить сорт.
 class _BuyerRow extends ConsumerWidget {
   final GameState state;
   final DateTime now;
@@ -335,22 +321,27 @@ class _BuyerRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final engine = ref.read(gameEngineProvider);
+    final active = eventAt(now);
+
+    Widget card(Buyer buyer, {Duration? countdown}) => _BuyerCard(
+          buyer: buyer,
+          available: engine.canSellTo(state, buyer),
+          payout: engine.saleValueFor(state, buyer, now),
+          countdown: countdown,
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            ref.read(gameProvider.notifier).sellTo(buyer);
+          },
+        );
 
     return Row(
       children: [
-        for (final buyer in kBuyers) ...[
+        for (final buyer in kBuyers) Expanded(child: card(buyer)),
+        if (active != null) ...[
+          const SizedBox(width: 6),
           Expanded(
-            child: _BuyerCard(
-              buyer: buyer,
-              available: engine.canSellTo(state, buyer),
-              payout: engine.saleValueFor(state, buyer, now),
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                ref.read(gameProvider.notifier).sellTo(buyer);
-              },
-            ),
+            child: card(active.event.asBuyer, countdown: active.remaining),
           ),
-          if (buyer != kBuyers.last) const SizedBox(width: 6),
         ],
       ],
     );
@@ -363,11 +354,15 @@ class _BuyerCard extends StatefulWidget {
   final double payout;
   final VoidCallback onTap;
 
+  /// Сколько осталось до ухода гостя. `null` — покупатель постоянный.
+  final Duration? countdown;
+
   const _BuyerCard({
     required this.buyer,
     required this.available,
     required this.payout,
     required this.onTap,
+    this.countdown,
   });
 
   @override
@@ -382,6 +377,7 @@ class _BuyerCardState extends State<_BuyerCard> {
     final on = widget.available;
     // Премиальные покупатели подсвечиваются: их доступность — событие.
     final hot = on && widget.buyer.multiplier > 1.0;
+    final left = widget.countdown;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -433,11 +429,16 @@ class _BuyerCardState extends State<_BuyerCard> {
                     ),
                   ),
                   Text(
-                    '×${widget.buyer.multiplier}',
+                    // У гостя вместо множителя — срок. Множитель он и так
+                    // отрабатывает суммой ниже, а вот что он уйдёт — надо
+                    // сказать прямо.
+                    left != null ? Fmt.duration(left) : '×${widget.buyer.multiplier}',
                     style: GType.num(
                       size: 9,
                       weight: FontWeight.w700,
-                      color: on ? GColors.brew : GColors.textLo,
+                      color: left != null
+                          ? GColors.lamp
+                          : (on ? GColors.brew : GColors.textLo),
                     ),
                   ),
                 ],
@@ -458,7 +459,10 @@ class _BuyerCardState extends State<_BuyerCard> {
               const SizedBox(height: 2),
               Text(
                 on ? widget.buyer.note : widget.buyer.lockedNote,
-                maxLines: 2,
+                // Ровно одна строка, и не «до двух». При двух карточка гостя
+                // становилась выше карточки Петровича, панель подрастала — и
+                // на экране 320×640 вёрстка переполнялась на два пикселя.
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GType.ui(
                   size: 9,

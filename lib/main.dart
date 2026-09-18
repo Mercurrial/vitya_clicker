@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,10 @@ import 'ui/theme/garage.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // В браузере правая кнопка над игрой открывала бы меню «Сохранить картинку
+  // как…». Игре оно ни к чему, а во время зажима — прямо мешает.
+  if (kIsWeb) BrowserContextMenu.disableContextMenu();
 
   // Гараж свёрстан под вертикальный экран: в альбоме сцена и магазин не
   // помещаются одновременно. Проще запретить поворот, чем делать вторую

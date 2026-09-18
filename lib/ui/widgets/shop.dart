@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import '../../core/formatters.dart';
 import '../../engine/production.dart';
 import '../theme/garage.dart';
+import 'fill_bar.dart';
 
 /// Кнопка покупки. Янтарная — только когда денег хватает: янтарь в игре значит
 /// ровно одно — «можно взять».
@@ -228,21 +229,7 @@ class _MilestoneBar extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(GR.pill),
-            child: SizedBox(
-              height: 4,
-              child: Stack(
-                children: [
-                  const ColoredBox(color: GColors.wellBg, child: SizedBox.expand()),
-                  FractionallySizedBox(
-                    widthFactor: frac.clamp(0.0, 1.0),
-                    child: const ColoredBox(color: GColors.copper),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          child: FillBar(value: frac, height: 4, color: GColors.copper),
         ),
         const SizedBox(width: GS.s2),
         // Подпись короткая и гибкая: длинный вариант («до ×4 осталось 3»)

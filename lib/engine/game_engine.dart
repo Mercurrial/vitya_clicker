@@ -1,6 +1,7 @@
 import '../content/achievements.dart';
 import '../content/balance.dart';
 import '../content/buyers.dart';
+import '../content/game_content.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -269,7 +270,13 @@ class GameEngine {
     );
   }
 
-  /// ПОХМЕЛЬЕ: сброс гаража в обмен на перманентную мудрость.
+  /// ПОХМЕЛЬЕ: заход начинается заново в обмен на перманентную мудрость.
+  ///
+  /// Начинается именно ЗАНОВО, а не с нуля: в гараже остаётся та же банка, с
+  /// которой Витя начинал. Разница не косметическая — при пустом гараже игра
+  /// после похмелья не запускалась вовсе. Стартовый набор берётся из
+  /// [startingGenerators], а не из переданного списка, чтобы этот путь не мог
+  /// разойтись с новой игрой.
   GameState prestige(
     GameState state,
     List<Generator> initialGenerators,
@@ -279,7 +286,7 @@ class GameEngine {
     if (!state.prestige.canPrestige) return state;
 
     return GameState.initial(
-      initialGenerators: initialGenerators,
+      initialGenerators: startingGenerators(initialGenerators),
       initialUpgrades: initialUpgrades,
       prestige: state.prestige.claimAll(),
       // Достижения — мета-слой: они переживают похмелье вместе с мудростью,

@@ -32,7 +32,29 @@
   <title>Витя гонит</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#14100C">
-  <style>html, body { margin: 0; background: #14100C; }</style>
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+  <style>
+    /*
+      Игра держится на зажиме пальца, а браузер считает долгое нажатие
+      приглашением что-нибудь выделить или показать меню. Без этих правил
+      зажим по гаражу подсвечивал полэкрана синим, а на телефоне вызывал
+      «Скопировать / Найти».
+    */
+    html, body {
+      margin: 0;
+      background: #14100C;
+      height: 100%;
+      overflow: hidden;              /* нечего скролить: игра ровно в экран */
+      overscroll-behavior: none;     /* и незачем тянуть страницу вниз */
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;   /* Safari: меню по долгому нажатию */
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;    /* убирает задержку 300 мс на тап */
+    }
+  </style>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

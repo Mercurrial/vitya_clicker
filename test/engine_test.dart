@@ -311,18 +311,28 @@ void main() {
       expect(p.pendingWisdom, 5);
     });
 
-    test('сбрасывает гараж, но сохраняет мудрость и историю', () {
+    test('откатывает заход, но сохраняет мудрость и историю', () {
       final earned = PrestigeState.firstWisdomMl * 31;
       var s = fresh(prestige: PrestigeState(totalEverEarned: earned));
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
+      s = engine.buyGenerator(s, 'kanistra', t0);
 
       final after = engine.prestige(s, kGenerators, kUpgrades, t0);
       expect(after.resources.ml, 0, reason: 'накопленное сгорает');
-      expect(after.generators.items.first.ownedCount, 0, reason: 'аппараты сброшены');
       expect(after.prestige.wisdom, 5, reason: 'мудрость остаётся');
       expect(after.prestige.hangovers, 1);
       expect(after.prestige.totalEverEarned, earned, reason: 'история не обнуляется');
+
+      // Купленное исчезает — КРОМЕ стартовой банки. Раньше исчезало и оно,
+      // и игра после похмелья не запускалась вовсе: см. fresh_start_test.
+      expect(after.generators.items.first.ownedCount, 1,
+          reason: 'банка, с которой Витя начинал, остаётся при нём');
+      expect(
+        after.generators.items.skip(1).every((g) => g.ownedCount == 0),
+        isTrue,
+        reason: 'всё, что нажито заходом, Вите причудилось',
+      );
     });
 
     test('мудрость ускоряет следующий заход', () {

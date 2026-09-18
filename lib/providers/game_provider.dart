@@ -74,9 +74,10 @@ class GameNotifier extends Notifier<GameState> {
     });
 
     return ref.watch(initialStateProvider) ??
-        GameState.initial(
-          initialGenerators: ref.watch(generatorsContentProvider),
-          initialUpgrades: ref.watch(upgradesContentProvider),
+        newGame(
+          content: ref.watch(generatorsContentProvider),
+          upgrades: ref.watch(upgradesContentProvider),
+          now: ref.read(timeProvider)(),
         );
   }
 
@@ -191,7 +192,7 @@ class GameNotifier extends Notifier<GameState> {
     ref.read(toastProvider.notifier).show(
           kind: 'ПОХМЕЛЬЕ',
           title: 'Мудрость: ${state.prestige.wisdom}',
-          note: 'гараж пуст, голова тяжёлая',
+          note: 'всё причудилось, но руки помнят',
           event: VityaEvent.hangover,
         );
 
@@ -241,10 +242,10 @@ class GameNotifier extends Notifier<GameState> {
   /// который хочет пройти заново без похмелья.
   Future<void> hardReset() async {
     await ref.read(saveServiceProvider)?.wipe();
-    state = GameState.initial(
-      initialGenerators: ref.read(generatorsContentProvider),
-      initialUpgrades: ref.read(upgradesContentProvider),
-      lastUpdateTime: ref.read(timeProvider)(),
+    state = newGame(
+      content: ref.read(generatorsContentProvider),
+      upgrades: ref.read(upgradesContentProvider),
+      now: ref.read(timeProvider)(),
     );
     await saveNow();
   }

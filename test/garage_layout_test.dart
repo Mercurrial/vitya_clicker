@@ -11,6 +11,8 @@ import 'package:idle_game/ui/screens/garage_screen.dart';
 
 import 'package:idle_game/ui/theme/garage.dart';
 
+import 'support/moments.dart';
+
 /// Главное на экране обязано быть на экране.
 ///
 /// Этот набор написан по следам настоящей поломки. Правя подпись под портретом,
@@ -25,8 +27,11 @@ import 'package:idle_game/ui/theme/garage.dart';
 /// конечный ненулевой размер и помещаются в экран**. Вопрос «видно ли», а не
 /// «красиво ли», — и он проверяется без снимков.
 void main() {
-  Widget app(GameState state) => ProviderScope(
-        overrides: [initialStateProvider.overrideWithValue(state)],
+  Widget app(GameState state, DateTime now) => ProviderScope(
+        overrides: [
+          initialStateProvider.overrideWithValue(state),
+          timeProvider.overrideWithValue(() => now),
+        ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
@@ -52,12 +57,17 @@ void main() {
     return s.copyWith(resources: s.resources.copyWith(money: 500));
   }
 
-  Future<void> openOn(WidgetTester tester, GameState state, Size size) async {
+  Future<void> openOn(
+    WidgetTester tester,
+    GameState state,
+    Size size, {
+    DateTime? now,
+  }) async {
     tester.view
       ..physicalSize = size
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(app(state));
+    await tester.pumpWidget(app(state, now ?? quietMoment));
     await tester.pump(const Duration(milliseconds: 300));
   }
 
@@ -151,6 +161,23 @@ void main() {
 
       final portrait = rectOf(tester, find.byType(VityaPortrait));
       expect(portrait.bottom, lessThanOrEqualTo(640));
+    });
+
+    testWidgets('гость помещается рядом с Петровичем на узком экране',
+        (tester) async {
+      // Карточек покупателей становится две, и происходит это само — игрок
+      // ничего не нажимал. Значит, узкий экран обязан это пережить.
+      await openOn(
+        tester,
+        withStills({'banka': 5}),
+        const Size(320, 640),
+        now: eventMoment,
+      );
+
+      expect(tester.takeException(), isNull,
+          reason: 'при госте верхняя панель переполняется');
+      expect(find.text('Петрович'), findsOneWidget);
+      expect(find.byType(VityaPortrait), findsOneWidget);
     });
 
     testWidgets('название аппарата в списке не обрезается многоточием',

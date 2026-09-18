@@ -16,6 +16,7 @@ import '../pixel/goal_icons.dart';
 import '../pixel/pixel_sprite.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
+import '../widgets/fill_bar.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/transfer_progress.dart';
@@ -95,7 +96,7 @@ class GarageScreen extends ConsumerStatefulWidget {
 }
 
 class _GarageScreenState extends ConsumerState<GarageScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final HeatController _heat;
   int _tab = 0;
 
@@ -106,6 +107,36 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
     // Жар живёт в интерфейсе, но двигает и СОРТ, и всё производство —
     // поэтому и состояние окна, и множитель серии непрерывно отдаём в игру.
     _heat.addListener(_pushHeat);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Ушли из игры с зажатым пальцем — отпускаем за игрока.
+  ///
+  /// В браузере это не редкость, а обычное дело: Alt+Tab, переключение
+  /// вкладки, свёрнутое окно. Событие «отпустил» при этом не приходит вовсе, и
+  /// жар остаётся включённым навсегда — вернувшись, игрок застаёт вечный
+  /// перегрев и никак не может его снять.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _stopStoking();
+  }
+
+  /// Пробел и Enter — тот же зажим, что и палец.
+  ///
+  /// На компьютере держать кнопку мыши минутами неудобно, а игра требует
+  /// именно этого. Автоповтор клавиши (`KeyRepeatEvent`) намеренно съедается:
+  /// он не значит «нажал ещё раз», а зажим у нас и так непрерывный.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.space &&
+        event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      _startStoking();
+    } else if (event is KeyUpEvent) {
+      _stopStoking();
+    }
+    return KeyEventResult.handled;
   }
 
   void _pushHeat() {
@@ -115,6 +146,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _heat.removeListener(_pushHeat);
     _heat.dispose();
     super.dispose();
@@ -137,9 +169,12 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
       gameProvider.select((s) => _eraFor(s.prestige.totalEverEarned)),
     );
 
-    return ColoredBox(
-      color: GColors.bg,
-      child: Stack(
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: ColoredBox(
+        color: GColors.bg,
+        child: Stack(
         children: [
           const Positioned.fill(child: _LampLight()),
           Center(
@@ -182,25 +217,33 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              child: Listener(
-                                behavior: HitTestBehavior.opaque,
-                                onPointerDown: (_) => _startStoking(),
-                                onPointerUp: (_) => _stopStoking(),
-                                onPointerCancel: (_) => _stopStoking(),
-                                child: GarageScene(
-                                  heat: _heat,
-                                  hanging: _Hanging(
-                                    portrait: VityaPortrait(
-                                      era: era,
-                                      pressed: _heat.isStoking,
-                                      // 98, а не 116: при 116 портрет съедал
-                                      // шестьдесят процентов сцены, и первая
-                                      // банка выходила ростом в полтора
-                                      // сантиметра. Витя главный, но гараж —
-                                      // не только он.
-                                      size: 98,
-                                      style: PixelPortraitStyle.pixel,
-                                      radius: 0,
+                              // MouseRegion — ради браузера. Курсор говорит,
+                              // что гараж нажимается, а onExit снимает жар,
+                              // если мышь увели со сцены с зажатой кнопкой:
+                              // «отпустил» тогда приходит мимо нас.
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onExit: (_) => _stopStoking(),
+                                child: Listener(
+                                  behavior: HitTestBehavior.opaque,
+                                  onPointerDown: (_) => _startStoking(),
+                                  onPointerUp: (_) => _stopStoking(),
+                                  onPointerCancel: (_) => _stopStoking(),
+                                  child: GarageScene(
+                                    heat: _heat,
+                                    hanging: _Hanging(
+                                      portrait: VityaPortrait(
+                                        era: era,
+                                        pressed: _heat.isStoking,
+                                        // 98, а не 116: при 116 портрет съедал
+                                        // шестьдесят процентов сцены, и первая
+                                        // банка выходила ростом в полтора
+                                        // сантиметра. Витя главный, но гараж —
+                                        // не только он.
+                                        size: 98,
+                                        style: PixelPortraitStyle.pixel,
+                                        radius: 0,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -246,6 +289,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -454,32 +498,18 @@ class _VityaTab extends ConsumerWidget {
               const SizedBox(height: GS.s2),
               Text(
                 pending > 0
-                    ? 'Витя проснётся в пустом гараже: аппараты и деньги исчезнут. '
-                        'Но останется мудрость — и следующий заход пойдёт быстрее.'
-                    : 'Витя пока бодр. Когда нагонит достаточно, можно будет лечь '
-                        'проспаться: гараж обнулится, но мудрость останется навсегда.',
+                    ? 'Витя проспится — и весь цех окажется сном. Останется тот '
+                        'же гараж и та же банка на табурете, с которой всё '
+                        'начиналось. Но руки помнят: мудрость никуда не денется, '
+                        'и следующий заход пойдёт быстрее.'
+                    : 'Витя пока бодр. Когда нагонит достаточно, ляжет проспаться '
+                        '— и нагнанное ему причудится. Кроме мудрости: она '
+                        'остаётся навсегда и множит всё производство.',
                 style: GType.body(),
               ),
               const SizedBox(height: GS.s3),
               if (pending <= 0) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(GR.pill),
-                  child: SizedBox(
-                    height: 6,
-                    child: Stack(
-                      children: [
-                        const ColoredBox(
-                          color: GColors.wellBg,
-                          child: SizedBox.expand(),
-                        ),
-                        FractionallySizedBox(
-                          widthFactor: progress,
-                          child: const ColoredBox(color: GColors.copper),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                FillBar(value: progress, height: 6, color: GColors.copper),
                 const SizedBox(height: GS.s2),
                 Text(
                   'До следующей мудрости: ${(progress * 100).toStringAsFixed(0)}%',
@@ -519,8 +549,9 @@ class _VityaTab extends ConsumerWidget {
     final ok = await _ask(
       context,
       title: 'Лечь проспаться?',
-      body: 'Аппараты, улучшения и деньги исчезнут.\n'
-          'Витя получит +$pending мудрости навсегда.',
+      body: 'Аппараты, улучшения и деньги окажутся сном. Витя проснётся при '
+          'той же банке, с которой начинал.\n'
+          'Мудрости станет больше на $pending — и это уже навсегда.',
       confirm: 'Спать',
     );
     if (ok) ref.read(gameProvider.notifier).sleepItOff();
