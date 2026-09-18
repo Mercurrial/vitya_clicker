@@ -1,4 +1,4 @@
-package com.example.idle_game
+package com.mercurrial.vityagonit
 
 import io.flutter.embedding.android.FlutterActivity
 

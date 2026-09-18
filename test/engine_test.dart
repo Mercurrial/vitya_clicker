@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/engine/production.dart';
@@ -17,34 +18,17 @@ void main() {
         lastUpdateTime: t0,
       );
 
-  group('Тап', () {
-    test('даёт базовую силу и считает нажатия', () {
-      final s = engine.processTap(fresh(), t0);
-      expect(s.resources.ml, kBaseTapMl);
+  group('Касание', () {
+    test('считается, но самогона не даёт', () {
+      // Главное решение переделки: спам по экрану больше не приносит ничего.
+      // Раньше он приносил больше любой осмысленной игры.
+      final before = fresh();
+      final s = engine.registerTouch(before, t0);
+
       expect(s.clicker.totalTaps, 1);
-      expect(s.prestige.totalEverEarned, kBaseTapMl);
-    });
-
-    test('градус умножает добычу', () {
-      final s = engine.processTap(fresh(), t0, heatMultiplier: 3.0);
-      expect(s.resources.ml, kBaseTapMl * 3);
-    });
-
-    test('отдача не обесценивается: растёт вместе с производством', () {
-      var s = fresh();
-      final atStart = s.tapYield;
-
-      // Разгоняем пассивный доход.
-      s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
-      for (var i = 0; i < 40; i++) {
-        s = engine.buyGenerator(s, 'banka', t0);
-      }
-      expect(s.mlPerSecond, greaterThan(0));
-
-      // Именно это чинит «через пять минут тап стал бесполезен»: отдача — доля
-      // текущего потока, а не константа.
-      expect(s.tapYield, greaterThan(atStart));
-      expect(s.tapYield, closeTo(s.mlPerSecond * Production.tapSeconds, 1e-9));
+      expect(s.resources.ml, before.resources.ml,
+          reason: 'касание налило самогон — значит, спам снова выгоден');
+      expect(s.prestige.totalEverEarned, before.prestige.totalEverEarned);
     });
   });
 
@@ -106,15 +90,13 @@ void main() {
       s = engine.buyGenerator(s, 'banka', t0);
       final second = engine.generatorCost(s.generators.items.first);
       expect(second, greaterThan(first));
-      expect(second / first, closeTo(kCostGrowth, 1e-9));
+      expect(second / first, closeTo(Balance.current.costGrowth, 1e-9));
     });
 
     test('апгрейд тапа удваивает силу и покупается один раз', () {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
-      final before = s.tapYield;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
-      expect(s.tapYield, closeTo(before * 2, 1e-9));
 
       final spent = s.resources.money;
       s = engine.buyUpgrade(s, 'tap_ruka', t0);
@@ -200,7 +182,7 @@ void main() {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(ml: s.tankCapacity));
       final before = s.resources.ml;
-      s = engine.processTap(s, t0);
+      s = engine.registerTouch(s, t0);
 
       expect(s.resources.ml, before);
       expect(s.clicker.totalTaps, 1, reason: 'нажатие всё равно засчитано');
@@ -320,18 +302,18 @@ void main() {
       expect(engine.prestige(s, kGenerators, kUpgrades, t0), same(s));
     });
 
-    test('мудрость считается как корень из нагнанного', () {
-      // 25 шагов по 1e7 мл ⇒ √25 = 5.
-      const p = PrestigeState(
-        totalEverEarned: 25 * PrestigeState.mlPerWisdomStep,
+    test('мудрость считается логарифмом от нагнанного', () {
+      // log2(1 + 31) = 5: каждая следующая мудрость требует удвоения.
+      final p = PrestigeState(
+        totalEverEarned: PrestigeState.firstWisdomMl * 31,
       );
       expect(p.potentialWisdom, 5);
       expect(p.pendingWisdom, 5);
     });
 
     test('сбрасывает гараж, но сохраняет мудрость и историю', () {
-      const earned = 25 * PrestigeState.mlPerWisdomStep;
-      var s = fresh(prestige: const PrestigeState(totalEverEarned: earned));
+      final earned = PrestigeState.firstWisdomMl * 31;
+      var s = fresh(prestige: PrestigeState(totalEverEarned: earned));
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
       s = engine.buyGenerator(s, 'banka', t0);
 
@@ -345,8 +327,51 @@ void main() {
 
     test('мудрость ускоряет следующий заход', () {
       final plain = fresh();
-      final wise = fresh(prestige: const PrestigeState(wisdom: 10));
-      expect(wise.tapYield, closeTo(plain.tapYield * 1.5, 1e-9));
+      // Мудрость не задаётся напрямую — она ВЫЧИСЛЯЕТСЯ из забранной истории.
+      // Именно это и делает правку баланса безопасной, поэтому тест ходит
+      // через тот же путь, что и игра.
+      final wise = fresh(
+        prestige: PrestigeState(claimedMl: PrestigeState.firstWisdomMl * 1023),
+      );
+      expect(wise.prestige.wisdom, 10);
+
+      // Раньше мудрость проверялась через отдачу нажатия. Нажатие больше не
+      // даёт самогон, поэтому смотрим туда, где мудрость действительно
+      // работает, — на производство.
+      var rich = plain.copyWith(resources: plain.resources.copyWith(money: 1e6));
+      rich = engine.buyGenerator(rich, 'banka', t0);
+      var richWise = wise.copyWith(
+        resources: wise.resources.copyWith(money: 1e6),
+      );
+      richWise = engine.buyGenerator(richWise, 'banka', t0);
+
+      expect(
+        richWise.mlPerSecond,
+        closeTo(rich.mlPerSecond * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
+      );
+    });
+
+    test('награда за мудрость растёт медленнее, чем разгоняется петля', () {
+      // Суть починки: раньше мудрость считалась корнем из нагнанного, и
+      // множитель убегал в шестизначные проценты. Теперь каждая следующая
+      // ступень требует вдвое больше — награда остаётся обозримой.
+      // Проверяем СВОЙСТВО формулы, а не конкретные числа: масштаб задаётся
+      // балансом и будет меняться, а «каждая ступень вдвое дороже» — нет.
+      final first = PrestigeState.firstWisdomMl;
+      expect(PrestigeState.wisdomFor(first), 1, reason: 'первая порция');
+      expect(PrestigeState.wisdomFor(first * 3), 2);
+      expect(PrestigeState.wisdomFor(first * 7), 3);
+      expect(PrestigeState.wisdomFor(first * 1023), 10);
+
+      // Настоящее число из плейтеста: даже оно остаётся обозримым.
+      expect(PrestigeState.wisdomFor(4.79e20), lessThan(80));
+    });
+
+    test('удвоение нагнанного даёт ровно одну ступень', () {
+      final first = PrestigeState.firstWisdomMl;
+      final a = PrestigeState.wisdomFor(first * 1023);
+      final b = PrestigeState.wisdomFor(first * 2047);
+      expect(b - a, 1);
     });
   });
 }

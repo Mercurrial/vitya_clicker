@@ -44,7 +44,7 @@ class _BuyButtonState extends State<BuyButton> {
         scale: _down ? 0.94 : 1.0,
         duration: const Duration(milliseconds: 110),
         child: Container(
-          constraints: const BoxConstraints(minWidth: 92, minHeight: 40),
+          constraints: const BoxConstraints(minWidth: 78, minHeight: 40),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: GS.s3),
           decoration: BoxDecoration(
@@ -126,7 +126,15 @@ class StillRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GType.title()),
+                // Название — главное в строке. На экране 375 точек «Трёхлитровая
+                // банка» не влезала и обрезалась многоточием; кружок и кнопка
+                // цены ужаты ради неё, а не наоборот.
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GType.ui(size: 14, weight: FontWeight.w600),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   owned > 0 ? '+${Fmt.rate(output)}' : 'ещё не куплен',
@@ -151,13 +159,18 @@ class StillRow extends StatelessWidget {
   }
 }
 
+/// Ещё не открытый аппарат.
+///
+/// Ниже настоящей строки намеренно: таких подряд может идти несколько, и
+/// занимать столько же места, сколько купленный аппарат, им незачем —
+/// получится список из пустых плашек.
 class _LockedRow extends StatelessWidget {
   const _LockedRow();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 64,
+      height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: GColors.surface1,
@@ -178,8 +191,8 @@ class _CountBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = owned > 0;
     return Container(
-      width: 46,
-      height: 46,
+      width: 40,
+      height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -232,17 +245,29 @@ class _MilestoneBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: GS.s2),
-        Text(
-          next != null ? '×$mult · до ×${mult * 2} осталось ${next - owned}' : '×$mult · предел',
-          style: GType.num(size: 10, color: GColors.textLo),
+        // Подпись короткая и гибкая: длинный вариант («до ×4 осталось 3»)
+        // выдавливал строку за край карточки на обычном телефоне.
+        Flexible(
+          child: Text(
+            next != null ? 'ещё ${next - owned} до ×${mult * 2}' : '×$mult · предел',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GType.num(size: 10, color: GColors.textLo),
+          ),
         ),
       ],
     );
   }
 }
 
-/// Строка апгрейда. Список, а не сетка: русские названия длинные, в две
-/// колонки они превращаются в кашу из переносов.
+/// Строка апгрейда.
+///
+/// Купленные по умолчанию скрыты: список рос с каждой покупкой, и найти в
+/// нём то, что ещё можно взять, становилось всё труднее. Развернуть их можно
+/// кнопкой — иногда хочется посмотреть, что уже есть.
+///
+/// Список, а не сетка: русские названия длинные, в две колонки они
+/// превращаются в кашу из переносов.
 class UpgradeRow extends StatelessWidget {
   final String name;
   final String effect;

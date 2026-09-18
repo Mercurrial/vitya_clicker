@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/content/achievements.dart';
+import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/engine/formulas.dart';
 import 'package:idle_game/engine/game_engine.dart';
@@ -31,7 +32,7 @@ void main() {
     });
 
     test('условие выполнено — достижение выдаётся', () {
-      final tapped = engine.processTap(fresh(), t0);
+      final tapped = engine.registerTouch(fresh(), t0);
       final checked = engine.checkAchievements(tapped);
 
       expect(checked.fresh.map((a) => a.id), contains('a_first_tap'));
@@ -39,7 +40,7 @@ void main() {
     });
 
     test('повторная проверка не выдаёт то же самое дважды', () {
-      var s = engine.processTap(fresh(), t0);
+      var s = engine.registerTouch(fresh(), t0);
       s = engine.checkAchievements(s).state;
       final again = engine.checkAchievements(s);
 
@@ -125,8 +126,8 @@ void main() {
   group('Похмелье', () {
     test('достижения переживают сброс вместе с мудростью', () {
       var s = fresh().copyWith(
-        prestige: const PrestigeState(
-          totalEverEarned: 25 * PrestigeState.mlPerWisdomStep,
+        prestige: PrestigeState(
+          totalEverEarned: PrestigeState.firstWisdomMl * 31,
         ),
         achievements: const AchievementsState(
           unlocked: {'a_first_tap', 'a_first_still'},
@@ -147,12 +148,12 @@ void main() {
       for (var i = 0; i < 25; i++) {
         manual += formulas.calculateUpgradeCost(
           g.baseCost,
-          g.costGrowthFactor,
+          Balance.current.costGrowth,
           g.ownedCount + i,
         );
       }
       expect(
-        formulas.bulkCost(g.baseCost, g.costGrowthFactor, g.ownedCount, 25),
+        formulas.bulkCost(g.baseCost, Balance.current.costGrowth, g.ownedCount, 25),
         closeTo(manual, 1e-6),
       );
     });
@@ -162,12 +163,12 @@ void main() {
       for (final money in [0.0, 14.0, 15.0, 100.0, 12345.0, 1e9]) {
         final n = formulas.maxAffordable(
           g.baseCost,
-          g.costGrowthFactor,
+          Balance.current.costGrowth,
           g.ownedCount,
           money,
         );
         expect(
-          formulas.bulkCost(g.baseCost, g.costGrowthFactor, g.ownedCount, n),
+          formulas.bulkCost(g.baseCost, Balance.current.costGrowth, g.ownedCount, n),
           lessThanOrEqualTo(money + 1e-6),
           reason: 'на $money ₽ насчитали $n штук',
         );
@@ -179,12 +180,12 @@ void main() {
       const money = 5000.0;
       final n = formulas.maxAffordable(
         g.baseCost,
-        g.costGrowthFactor,
+          Balance.current.costGrowth,
         g.ownedCount,
         money,
       );
       expect(
-        formulas.bulkCost(g.baseCost, g.costGrowthFactor, g.ownedCount, n + 1),
+        formulas.bulkCost(g.baseCost, Balance.current.costGrowth, g.ownedCount, n + 1),
         greaterThan(money),
       );
     });

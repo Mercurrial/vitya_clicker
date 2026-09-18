@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/core/game_clock.dart';
+import 'package:idle_game/content/game_content.dart';
+import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/core/save.dart';
 
 void main() {
@@ -164,7 +166,12 @@ void main() {
       expect(result.data!['ml'], 0, reason: 'бак отдаём пустым');
       expect(result.data!['money'], closeTo(250, 1e-9), reason: '2500 мл по 0.1 ₽');
       expect(result.data!['lifetime'], 10000, reason: 'история в мл');
-      expect(result.data!['wisdom'], 3, reason: 'непричастные поля не трогаем');
+      // v4 пересчитала мудрость логарифмом, v5 перевела её в факт: сколько
+      // нагнано на момент похмелья. За 10 000 мл истории не заработано
+      // ничего, каким бы ни было число в старом сейве.
+      expect(result.data!['claimedMl'], 0.0);
+      expect(result.data!.containsKey('wisdom'), isFalse,
+          reason: 'оценка больше не хранится — только факт');
       expect(result.data!.containsKey('litres'), isFalse);
       expect(result.data!['version'], kSaveVersion);
     });
@@ -176,6 +183,34 @@ void main() {
       expect(result.wasMigrated, isTrue);
       expect(result.data!['ml'], 0);
       expect(result.data!['money'], closeTo(500, 1e-9));
+    });
+
+    test('разогнавшаяся мудрость из старого сейва приводится в норму', () {
+      // Настоящий случай из плейтеста: 119 137 мудрости за полчаса.
+      const old = '{"version": 3, "ml": 0, "money": 0, '
+          '"lifetime": 4.79e20, "wisdom": 119137}';
+      final result = codec.decode(old);
+
+      expect(result.wasMigrated, isTrue);
+
+      // Проверяем не число мудрости, а факт, из которого она считается:
+      // числом мудрость больше не хранится, и это главное, что изменилось.
+      final claimed = result.data!['claimedMl'] as double;
+      expect(claimed, greaterThan(0), reason: 'заслуженное не отнимаем');
+      expect(claimed, lessThanOrEqualTo(4.79e20),
+          reason: 'нельзя забрать больше, чем нагнал');
+
+      // И проверяем, что дальше это даёт обозримую мудрость по ЛЮБОМУ
+      // балансу — тест не должен ломаться от правки чисел.
+      final state = const GameSerializer().fromJson(
+        result.data!,
+        content: kGenerators,
+        upgrades: kUpgrades,
+        now: DateTime.utc(2026),
+      );
+      expect(state.prestige.wisdom, lessThan(80),
+          reason: 'логарифм держит награду в узде');
+      expect(state.prestige.wisdom, greaterThan(0));
     });
   });
 

@@ -8,6 +8,7 @@ library;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'save.dart';
+import 'settings.dart';
 
 class PrefsSaveStorage implements SaveStorage {
   static const String _key = 'vitya_save_v1';
@@ -31,4 +32,31 @@ class PrefsSaveStorage implements SaveStorage {
 
   @override
   Future<void> clear() async => _prefs.remove(_key);
+}
+
+/// Настройки поверх того же `shared_preferences`.
+///
+/// Читает синхронно: экземпляр [SharedPreferences] уже держит значения в
+/// памяти, а настройка нужна на первом же кадре — ждать её асинхронно значило
+/// бы показать игроку один стиль и тут же подменить другим.
+class PrefsSettingsStore implements SettingsStore {
+  static const String _prefix = 'vitya_setting_';
+
+  final SharedPreferences _prefs;
+
+  const PrefsSettingsStore(this._prefs);
+
+  @override
+  String? read(String key) => _prefs.getString('$_prefix$key');
+
+  @override
+  Future<void> write(String key, String value) =>
+      _prefs.setString('$_prefix$key', value);
+}
+
+/// Открывает оба хранилища на одном экземпляре `shared_preferences`.
+Future<({PrefsSaveStorage saves, PrefsSettingsStore settings})>
+    openStorages() async {
+  final prefs = await SharedPreferences.getInstance();
+  return (saves: PrefsSaveStorage(prefs), settings: PrefsSettingsStore(prefs));
 }

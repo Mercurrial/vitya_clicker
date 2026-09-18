@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тот же цвет, что GColors.bg в lib/ui/theme/garage.dart. Заставка и
+         первый кадр игры обязаны совпадать, иначе запуск моргает. -->
+    <color name="garage_bg">#14100C</color>
+</resources>

@@ -6,119 +6,69 @@
 /// Ни одно число отсюда не зашито в виджеты — баланс правится здесь, без
 /// касания кода интерфейса и движка.
 ///
-/// Между тирами примерно ×12 по цене и ×6–7 по выходу; рост цены внутри тира
-/// (1.10) ниже классического 1.15 — это удлиняет участок разгона и даёт
-/// ощущение «ускоряется», а не «вязнет».
+/// Между тирами примерно ×12 по цене и ×6–7 по выходу. Скорость удорожания
+/// внутри тира — общая для всех и лежит в `Balance.costGrowth`: это главный
+/// тормоз экономики, и место ему одно.
 library;
 
+import 'dart:math' as math;
+
+import 'balance.dart';
 import '../models/generator.dart';
 import '../models/upgrade.dart';
 
-/// Рост цены за каждую купленную штуку.
-const double kCostGrowth = 1.10;
+/// Сколько всего ступеней в лестнице.
+int get kGeneratorCount => kGeneratorNames.length;
 
-/// Плоская отдача за нажатие в самом начале, мл.
-///
-/// Работает только пока аппаратов нет: дальше нажатие считается как доля
-/// секунды производства и растёт само (см. `GameState.tapYield`).
-const double kBaseTapMl = 5.0;
+/// Имена лестницы. Числа к ним считаются из баланса — см. [kGenerators].
+const List<({String id, String name})> kGeneratorNames = [
+  (id: 'banka', name: 'Трёхлитровая банка'),
+  (id: 'bidon', name: 'Бидон эмалированный'),
+  (id: 'flyaga', name: 'Фляга армейская'),
+  (id: 'dedov', name: 'Аппарат «Дедов»'),
+  (id: 'zmeevik', name: 'Медный змеевик'),
+  (id: 'tseh', name: 'Гаражный цех'),
+  (id: 'podval', name: 'Подвал у Петровича'),
+  (id: 'tsisterna', name: 'Цистерна «МОЛОКО»'),
+  (id: 'druzhba', name: 'Трубопровод «Дружба-2»'),
+  (id: 'zavod', name: 'Завод «Кристалл-Витя»'),
+  (id: 'tanker', name: 'Танкер «Первач»'),
+  (id: 'orbita', name: 'Орбитальная «Мир-2»'),
+  (id: 'collider', name: 'Самогонный коллайдер'),
+];
 
 /// Лестница Вити: от банки на кухне до коллайдера на орбите.
 ///
-/// `baseProduction` — миллилитры в секунду, `baseCost` — рубли.
-const List<Generator> kGenerators = [
-  Generator(
-    id: 'banka',
-    name: 'Трёхлитровая банка',
-    baseCost: 15,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 1,
-  ),
-  Generator(
-    id: 'bidon',
-    name: 'Бидон эмалированный',
-    baseCost: 60,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 8,
-  ),
-  Generator(
-    id: 'flyaga',
-    name: 'Фляга армейская',
-    baseCost: 700,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 50,
-  ),
-  Generator(
-    id: 'dedov',
-    name: 'Аппарат «Дедов»',
-    baseCost: 9000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 300,
-  ),
-  Generator(
-    id: 'zmeevik',
-    name: 'Медный змеевик',
-    baseCost: 110000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 1800,
-  ),
-  Generator(
-    id: 'tseh',
-    name: 'Гаражный цех',
-    baseCost: 1300000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 11000,
-  ),
-  Generator(
-    id: 'podval',
-    name: 'Подвал у Петровича',
-    baseCost: 16000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 65000,
-  ),
-  Generator(
-    id: 'tsisterna',
-    name: 'Цистерна «МОЛОКО»',
-    baseCost: 200000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 400000,
-  ),
-  Generator(
-    id: 'druzhba',
-    name: 'Трубопровод «Дружба-2»',
-    baseCost: 2500000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 2400000,
-  ),
-  Generator(
-    id: 'zavod',
-    name: 'Завод «Кристалл-Витя»',
-    baseCost: 30000000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 15000000,
-  ),
-  Generator(
-    id: 'tanker',
-    name: 'Танкер «Первач»',
-    baseCost: 400000000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 90000000,
-  ),
-  Generator(
-    id: 'orbita',
-    name: 'Орбитальная «Мир-2»',
-    baseCost: 5000000000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 550000000,
-  ),
-  Generator(
-    id: 'collider',
-    name: 'Самогонный коллайдер',
-    baseCost: 60000000000000,
-    costGrowthFactor: kCostGrowth,
-    baseProduction: 3300000000,
-  ),
-];
+/// Цены и выходы НЕ записаны руками, а строятся геометрической прогрессией из
+/// [Balance]. Так было и раньше — просто вручную: тринадцать цен подряд шли с
+/// одинаковым отношением ×12.3, тринадцать выходов — с ×6.05. Держать это
+/// руками значило править двадцать шесть чисел ради одной правки баланса, а
+/// симулятор не мог перебрать варианты вовсе.
+///
+/// Отношение «дороже / продуктивнее» (12.3 против 6.05) — и есть тормоз игры:
+/// каждая следующая ступень вдвое невыгоднее предыдущей, поэтому её надо
+/// заслужить, а не просто дождаться.
+List<Generator> get kGenerators {
+  final b = Balance.current;
+  if (identical(_ladderFor, b)) return _ladder!;
+  _ladder = [
+    for (var i = 0; i < kGeneratorNames.length; i++)
+      Generator(
+        id: kGeneratorNames[i].id,
+        name: kGeneratorNames[i].name,
+        baseCost: b.firstGeneratorCost * math.pow(b.tierCostRatio, i),
+        baseProduction: b.firstGeneratorOutput * math.pow(b.tierOutputRatio, i),
+      ),
+  ];
+  _ladderFor = b;
+  return _ladder!;
+}
+
+/// Лестница пересобирается только при смене баланса: в игре это ноль раз,
+/// в симуляторе — на каждый вариант. Без памятки каждый вызов создавал бы
+/// тринадцать объектов, а зовут его на каждом кадре.
+List<Generator>? _ladder;
+Balance? _ladderFor;
 
 /// Улучшения, разложенные по четырём осям.
 ///
@@ -132,30 +82,34 @@ const List<Generator> kGenerators = [
 /// Описания сухие, как патчноут: смешно от формулировки, а не оттого, что
 /// шутку объяснили.
 const List<Upgrade> kUpgrades = [
-  // --- Руки ---
+  // --- Жар: держать окно легче ---
+  //
+  // Раньше эти три улучшения множили силу нажатия. Нажатие больше не даёт
+  // самогон, так что множить стало нечего — но ось осталась нужной: она
+  // улучшает то единственное, ради чего игрок касается экрана.
   Upgrade(
     id: 'tap_ruka',
     name: 'Крепкая рука',
-    description: 'Ручная отдача ×2',
+    description: 'Окно жара шире на 40%',
     cost: 40,
-    target: UpgradeTarget.tapPower,
-    multiplier: 2,
+    target: UpgradeTarget.heatControl,
+    multiplier: 1.4,
   ),
   Upgrade(
     id: 'tap_mozol',
     name: 'Трудовая мозоль',
-    description: 'Ручная отдача ×2',
+    description: 'Окно жара шире ещё на 40%',
     cost: 1200,
-    target: UpgradeTarget.tapPower,
-    multiplier: 2,
+    target: UpgradeTarget.heatControl,
+    multiplier: 1.4,
   ),
   Upgrade(
     id: 'tap_hvatka',
     name: 'Дедовская хватка',
-    description: 'Ручная отдача ×3',
+    description: 'Окно жара шире ещё вдвое',
     cost: 30000,
-    target: UpgradeTarget.tapPower,
-    multiplier: 3,
+    target: UpgradeTarget.heatControl,
+    multiplier: 2.0,
   ),
 
   // --- Ёмкость бака ---

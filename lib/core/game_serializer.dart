@@ -11,7 +11,11 @@
 library;
 
 import '../content/achievements.dart';
+import '../content/balance.dart';
+import '../content/game_content.dart';
+import '../content/sorts.dart';
 import '../models/achievements_state.dart';
+import '../models/sort_state.dart';
 import '../models/clicker_state.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -38,9 +42,20 @@ class GameSerializer {
           if (u.purchased) u.id,
       ],
       'achievements': s.achievements.unlocked.toList(),
-      'wisdom': s.prestige.wisdom,
+      // Сорт — свойство того, что стоит в баке, поэтому уходит в сейв вместе
+      // с объёмом: вернувшись, игрок находит свой товар таким, каким оставил.
+      'sortIndex': s.sort.index,
+      'sortProgress': s.sort.progress,
+      // Факт, а не оценка: сколько было нагнано на момент последнего
+      // похмелья. Мудрость из него вычисляется — см. PrestigeState.
+      'claimedMl': s.prestige.claimedMl,
+      'bonusWisdom': s.prestige.bonusWisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
+      // Под каким балансом игрок в последний раз видел игру. По этому числу
+      // при обновлении показывается список изменений и начисляется
+      // компенсация.
+      'balanceVersion': kBalanceVersion,
       'lastSeen': lastSeenMillis,
     };
   }
@@ -75,7 +90,8 @@ class GameSerializer {
       initialUpgrades: ups,
       achievements: AchievementsState(unlocked: unlocked),
       prestige: PrestigeState(
-        wisdom: _asInt(json['wisdom']),
+        claimedMl: _asDouble(json['claimedMl']),
+        bonusWisdom: _asInt(json['bonusWisdom']),
         totalEverEarned: _asDouble(json['lifetime']),
         hangovers: _asInt(json['hangovers']),
       ),
@@ -88,7 +104,20 @@ class GameSerializer {
         money: _asDouble(json['money']),
       ),
       clicker: ClickerState(totalTaps: _asInt(json['taps'])),
+      sort: SortState(
+        index: _asInt(json['sortIndex']).clamp(0, kSorts.length - 1),
+        progress: _asDouble(json['sortProgress']).clamp(0.0, 1.0),
+      ),
     );
+  }
+
+  /// Под какой версией баланса сейв был записан.
+  ///
+  /// Старые сейвы поля не имеют — для них это 1, то есть «до того, как баланс
+  /// стали версионировать».
+  int balanceVersionOf(Map<String, dynamic> json) {
+    final v = json['balanceVersion'];
+    return v is int && v > 0 ? v : 1;
   }
 
   /// Момент последнего выхода — для расчёта оффлайн-дохода.
@@ -131,14 +160,25 @@ class GameSerializer {
   }
 }
 
-/// Пустое состояние для новой игры.
+/// Состояние для новой игры.
+///
+/// Витя начинает НЕ с пустого гаража, а с одной трёхлитровой банкой. Это не
+/// подарок, а необходимость: касание больше не даёт самогон, и без стартового
+/// производства игрок заперт навсегда — заработать первые пятнадцать рублей
+/// нечем. Симулятор упёрся в это сразу: ноль ступеней за четыре часа.
+///
+/// Заодно это честнее по смыслу. Игра называется «Витя гонит» — он уже гонит,
+/// когда мы к нему заходим, а не сидит в пустом гараже в ожидании игрока.
 GameState newGame({
   required List<Generator> content,
   required List<Upgrade> upgrades,
   required DateTime now,
 }) =>
     GameState.initial(
-      initialGenerators: content,
+      initialGenerators: [
+        for (final g in content)
+          g.id == kGeneratorNames.first.id ? g.copyWith(ownedCount: 1) : g,
+      ],
       initialUpgrades: upgrades,
       lastUpdateTime: now,
     );

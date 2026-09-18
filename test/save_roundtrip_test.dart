@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/content/game_content.dart';
+import 'package:idle_game/content/sorts.dart';
 import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/models/game_state.dart';
 import 'package:idle_game/models/generator.dart';
 import 'package:idle_game/models/prestige_state.dart';
+import 'package:idle_game/models/sort_state.dart';
 
 void main() {
   const ser = GameSerializer();
@@ -25,7 +27,7 @@ void main() {
     }
     s = engine.buyGenerator(s, 'bidon', now);
     s = engine.buyUpgrade(s, 'tap_ruka', now);
-    s = engine.processTap(s, now);
+    s = engine.registerTouch(s, now);
     return s;
   }
 
@@ -51,14 +53,15 @@ void main() {
 
       final bought = after.upgrades.items.where((u) => u.purchased).map((u) => u.id);
       expect(bought, contains('tap_ruka'));
-      expect(after.tapYield, closeTo(before.tapYield, 1e-9));
     });
 
     test('мудрость и история переживают сохранение', () {
+      // Мудрость 7 задаётся не числом, а фактом: столько нагнано и забрано.
+      final claimed = PrestigeState.firstWisdomMl * 127;
       var s = build().copyWith(
-        prestige: const PrestigeState(
-          wisdom: 7,
-          totalEverEarned: 5e7,
+        prestige: PrestigeState(
+          claimedMl: claimed,
+          totalEverEarned: claimed,
           hangovers: 3,
         ),
       );
@@ -69,13 +72,42 @@ void main() {
         now: now,
       );
       expect(s.prestige.wisdom, 7);
-      expect(s.prestige.totalEverEarned, 5e7);
+      expect(s.prestige.claimedMl, closeTo(claimed, 1e-6));
       expect(s.prestige.hangovers, 3);
     });
 
     test('метка последнего выхода читается обратно', () {
       final json = ser.toJson(build(), lastSeenMillis: 1712345678901);
       expect(ser.lastSeenOf(json), 1712345678901);
+    });
+
+    test('доведённый сорт не сбрасывается при перезапуске', () {
+      // Сорт зарабатывается минутами выдержанного жара. Потерять его на
+      // перезапуске — худшее, что игра может сделать с игроком: он закрыл
+      // приложение на «Дедовом запасе», а открыл на перваче.
+      var s = build().copyWith(
+        sort: const SortState(index: 3, progress: 0.62),
+      );
+      s = ser.fromJson(
+        ser.toJson(s, lastSeenMillis: 1),
+        content: kGenerators,
+        upgrades: kUpgrades,
+        now: now,
+      );
+      expect(s.sort.index, 3);
+      expect(s.sort.progress, closeTo(0.62, 1e-9));
+    });
+
+    test('сорт из будущей версии не выводит за лестницу', () {
+      // Сейв с чужого билда, где сортов было больше.
+      final s = ser.fromJson(
+        {'version': 4, 'sortIndex': 99, 'sortProgress': 4.2},
+        content: kGenerators,
+        upgrades: kUpgrades,
+        now: now,
+      );
+      expect(s.sort.index, kSorts.length - 1);
+      expect(s.sort.progress, lessThanOrEqualTo(1.0));
     });
   });
 
@@ -101,7 +133,6 @@ void main() {
         id: 'novyi',
         name: 'Новый аппарат',
         baseCost: 1,
-        costGrowthFactor: 1.1,
         baseProduction: 1,
       );
       final s = ser.fromJson(

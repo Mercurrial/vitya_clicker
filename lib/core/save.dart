@@ -11,10 +11,11 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
-const int kSaveVersion = 3;
+const int kSaveVersion = 5;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
@@ -75,6 +76,44 @@ class SaveCodec {
       final ml = json['ml'];
       final money = ml is num ? ml.toDouble() * 0.1 : 0.0;
       return {...json, 'ml': 0.0, 'money': money};
+    },
+
+    // v3 считала мудрость как корень из нагнанного, и она убегала в сотни
+    // тысяч — игра ломалась за полчаса. v4 считает логарифмом, поэтому
+    // накопленное надо пересчитать: иначе старые сейвы остались бы с
+    // множителем в шестизначные проценты.
+    //
+    // Формула продублирована намеренно: миграции обязаны быть неизменными во
+    // времени, а PrestigeState.wisdomFor будет меняться дальше.
+    3: (json) {
+      final lifetime = json['lifetime'];
+      final ml = lifetime is num ? lifetime.toDouble() : 0.0;
+      final wisdom =
+          ml <= 0 ? 0 : (math.log(1 + ml / 1e6) / math.ln2).floor();
+      return {...json, 'wisdom': wisdom < 0 ? 0 : wisdom};
+    },
+
+    // v4 хранила мудрость числом — то есть ОЦЕНКУ, а не факт. Из-за этого
+    // каждая правка формулы требовала новой миграции и действовала только на
+    // тех, кто обновился.
+    //
+    // v5 хранит факт: сколько было нагнано на момент последнего похмелья.
+    // Мудрость из него вычисляется при каждой загрузке, поэтому следующая
+    // правка формулы применится у всех и сразу.
+    //
+    // Обратный перевод точен: wisdomFor(1e6·(2^w − 1)) == w. Множитель 1e6 —
+    // это firstWisdomMl НА МОМЕНТ v4, и он тут зашит намеренно: миграция
+    // обязана читать то, что реально лежит у игрока, а не то, чему равна
+    // константа сегодня.
+    4: (json) {
+      final w = json['wisdom'];
+      final wisdom = w is num ? w.toInt() : 0;
+      final claimed = wisdom <= 0 ? 0.0 : 1e6 * (math.pow(2, wisdom) - 1);
+      return {
+        ...json,
+        'claimedMl': claimed,
+        'bonusWisdom': 0,
+      }..remove('wisdom');
     },
   };
 

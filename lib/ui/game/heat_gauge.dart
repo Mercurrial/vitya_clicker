@@ -1,165 +1,197 @@
 import 'package:flutter/widgets.dart';
 
+import '../../core/formatters.dart';
 import '../theme/garage.dart';
 import 'heat_controller.dart';
 
-/// Шкала ГРАДУСА: полоса жара, подсвеченная зелёная зона (она уезжает) и
-/// стрелка текущего состояния.
+/// Шкала ЖАРА ПОД КУБОМ.
 ///
-/// Читаемость важнее красоты: игрок должен с одного взгляда понимать «холодно /
-/// в зоне / вот-вот перегрею», иначе механика превращается в лотерею.
+/// Показывает жар, подвижное окно и что сейчас происходит с сортом. Границы
+/// окна рисуются **поверх** заливки: раньше заливка их закрашивала, и после
+/// перегрева игрок терял ориентир — было не видно, куда возвращаться.
 class HeatGauge extends StatelessWidget {
   final HeatController controller;
   const HeatGauge({super.key, required this.controller});
 
+  /// Подписи и шкала обновляются по-разному — и это главное здесь.
+  ///
+  /// Шкала ползёт непрерывно, ей нужен каждый кадр. Подписи меняются раз в
+  /// несколько секунд, и раньше они перестраивались вместе со шкалой: два
+  /// текста, Row и Column шестьдесят раз в секунду на ровном месте.
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        // Подпись объясняет смысл механики: жар множит ВЕСЬ поток, а не
-        // добавляет каплю за нажатие. Без этого игрок не поймёт, зачем тапать.
-        final label = controller.isOverheated
-            ? 'ПЕРЕГРЕВ · БРАК'
-            : controller.isInZone
-                ? 'В САМЫЙ РАЗ · ВСЁ ПРОИЗВОДСТВО'
-                : 'ЖАР ПОД АППАРАТОМ';
-        final labelColor = controller.isOverheated
-            ? GColors.hot
-            : controller.isInZone
-                ? GColors.green
-                : GColors.textMid;
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ValueListenableBuilder<HeatStatus>(
+          valueListenable: controller.statusNotifier,
+          builder: (context, status, _) => Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('ЖАР ПОД КУБОМ', style: GType.label()),
+              const SizedBox(width: GS.s2),
+              // Состояние — гибкое. «В САМЫЙ РАЗ · сорт растёт» вместе с
+              // заголовком не влезает в узкий телефон, и строка вылезала за
+              // край жёлто-чёрной лентой.
+              Flexible(
+                child: Text(
+                  '${controller.label} · ${controller.hint}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: GType.num(
+                    size: 10,
+                    weight: FontWeight.w500,
+                    color: _accentFor(status),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: GS.s1),
+        // СЕРИЯ — то, ради чего вообще держат палец. Её обязано быть видно
+        // рядом со шкалой: без неё зажим выглядит бессмысленным.
+        AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final mult = controller.multiplier;
+            return Row(
               children: [
-                Text(label, style: GType.label().copyWith(color: labelColor)),
-                if (controller.multiplier > 1) ...[
-                  const SizedBox(width: GS.s2),
-                  Text(
-                    '×${controller.multiplier.toStringAsFixed(controller.multiplier == controller.multiplier.roundToDouble() ? 0 : 1)}',
-                    style: GType.num(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      color: labelColor,
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(GR.pill),
+                    child: SizedBox(
+                      height: 5,
+                      child: Stack(
+                        children: [
+                          const ColoredBox(
+                            color: GColors.wellBg,
+                            child: SizedBox.expand(),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: controller.series.clamp(0.0, 1.0),
+                            child: const ColoredBox(color: GColors.amber),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ],
-            ),
-            const SizedBox(height: GS.s2),
-            SizedBox(
-              height: 18,
-              child: CustomPaint(
-                painter: _GaugePainter(
-                  heat: controller.heat,
-                  zoneStart: controller.zoneStart,
-                  zoneEnd: controller.zoneEnd,
-                  overheated: controller.isOverheated,
-                  inZone: controller.isInZone,
                 ),
-                size: Size.infinite,
+                const SizedBox(width: GS.s2),
+                Text(
+                  '${Fmt.mult(mult)} СЕРИЯ',
+                  style: GType.num(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    color: mult > 1.05 ? GColors.amber : GColors.textLo,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: GS.s2),
+        SizedBox(
+          height: 18,
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) => CustomPaint(
+              painter: _GaugePainter(
+                heat: controller.heat,
+                windowStart: controller.windowStart,
+                windowEnd: controller.windowEnd,
+                accent: _accentFor(controller.status),
               ),
+              size: Size.infinite,
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
+
+  static Color _accentFor(HeatStatus status) => switch (status) {
+        HeatStatus.overheated => GColors.hot,
+        HeatStatus.inWindow => GColors.green,
+        HeatStatus.off => GColors.textMid,
+      };
 }
 
 class _GaugePainter extends CustomPainter {
   final double heat;
-  final double zoneStart;
-  final double zoneEnd;
-  final bool overheated;
-  final bool inZone;
+  final double windowStart;
+  final double windowEnd;
+  final Color accent;
 
   _GaugePainter({
     required this.heat,
-    required this.zoneStart,
-    required this.zoneEnd,
-    required this.overheated,
-    required this.inZone,
+    required this.windowStart,
+    required this.windowEnd,
+    required this.accent,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    const trackHeight = 10.0;
+    const trackHeight = 8.0;
     final top = (size.height - trackHeight) / 2;
     const radius = Radius.circular(trackHeight / 2);
 
     // Жёлоб.
-    final track = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, top, size.width, trackHeight),
-      radius,
-    );
-    canvas.drawRRect(track, Paint()..color = GColors.wellBg);
-
-    final zs = zoneStart.clamp(0.0, 1.0) * size.width;
-    final ze = zoneEnd.clamp(0.0, 1.0) * size.width;
-
-    // Подложка зоны — под заливкой, чтобы не спорить с ней цветом.
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTRB(zs, top, ze, top + trackHeight), radius),
-      Paint()..color = GColors.green.withOpacity(0.25),
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, top, size.width, trackHeight),
+        radius,
+      ),
+      Paint()..color = GColors.wellBg,
     );
 
-    // Залитая часть — текущий жар.
-    final fillWidth = heat.clamp(0.0, 1.0) * size.width;
-    if (fillWidth > 0) {
-      final fill = RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, top, fillWidth, trackHeight),
-        radius,
+    // Окно — подложка под заливкой, чтобы не спорить цветом.
+    final ws = windowStart.clamp(0.0, 1.0) * size.width;
+    final we = windowEnd.clamp(0.0, 1.0) * size.width;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTRB(ws, top, we, top + trackHeight), radius),
+      Paint()..color = GColors.green.withOpacity(0.22),
+    );
+
+    // Заливка жара.
+    final fill = heat.clamp(0.0, 1.0) * size.width;
+    if (fill > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, top, fill, trackHeight),
+          radius,
+        ),
+        Paint()
+          ..shader = LinearGradient(
+            colors: [GColors.cold, accent],
+          ).createShader(Rect.fromLTWH(0, top, size.width, trackHeight)),
       );
-      final paint = Paint()
-        ..shader = LinearGradient(
-          colors: overheated
-              ? const [GColors.hot, GColors.hot]
-              : const [GColors.cold, GColors.amber],
-        ).createShader(Rect.fromLTWH(0, top, size.width, trackHeight));
-      canvas.drawRRect(fill, paint);
     }
 
-    // Границы зоны рисуем ПОВЕРХ заливки.
-    //
-    // Раньше заливка закрашивала зону целиком, и после перегрева игрок терял
-    // ориентир: было не видно, куда возвращаться. Теперь зона всегда читается.
+    // Рамка окна ПОВЕРХ заливки — она обязана оставаться видимой всегда.
     final edge = Paint()
       ..color = GColors.green
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset(zs, top - 3), Offset(zs, top + trackHeight + 3), edge);
-    canvas.drawLine(Offset(ze, top - 3), Offset(ze, top + trackHeight + 3), edge);
-    canvas.drawLine(
-      Offset(zs, top - 3),
-      Offset(ze, top - 3),
-      edge..strokeWidth = 1.5,
-    );
+    canvas.drawLine(Offset(ws, top - 3), Offset(ws, top + trackHeight + 3), edge);
+    canvas.drawLine(Offset(we, top - 3), Offset(we, top + trackHeight + 3), edge);
 
-    // Стрелка текущего положения.
-    final needleColor = overheated
-        ? GColors.hot
-        : inZone
-            ? GColors.green
-            : GColors.textHi;
-    final x = fillWidth.clamp(1.5, size.width - 1.5);
+    // Стрелка текущего жара.
+    final x = fill.clamp(1.5, size.width - 1.5);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(x - 1.5, top - 4, 3, trackHeight + 8),
+        Rect.fromLTWH(x - 1.5, top - 5, 3, trackHeight + 10),
         const Radius.circular(2),
       ),
-      Paint()..color = needleColor,
+      Paint()..color = GColors.lamp,
     );
   }
 
   @override
   bool shouldRepaint(_GaugePainter old) =>
       old.heat != heat ||
-      old.zoneStart != zoneStart ||
-      old.overheated != overheated ||
-      old.inZone != inZone;
+      old.windowStart != windowStart ||
+      old.accent != accent;
 }

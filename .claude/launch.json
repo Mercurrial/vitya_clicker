@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vitya",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["tools/serve.py"],
+      "port": 8771,
+      "autoPort": true
+    }
+  ]
+}

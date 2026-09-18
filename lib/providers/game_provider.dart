@@ -2,16 +2,23 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../content/buyers.dart';
 import '../content/game_content.dart';
+import '../content/sorts.dart';
+import '../content/vitya_quotes.dart';
+import '../core/formatters.dart';
+import '../ui/widgets/vitya_toast.dart';
 import '../models/achievement.dart';
 import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../core/save.dart';
+import '../core/save_code.dart';
 import '../engine/formulas.dart';
 import '../engine/game_engine.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
 import '../models/upgrade.dart';
+import '../ui/game/heat_controller.dart' show HeatStatus;
 
 final timeProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -31,6 +38,9 @@ final clockProvider = Provider<GameClock>((ref) => const GameClock());
 /// что его должен видеть и движок (для тика), и интерфейс (чтобы показывать
 /// фактическую скорость, а не базовую).
 final heatMultiplierProvider = StateProvider<double>((ref) => 1.0);
+
+/// Состояние жара относительно окна — от него зависит, растёт сорт или горит.
+final heatStatusProvider = StateProvider<HeatStatus>((ref) => HeatStatus.off);
 
 final formulasProvider = Provider<Formulas>((ref) => const Formulas());
 
@@ -82,7 +92,8 @@ class GameNotifier extends Notifier<GameState> {
     await saves.save(json);
   }
 
-  /// Текущий жар под аппаратом — множит ВЕСЬ пассивный поток.
+  /// Множитель СЕРИИ — множит ВЕСЬ пассивный поток. Это единственное, что
+  /// даёт активная игра.
   double get _heatMultiplier => ref.read(heatMultiplierProvider);
 
   void setHeat(double multiplier) =>
@@ -98,11 +109,34 @@ class GameNotifier extends Notifier<GameState> {
 
     var next = engine.processTick(state, now, heatMultiplier: _heatMultiplier);
 
+    // Сорт двигается тем же тиком: держишь жар в окне — растёт, перегрел —
+    // горит, отвлёкся — медленно сползает.
+    final dt = _tickInterval.inMilliseconds / 1000.0;
+    next = engine.advanceSort(next, switch (ref.read(heatStatusProvider)) {
+      HeatStatus.inWindow => kSortGainPerSecond * dt,
+      HeatStatus.overheated => -kSortBurnPerSecond * dt,
+      HeatStatus.off => -kSortDecayPerSecond * dt,
+    });
+
     // Автопродажа: открывается достижением, а не выдаётся сразу. Именно так
     // неудобство превращается в цель, из которой игрок выкупается.
     if (next.achievements.hasPerk(AchievementPerk.autoSell) && next.isTankFull) {
       next = engine.sell(next, now);
     }
+
+    // Сорт поднялся — это событие, его надо показать. Момент редкий, поэтому
+    // здесь уместна и реплика Вити.
+    if (next.sort.index > state.sort.index) {
+      ref.read(toastProvider.notifier).show(
+            kind: 'СОРТ ПОДНЯЛСЯ',
+            title: next.sort.name,
+            note: 'цена за литр ${Fmt.mult(next.sort.multiplier)}',
+            event: VityaEvent.gradeUp,
+          );
+    }
+    // Падение сорта и обычную продажу больше не объявляем: плашки сыпались
+    // десятками за сеанс и превращались в шум, который перестают читать.
+    // Остаётся редкое и важное — поднялся сорт, случилось похмелье.
 
     final checked = engine.checkAchievements(next);
     if (checked.fresh.isNotEmpty) freshAchievements.addAll(checked.fresh);
@@ -110,17 +144,23 @@ class GameNotifier extends Notifier<GameState> {
     state = checked.state;
   }
 
-  /// Нажатие по Вите. [heatMultiplier] приходит от шкалы ГРАДУСА.
-  void tap({double heatMultiplier = 1.0}) {
+  /// Игрок коснулся гаража. Самогона это не даёт — только счётчик и
+  /// достижения; производство двигает жар, а его держат зажимом.
+  void registerTouch() {
     final engine = ref.read(gameEngineProvider);
-    state = engine.processTap(
-      state,
-      ref.read(timeProvider)(),
-      heatMultiplier: heatMultiplier,
-    );
+    state = engine.registerTouch(state, ref.read(timeProvider)());
   }
 
-  /// Сдать весь бак по текущей цене.
+  /// Сдать бак конкретному покупателю.
+  void sellTo(Buyer buyer) {
+    final engine = ref.read(gameEngineProvider);
+    final now = ref.read(timeProvider)();
+    if (!engine.canSellTo(state, buyer)) return;
+    state = engine.sellTo(state, buyer, now);
+
+  }
+
+  /// Сдать бак соседу — он берёт всегда.
   void sell() {
     final engine = ref.read(gameEngineProvider);
     state = engine.sell(state, ref.read(timeProvider)());
@@ -148,8 +188,51 @@ class GameNotifier extends Notifier<GameState> {
       ref.read(upgradesContentProvider),
       ref.read(timeProvider)(),
     );
+    ref.read(toastProvider.notifier).show(
+          kind: 'ПОХМЕЛЬЕ',
+          title: 'Мудрость: ${state.prestige.wisdom}',
+          note: 'гараж пуст, голова тяжёлая',
+          event: VityaEvent.hangover,
+        );
+
     // Событие необратимое — пишем сразу, не дожидаясь автосейва.
     saveNow();
+  }
+
+  /// Свернуть текущий прогресс в строку.
+  ///
+  /// Берём состояние из памяти, а не с диска: игрок жмёт «скопировать» ровно
+  /// затем, чтобы сохранить то, что видит сейчас, а автосейв мог не успеть.
+  String exportCode() {
+    final json = ref.read(serializerProvider).toJson(
+          state,
+          lastSeenMillis: ref.read(clockProvider).nowMillis(),
+        );
+    return encodeSaveCode(const SaveCodec().encode(json));
+  }
+
+  /// Принять прогресс из строки.
+  ///
+  /// Возвращает `null`, если получилось, иначе — почему нет. Состояние
+  /// применяется сразу: заставлять игрока перезапускать игру после переноса
+  /// значит дать ему лишний повод усомниться, что перенос вообще случился.
+  Future<SaveCodeError?> importCode(String? code) async {
+    final parsed = decodeSaveCode(code);
+    if (!parsed.isOk) return parsed.error;
+
+    // Через тот же кодек, что и обычная загрузка: код может быть записан
+    // старой версией игры, и миграции обязаны отработать.
+    final loaded = const SaveCodec().decode(parsed.save);
+    if (loaded.isEmpty || loaded.wasCorrupt) return SaveCodeError.damaged;
+
+    state = ref.read(serializerProvider).fromJson(
+          loaded.data!,
+          content: ref.read(generatorsContentProvider),
+          upgrades: ref.read(upgradesContentProvider),
+          now: ref.read(timeProvider)(),
+        );
+    await saveNow();
+    return null;
   }
 
   /// Полный сброс: стереть сейв и начать с нуля.

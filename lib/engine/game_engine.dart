@@ -1,4 +1,6 @@
 import '../content/achievements.dart';
+import '../content/balance.dart';
+import '../content/buyers.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
@@ -19,32 +21,19 @@ class GameEngine {
     return room > 0 ? room : 0.0;
   }
 
-  /// Нажатие по Вите — подкинуть дров под аппарат.
+  /// Отметить касание — только для счётчика и достижений.
   ///
-  /// Главная ценность тапа не здесь, а в жаре: он множит ВСЁ производство
-  /// (см. [processTick]). Прямая отдача нужна лишь для того, чтобы нажатие
-  /// ощущалось, и она считается как доля секунды производства — поэтому не
-  /// отмирает с ростом империи, как отмирала бы константа.
-  GameState processTap(
-    GameState state,
-    DateTime currentTime, {
-    double heatMultiplier = 1.0,
-  }) {
-    // В полный бак не налить — это и есть сигнал «пора продавать».
-    final gain = _clampToRoom(state, state.tapYield * heatMultiplier);
-    if (gain <= 0) {
-      return state.copyWith(
-        clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
-        lastUpdateTime: currentTime,
-      );
-    }
-
+  /// Самогона касание НЕ даёт, и это главное решение всей переделки. Пока
+  /// давало, выигрывал тот, кто быстрее долбит по экрану: спам приносил
+  /// больше любой осмысленной игры, а «подождать хороший сорт» становилось
+  /// проигрышной стратегией. Навыка в этом не было — только выносливость.
+  ///
+  /// Теперь касание влияет на производство единственным путём — через жар
+  /// (см. [processTick] и его множитель). Жар держат зажимом, поэтому долбить
+  /// по экрану бессмысленно физически.
+  GameState registerTouch(GameState state, DateTime currentTime) {
     return state.copyWith(
-      resources: state.resources.copyWith(ml: state.resources.ml + gain),
       clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
-      prestige: state.prestige.copyWith(
-        totalEverEarned: state.prestige.totalEverEarned + gain,
-      ),
       lastUpdateTime: currentTime,
     );
   }
@@ -130,33 +119,70 @@ class GameEngine {
     return (state: next, gained: next.resources.ml - before);
   }
 
-  /// Сдать весь бак по текущей цене.
+  /// Двинуть сорт: жар в окне поднимает, перегрев жжёт, мимо — медленно сползает.
   ///
-  /// Цена зависит от момента, поэтому продажа — это решение, а не рутина:
-  /// на пике рынка тот же бак стоит заметно дороже.
-  GameState sell(GameState state, DateTime currentTime) {
-    final ml = state.resources.ml;
-    if (ml <= 0) return state;
+  /// Интерфейс присылает уже посчитанную дельту, движок про шкалу не знает и
+  /// остаётся чистым.
+  GameState advanceSort(GameState state, double delta) {
+    if (delta == 0) return state;
+    final next = state.sort.advance(delta);
+    return next == state.sort ? state : state.copyWith(sort: next);
+  }
 
-    final revenue = ml * Market.pricePerMl(currentTime, state.upgrades);
+  /// Возьмёт ли этот покупатель товар прямо сейчас.
+  bool canSellTo(GameState state, Buyer buyer) =>
+      state.resources.ml > 0 &&
+      state.resources.ml >= buyer.minMl &&
+      state.sort.index >= buyer.minSortIndex;
+
+  /// Сколько заплатит покупатель за то, что в баке.
+  ///
+  /// Цена складывается из рыночной за миллилитр, надбавки за **сорт** (чем
+  /// лучше нагнали, тем дороже) и коэффициента покупателя.
+  double saleValueFor(GameState state, Buyer buyer, DateTime currentTime) {
+    final volume = buyer.volumeFrom(state.resources.ml);
+    return volume *
+        Market.pricePerMl(currentTime, state.upgrades) *
+        state.sort.multiplier *
+        buyer.multiplier;
+  }
+
+  /// Сдать товар покупателю.
+  ///
+  /// Хорошие покупатели забирают вместе с товаром и сорт — его придётся
+  /// нарабатывать заново. Именно это делает «подождать и довести до кедрача»
+  /// ставкой, а не очевидностью.
+  GameState sellTo(GameState state, Buyer buyer, DateTime currentTime) {
+    if (!canSellTo(state, buyer)) return state;
+
+    final volume = buyer.volumeFrom(state.resources.ml);
+    final revenue = saleValueFor(state, buyer, currentTime);
 
     return state.copyWith(
       resources: state.resources.copyWith(
-        ml: 0,
+        ml: state.resources.ml - volume,
         money: state.resources.money + revenue,
       ),
+      sort: buyer.consumesSort ? state.sort.dropOneStep() : state.sort,
       lastUpdateTime: currentTime,
     );
   }
 
-  /// Сколько дадут за бак прямо сейчас.
+  /// Сдать бак соседу — он берёт всегда. Этим пользуется автопродажа.
+  GameState sell(GameState state, DateTime currentTime) =>
+      sellTo(state, kBuyers.first, currentTime);
+
+  /// Сколько дадут за бак у соседа прямо сейчас.
   double saleValue(GameState state, DateTime currentTime) =>
-      state.resources.ml * Market.pricePerMl(currentTime, state.upgrades);
+      saleValueFor(state, kBuyers.first, currentTime);
+
+  /// Скорость удорожания — одна на всю игру, из баланса.
+  double get _growth => Balance.current.costGrowth;
 
   /// Стоимость следующей штуки аппарата, в рублях.
   double generatorCost(Generator g) => formulas.calculateUpgradeCost(
         g.baseCost,
-        g.costGrowthFactor,
+        _growth,
         g.ownedCount,
       );
 
@@ -182,14 +208,14 @@ class GameEngine {
   /// Сколько штук игрок может позволить прямо сейчас.
   int affordableCount(GameState state, Generator g) => formulas.maxAffordable(
         g.baseCost,
-        g.costGrowthFactor,
+        _growth,
         g.ownedCount,
         state.resources.money,
       );
 
   /// Цена пачки в [count] штук.
   double bulkCost(Generator g, int count) =>
-      formulas.bulkCost(g.baseCost, g.costGrowthFactor, g.ownedCount, count);
+      formulas.bulkCost(g.baseCost, _growth, g.ownedCount, count);
 
   /// Купить сразу несколько штук.
   ///
@@ -255,10 +281,7 @@ class GameEngine {
     return GameState.initial(
       initialGenerators: initialGenerators,
       initialUpgrades: initialUpgrades,
-      prestige: state.prestige.copyWith(
-        wisdom: state.prestige.potentialWisdom,
-        hangovers: state.prestige.hangovers + 1,
-      ),
+      prestige: state.prestige.claimAll(),
       // Достижения — мета-слой: они переживают похмелье вместе с мудростью,
       // иначе открытые ими функции отбирались бы обратно.
       achievements: state.achievements,
