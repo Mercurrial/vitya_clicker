@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write        # нужно, чтобы убрать артефакт прошлой попытки
 
 concurrency:
   group: pages
@@ -22,11 +23,34 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          # Версия прибита гвоздями. С "channel: stable" CI собирал игру
+          # Flutter 3.47, а тесты у нас гоняются на 3.24 — выкладывалось то,
+          # что никто не проверял.
+          flutter-version: 3.24.3
           channel: stable
           cache: true
 
       - run: flutter --version
       - run: flutter pub get
+
+      # Выложить сломанную сборку дороже, чем подождать полминуты:
+      # ссылка одна на всех.
+      - run: flutter analyze
+      - run: flutter test
+
+      # Re-run загружает артефакт с тем же именем второй раз, и deploy-pages
+      # отказывается выбирать из двух одинаковых. Именно так упал запуск #1.
+      - name: Убрать артефакт прошлой попытки
+        if: github.run_attempt != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "github-pages") | .id' |
+          while read -r id; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+          done
+
       - run: flutter build web --release --base-href /vitya_clicker/
 
       - uses: actions/configure-pages@v5
