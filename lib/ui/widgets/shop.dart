@@ -314,15 +314,12 @@ class _MilestoneBar extends StatelessWidget {
           child: FillBar(value: frac, height: 4, color: GColors.copper),
         ),
         const SizedBox(width: GS.s2),
-        // Подпись короткая и гибкая: длинный вариант выдавливал строку за
-        // край карточки на обычном телефоне.
-        Flexible(
-          child: Text(
-            next != null ? 'ещё ${next - owned} шт. → ×${mult * 2}' : '×$mult · предел',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GType.num(size: 10, color: GColors.textMid),
-          ),
+        // Подпись важнее полоски: полоска ужимается, подпись — нет. Когда
+        // они делили ширину поровну, «→ ×16» уходило в многоточие.
+        Text(
+          next != null ? 'ещё ${next - owned} → ×${mult * 2}' : '×$mult · предел',
+          maxLines: 1,
+          style: GType.num(size: 10, color: GColors.textMid),
         ),
       ],
     );
