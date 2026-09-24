@@ -40,7 +40,7 @@ library;
 ///
 /// Это не версия сейва (`kSaveVersion`) — та про формат данных. Формат может
 /// не меняться годами, а баланс править каждую неделю.
-const int kBalanceVersion = 4;
+const int kBalanceVersion = 5;
 
 /// Настраиваемые числа.
 ///
@@ -107,6 +107,13 @@ class Balance {
   /// невыгоднее предыдущей, а значит — сколько её придётся зарабатывать.
   final double tierOutputRatio;
 
+  /// Какую долю бака забирает участковый у попавшегося.
+  ///
+  /// Здесь, а не рядом с самой механикой, потому что это число экономики: оно
+  /// будет правиться по ощущениям от игры, а любая его правка делает игроку
+  /// хуже. Значит, она обязана пройти через версию баланса и объяснение.
+  final double raidSeizure;
+
   const Balance({
     required this.costGrowth,
     required this.firstWisdomMl,
@@ -122,6 +129,7 @@ class Balance {
     required this.tierCostRatio,
     required this.firstGeneratorOutput,
     required this.tierOutputRatio,
+    required this.raidSeizure,
   });
 
   /// Действующий баланс.
@@ -142,6 +150,7 @@ class Balance {
     double? tierCostRatio,
     double? firstGeneratorOutput,
     double? tierOutputRatio,
+    double? raidSeizure,
   }) =>
       Balance(
         costGrowth: costGrowth ?? this.costGrowth,
@@ -158,6 +167,7 @@ class Balance {
         tierCostRatio: tierCostRatio ?? this.tierCostRatio,
         firstGeneratorOutput: firstGeneratorOutput ?? this.firstGeneratorOutput,
         tierOutputRatio: tierOutputRatio ?? this.tierOutputRatio,
+        raidSeizure: raidSeizure ?? this.raidSeizure,
       );
 }
 
@@ -181,6 +191,7 @@ const Balance kBalance = Balance(
   tierCostRatio: 30.0,
   firstGeneratorOutput: 1,
   tierOutputRatio: 6.05,
+  raidSeizure: 0.4,
 );
 
 /// Прогнать код на другом балансе и вернуть всё как было.
@@ -284,6 +295,23 @@ const List<BalanceRelease> kBalanceLog = [
           'числа и разъехались.',
       'Мудрость за уже нагнанное пересчитается сама и станет заметно больше — '
           'а сверху ещё две за беспокойство.',
+    ],
+  ),
+  BalanceRelease(
+    version: 5,
+    title: 'Участковый и звук',
+    // Не ослабление: ни одно прежнее число не стало хуже. ШУХЕР — новая
+    // механика, и потерять из-за неё что-то можно, только продолжая держать
+    // палец после предупреждения. Правило про компенсацию защищает от ТИХОГО
+    // ухудшения, а тут оно громкое — с сиреной и красной плашкой.
+    changes: [
+      'Появился ШУХЕР. Иногда во двор заезжает участковый Николай Петрович. '
+          'Даётся семь секунд, чтобы затихнуть: отпусти палец и пережди. '
+          'Застанет за работой — заберёт часть бака и уронит сорт.',
+      'Отпустить — единственное, что нужно сделать. Кто не держит палец, тот '
+          'не рискует ничем: оффлайн и простой участкового не интересуют.',
+      'У игры появился звук: удары, покупки, продажи, перегрев, сирена. '
+          'Выключается на вкладке «Витя» вместе с вибрацией.',
     ],
   ),
 ];

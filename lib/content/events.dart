@@ -154,7 +154,7 @@ ActiveEvent? eventAt(DateTime now) {
   final windowMs = kEventWindow.inMilliseconds;
 
   final slot = ms ~/ slotMs;
-  final h = _hash(slot);
+  final h = scheduleHash(slot);
 
   if (h % 100 >= _chancePercent) return null;
 
@@ -173,7 +173,9 @@ ActiveEvent? eventAt(DateTime now) {
 /// Перемешивание битов. Нужен не криптографический хеш, а просто число, у
 /// которого соседние аргументы дают непохожие результаты: иначе события
 /// выстроятся в лесенку.
-int _hash(int x) {
+///
+/// Общий для событий и для ШУХЕРА — оба выводят расписание из часов.
+int scheduleHash(int x) {
   var h = (x * 0x9E3779B1) & 0x3FFFFFFF;
   h ^= h >> 15;
   h = (h * 0x2545F491) & 0x3FFFFFFF;

@@ -119,11 +119,12 @@ void main() {
           b.tierCostRatio,
           b.firstGeneratorOutput,
           b.tierOutputRatio,
+          b.raidSeizure,
         ].join('|');
 
     test('числа баланса совпадают с записанным отпечатком', () {
       const expected = '1.26|250000000.0|0.08|0.1|2000.0|120.0|1800.0|'
-          '10,25,50,100|15.0|30.0|1.0|6.05';
+          '10,25,50,100|15.0|30.0|1.0|6.05|0.4';
 
       expect(
         fingerprint(kBalance),
