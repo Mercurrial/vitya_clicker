@@ -258,7 +258,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'all_recept',
     name: 'Рецепт прадеда',
-    description: 'Все аппараты +50%',
+    description: 'Все аппараты ×1.5',
     cost: 40000,
     target: UpgradeTarget.allGenerators,
     multiplier: 1.5,

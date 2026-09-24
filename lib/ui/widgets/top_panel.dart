@@ -320,7 +320,12 @@ class _SellRow extends ConsumerWidget {
           flex: 6,
           child: SellButton(
             title: guest.name.toUpperCase(),
-            note: '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active!.remaining)}',
+            // Пока не берут — их собственная реплика («не первач же»): она
+            // объясняет отказ лучше таблицы. Когда берут — во сколько раз
+            // дороже Петровича.
+            note: canGuest
+                ? '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active!.remaining)}'
+                : '${guest.lockedNote} · ${Fmt.clock(active!.remaining)}',
             noteAlert: false,
             payout: engine.saleValueFor(state, guest, now),
             // Пока сорт не дотягивает, вместо суммы — чего не хватает. Это и

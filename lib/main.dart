@@ -11,7 +11,7 @@ import 'providers/game_provider.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
 import 'ui/screens/welcome_back.dart';
-import 'ui/theme/art_style.dart';
+import 'providers/settings_provider.dart';
 import 'ui/theme/garage.dart';
 
 Future<void> main() async {

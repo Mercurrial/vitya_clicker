@@ -4,7 +4,7 @@ import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/core/settings.dart';
 import 'package:idle_game/providers/game_provider.dart';
-import 'package:idle_game/ui/theme/art_style.dart';
+import 'package:idle_game/providers/settings_provider.dart';
 import 'package:idle_game/ui/widgets/vitya_toast.dart';
 
 /// Взятая цель объявляется плашкой.

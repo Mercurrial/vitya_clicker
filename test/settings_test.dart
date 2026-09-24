@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/core/settings.dart';
-import 'package:idle_game/ui/theme/art_style.dart';
+import 'package:idle_game/providers/feedback_provider.dart';
+import 'package:idle_game/providers/settings_provider.dart';
 
 ProviderContainer _containerWith(SettingsStore store) {
   final container = ProviderContainer(
@@ -11,42 +12,38 @@ ProviderContainer _containerWith(SettingsStore store) {
   return container;
 }
 
+/// Настройки: звук и вибрация.
+///
+/// Проверяется не «как звучит», а то, что галочка ведёт себя как галочка:
+/// включена по умолчанию, запоминается, переживает перезапуск и не роняет
+/// игру, если в хранилище мусор.
 void main() {
-  group('Выбор стиля', () {
-    test('по умолчанию пиксель', () {
+  group('Звук и вибрация', () {
+    test('по умолчанию включены', () {
       final container = _containerWith(MemorySettingsStore());
-      expect(container.read(artStyleProvider), ArtStyle.pixel);
+      expect(container.read(soundEnabledProvider), isTrue);
+      expect(container.read(hapticsEnabledProvider), isTrue);
     });
 
-    test('переключение записывается в настройки', () async {
+    test('выключение записывается в настройки', () {
       final store = MemorySettingsStore();
-      final container = _containerWith(store);
-
-      container.read(artStyleProvider.notifier).toggle();
-
-      expect(container.read(artStyleProvider), ArtStyle.poster);
-      expect(store.read(SettingsKeys.artStyle), ArtStyle.poster.name);
+      _containerWith(store).read(soundEnabledProvider.notifier).set(false);
+      expect(store.read(SettingsKeys.sound), 'off');
     });
 
     test('переживает перезапуск', () {
       final store = MemorySettingsStore();
-      _containerWith(store).read(artStyleProvider.notifier).set(ArtStyle.poster);
+      _containerWith(store).read(hapticsEnabledProvider.notifier).set(false);
 
       // Второй контейнер — это и есть «игру закрыли и открыли заново».
-      expect(_containerWith(store).read(artStyleProvider), ArtStyle.poster);
+      expect(_containerWith(store).read(hapticsEnabledProvider), isFalse);
+      expect(_containerWith(store).read(soundEnabledProvider), isTrue,
+          reason: 'выключили вибрацию — звук трогать было незачем');
     });
 
-    test('мусор в настройках не роняет игру', () {
-      final store = MemorySettingsStore({SettingsKeys.artStyle: 'барокко'});
-      expect(_containerWith(store).read(artStyleProvider), ArtStyle.pixel);
-    });
-
-    test('храним имя, а не порядковый номер', () {
-      // Порядок в enum когда-нибудь поменяют, и сохранённая «1» станет чужим
-      // стилем. Этот тест держит формат.
-      final store = MemorySettingsStore();
-      _containerWith(store).read(artStyleProvider.notifier).set(ArtStyle.poster);
-      expect(store.read(SettingsKeys.artStyle), 'poster');
+    test('мусор в настройках не роняет игру и не глушит звук', () {
+      final store = MemorySettingsStore({SettingsKeys.sound: 'барокко'});
+      expect(_containerWith(store).read(soundEnabledProvider), isTrue);
     });
   });
 }

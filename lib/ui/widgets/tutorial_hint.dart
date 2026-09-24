@@ -15,7 +15,7 @@ import '../../content/tutorial.dart';
 import '../../core/settings.dart';
 import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
-import '../theme/art_style.dart';
+import '../../providers/settings_provider.dart';
 import '../theme/garage.dart';
 
 /// Самый дальний пройденный шаг. Переживает перезапуск, но лежит в настройках,
