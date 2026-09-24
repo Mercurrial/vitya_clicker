@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../pixel/pixel_portrait.dart';
@@ -25,12 +24,65 @@ extension _EraAsset on VityaEra {
       };
 }
 
+/// Настроение Вити — реакция на то, что происходит прямо сейчас.
+///
+/// Эпоха меняется раз в несколько часов и говорит, кем Витя стал. Настроение
+/// меняется ежесекундно и говорит, как у него дела. Без него портрет был
+/// единственной частью экрана, которая не откликалась ни на что: жар горит,
+/// бак переполнен, участковый во дворе — а на стене всё то же лицо.
+///
+/// Показывается рамой и подписью, а не подменой фотографии: фотографий три,
+/// и рисовать под каждое настроение ещё по одной некому. Рама — это оправа
+/// вокруг лица, и её достаточно, чтобы состояние читалось боковым зрением.
+enum VityaMood {
+  /// Всё идёт как идёт.
+  calm,
+
+  /// Жар в окне — работа спорится.
+  inWork,
+
+  /// Перегрел.
+  burnt,
+
+  /// Бак полон, аппараты стоят.
+  stuck,
+
+  /// Участковый во дворе.
+  hiding,
+}
+
+extension VityaMoodLook on VityaMood {
+  /// Цвет рамы. Молчание — тоже ответ, поэтому у спокойного цвета нет.
+  Color? get tint => switch (this) {
+        VityaMood.calm => null,
+        VityaMood.inWork => GColors.green,
+        VityaMood.burnt => GColors.hot,
+        VityaMood.stuck => GColors.amber,
+        VityaMood.hiding => GColors.hot,
+      };
+
+  /// Что написать на табличке вместо эпохи. `null` — оставить эпоху.
+  String? get caption => switch (this) {
+        VityaMood.calm => null,
+        VityaMood.inWork => 'В. — пошёл ровный',
+        VityaMood.burnt => 'В. — перегнал',
+        VityaMood.stuck => 'В. — некуда лить',
+        VityaMood.hiding => 'В. — не дышит',
+      };
+
+  /// Стоит ли тревожно пульсировать. Только для того, что требует действия.
+  bool get urgent => this == VityaMood.hiding;
+}
+
 /// Портрет Вити.
 ///
 /// Жестов не ловит: зона касания одна и она снаружи, на всей сцене. Отсюда
 /// только отдача — сжатие в момент зажима, чтобы касание ощущалось.
 class VityaPortrait extends StatefulWidget {
   final VityaEra era;
+
+  /// Что с Витей происходит прямо сейчас.
+  final VityaMood mood;
 
   /// Держат ли сейчас палец. Портрет САМ жесты не ловит.
   ///
@@ -52,6 +104,7 @@ class VityaPortrait extends StatefulWidget {
     super.key,
     required this.era,
     required this.pressed,
+    this.mood = VityaMood.calm,
     this.size = 220,
     this.style = PixelPortraitStyle.pixel,
     this.radius = GR.card,
@@ -65,6 +118,10 @@ class _VityaPortraitState extends State<VityaPortrait>
     with TickerProviderStateMixin {
   late final AnimationController _press;
 
+  /// Тревожная пульсация. Крутится только когда нужна: вечно вращающийся
+  /// контроллер будит кадры даже в пустом гараже.
+  late final AnimationController _alarm;
+
   @override
   void initState() {
     super.initState();
@@ -73,10 +130,25 @@ class _VityaPortraitState extends State<VityaPortrait>
       duration: const Duration(milliseconds: 90),
       reverseDuration: const Duration(milliseconds: 220),
     );
+    _alarm = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 620),
+    );
+    _syncAlarm();
+  }
+
+  void _syncAlarm() {
+    if (widget.mood.urgent) {
+      if (!_alarm.isAnimating) _alarm.repeat(reverse: true);
+    } else if (_alarm.isAnimating) {
+      _alarm.stop();
+      _alarm.value = 0;
+    }
   }
 
   @override
   void dispose() {
+    _alarm.dispose();
     _press.dispose();
     super.dispose();
   }
@@ -84,13 +156,11 @@ class _VityaPortraitState extends State<VityaPortrait>
   @override
   void didUpdateWidget(VityaPortrait old) {
     super.didUpdateWidget(old);
+    if (widget.mood != old.mood) _syncAlarm();
     if (widget.pressed == old.pressed) return;
-    if (widget.pressed) {
-      _press.forward();
-      HapticFeedback.lightImpact();
-    } else {
-      _press.reverse();
-    }
+    // Вибрация зажима живёт в registerTouch вместе со звуком: портрет — это
+    // картинка, и знать про настройки отдачи ему незачем.
+    widget.pressed ? _press.forward() : _press.reverse();
   }
 
   @override
@@ -122,11 +192,18 @@ class _VityaPortraitState extends State<VityaPortrait>
               child: child,
             );
           },
-          child: _Frame(
-            era: widget.era,
-            size: widget.size,
-            style: widget.style,
-            radius: widget.radius,
+          child: AnimatedBuilder(
+            animation: _alarm,
+            builder: (context, child) => _Frame(
+              era: widget.era,
+              mood: widget.mood,
+              // Пульс идёт только при тревоге; в остальное время это ноль,
+              // и рама не перерисовывается.
+              alarm: _alarm.value,
+              size: widget.size,
+              style: widget.style,
+              radius: widget.radius,
+            ),
           ),
         ),
       ],
@@ -137,12 +214,19 @@ class _VityaPortraitState extends State<VityaPortrait>
 /// Рама портрета: медный кант, тёплый свет сверху, табличка снизу.
 class _Frame extends StatelessWidget {
   final VityaEra era;
+  final VityaMood mood;
+
+  /// 0..1 — тревожный пульс. Нулевой для всех настроений, кроме шухера.
+  final double alarm;
+
   final double size;
   final PixelPortraitStyle style;
   final double radius;
 
   const _Frame({
     required this.era,
+    required this.mood,
+    required this.alarm,
     required this.size,
     required this.style,
     required this.radius,
@@ -151,6 +235,7 @@ class _Frame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grand = era == VityaEra.boss;
+    final tint = mood.tint;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -164,9 +249,16 @@ class _Frame extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: grand
-                  ? const [GColors.amber, GColors.copperDim]
-                  : const [GColors.copper, GColors.copperDim],
+              // Настроение перекрашивает раму. Смешивается с медью, а не
+              // заменяет её: гараж должен остаться гаражом.
+              colors: tint == null
+                  ? (grand
+                      ? const [GColors.amber, GColors.copperDim]
+                      : const [GColors.copper, GColors.copperDim])
+                  : [
+                      Color.lerp(GColors.copper, tint, 0.75)!,
+                      Color.lerp(GColors.copperDim, tint, 0.35)!,
+                    ],
             ),
             boxShadow: [
               const BoxShadow(
@@ -176,6 +268,14 @@ class _Frame extends StatelessWidget {
               if (grand)
                 const BoxShadow(
                     color: GColors.amberGlow, blurRadius: 34, spreadRadius: 2),
+              if (tint != null)
+                BoxShadow(
+                  // withOpacity, а не withValues: последний появился только во
+                  // Flutter 3.27, а собираемся мы 3.24.
+                  color: tint.withOpacity(0.30 + 0.40 * alarm),
+                  blurRadius: 20 + 20 * alarm,
+                  spreadRadius: alarm * 3,
+                ),
             ],
           ),
           child: ClipRRect(
@@ -218,7 +318,9 @@ class _Frame extends StatelessWidget {
         // высоту, растягивается на бесконечность и утаскивает за экран всю
         // сцену. Проверено — пропал и портрет, и полки с аппаратами.
         Text(
-          era.caption,
+          // Настроение важнее эпохи: «В. — директор производства» игрок
+          // прочитал один раз, а «не дышит» надо прочитать сейчас.
+          mood.caption ?? era.caption,
           textAlign: TextAlign.center,
           maxLines: 1,
           softWrap: false,

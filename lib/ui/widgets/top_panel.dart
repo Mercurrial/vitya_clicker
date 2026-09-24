@@ -1,5 +1,4 @@
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -328,10 +327,9 @@ class _BuyerRow extends ConsumerWidget {
           available: engine.canSellTo(state, buyer),
           payout: engine.saleValueFor(state, buyer, now),
           countdown: countdown,
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            ref.read(gameProvider.notifier).sellTo(buyer);
-          },
+          // Вибрация и звук — внутри sellTo: сделка может не состояться, и
+          // тогда отдачи быть не должно.
+          onTap: () => ref.read(gameProvider.notifier).sellTo(buyer),
         );
 
     return Row(

@@ -270,6 +270,27 @@ class GameEngine {
     );
   }
 
+  /// ПОПАЛСЯ: участковый застал Витю за работой.
+  ///
+  /// Забирает часть бака и роняет сорт на ступень. Именно часть, а не всё:
+  /// потеря должна быть обидной, но восполнимой за несколько минут — иначе
+  /// механика перестаёт быть напряжением и становится поводом закрыть игру.
+  ///
+  /// Историю ([totalEverEarned]) конфискация НЕ трогает. Нагнанное было
+  /// нагнано, и мудрость за него уже заслужена; отбирать её задним числом
+  /// значило бы наказывать дважды.
+  GameState seizeByPolice(GameState state, DateTime currentTime) {
+    if (state.resources.ml <= 0 && state.sort.index == 0) return state;
+
+    return state.copyWith(
+      resources: state.resources.copyWith(
+        ml: state.resources.ml * (1 - Balance.current.raidSeizure),
+      ),
+      sort: state.sort.dropOneStep(),
+      lastUpdateTime: currentTime,
+    );
+  }
+
   /// ПОХМЕЛЬЕ: заход начинается заново в обмен на перманентную мудрость.
   ///
   /// Начинается именно ЗАНОВО, а не с нуля: в гараже остаётся та же банка, с

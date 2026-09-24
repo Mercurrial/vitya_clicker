@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bootstrap.dart';
+import 'core/sfx_player.dart';
+import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
@@ -45,6 +47,13 @@ Future<void> main() async {
         initialStateProvider.overrideWithValue(boot.state),
         saveServiceProvider.overrideWithValue(boot.saves),
         settingsStoreProvider.overrideWithValue(boot.settings),
+        // Настоящий звук подставляется только здесь. Во всех тестах остаётся
+        // тишина по умолчанию — ни один из них не пытается открыть динамик.
+        soundOutputProvider.overrideWith((ref) {
+          final output = AudioSfxOutput();
+          ref.onDispose(output.dispose);
+          return output;
+        }),
       ],
       child: VityaApp(boot: boot),
     ),

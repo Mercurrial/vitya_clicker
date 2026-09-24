@@ -6,6 +6,7 @@ import '../../content/achievements.dart';
 import '../../core/formatters.dart';
 import '../../engine/production.dart';
 import '../../models/achievement.dart';
+import '../../models/game_state.dart';
 import '../../models/prestige_state.dart';
 import '../../providers/game_provider.dart';
 import '../game/heat_controller.dart';
@@ -16,7 +17,12 @@ import '../pixel/goal_icons.dart';
 import '../pixel/pixel_sprite.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
+import '../../core/sfx.dart';
+import '../../providers/feedback_provider.dart';
+import '../../content/raid.dart';
 import '../widgets/fill_bar.dart';
+import '../widgets/raid_banner.dart';
+import '../widgets/settings_panel.dart';
 import '../widgets/shop.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/transfer_progress.dart';
@@ -62,7 +68,7 @@ class _BuyAmountButton extends ConsumerWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        HapticFeedback.selectionClick();
+        ref.read(feedbackProvider).buzz(Buzz.select);
         final next = kBuyModes[(i + 1) % kBuyModes.length].$1;
         ref.read(buyAmountProvider.notifier).state = next;
       },
@@ -107,7 +113,22 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
     // Жар живёт в интерфейсе, но двигает и СОРТ, и всё производство —
     // поэтому и состояние окна, и множитель серии непрерывно отдаём в игру.
     _heat.addListener(_pushHeat);
+    // Звук жара привязан к СМЕНЕ состояния, а не к кадру: контроллер тикает
+    // шестьдесят раз в секунду, и «играть при перегреве» означало бы шестьдесят
+    // сирен в секунду.
+    _heat.statusNotifier.addListener(_onHeatStatus);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _onHeatStatus() {
+    switch (_heat.status) {
+      case HeatStatus.inWindow:
+        ref.read(feedbackProvider).play(Sfx.window);
+      case HeatStatus.overheated:
+        ref.read(feedbackProvider).hit(Sfx.overheat, Buzz.medium);
+      case HeatStatus.off:
+        break;
+    }
   }
 
   /// Ушли из игры с зажатым пальцем — отпускаем за игрока.
@@ -147,6 +168,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _heat.statusNotifier.removeListener(_onHeatStatus);
     _heat.removeListener(_pushHeat);
     _heat.dispose();
     super.dispose();
@@ -163,11 +185,25 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
     if (mounted) setState(() {});
   }
 
+  /// Что с Витей происходит прямо сейчас.
+  ///
+  /// Порядок важен: сначала то, что требует действия, потом то, что просто
+  /// приятно. Участковый во дворе перевешивает и перегрев, и полный бак —
+  /// только он грозит отобрать нажитое.
+  VityaMood _moodFor(GameState state) {
+    if (raidAt(ref.read(timeProvider)()) != null) return VityaMood.hiding;
+    if (_heat.status == HeatStatus.overheated) return VityaMood.burnt;
+    if (state.isTankFull) return VityaMood.stuck;
+    if (_heat.status == HeatStatus.inWindow) return VityaMood.inWork;
+    return VityaMood.calm;
+  }
+
   @override
   Widget build(BuildContext context) {
     final era = ref.watch(
       gameProvider.select((s) => _eraFor(s.prestige.totalEverEarned)),
     );
+    final mood = _moodFor(ref.watch(gameProvider));
 
     return Focus(
       autofocus: true,
@@ -234,6 +270,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                                     hanging: _Hanging(
                                       portrait: VityaPortrait(
                                         era: era,
+                                        mood: mood,
                                         pressed: _heat.isStoking,
                                         // 98, а не 116: при 116 портрет съедал
                                         // шестьдесят процентов сцены, и первая
@@ -259,6 +296,10 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                         ),
                       ),
                     ),
+                    // Плашка ШУХЕРА — между сценой и шкалой жара, то есть
+                    // ровно там, куда смотрят, когда держат палец. Своей
+                    // высоты не занимает, пока участкового нет.
+                    RaidBanner(heat: _heat),
                     Padding(
                       padding:
                           const EdgeInsets.fromLTRB(GS.s6, GS.s3, GS.s6, GS.s3),
@@ -525,6 +566,8 @@ class _VityaTab extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: GS.s3),
+        const SettingsPanel(),
         const SizedBox(height: GS.s3),
         const TransferProgress(),
         const SizedBox(height: GS.s6),
@@ -1029,7 +1072,7 @@ class _ToggleBought extends ConsumerWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        HapticFeedback.selectionClick();
+        ref.read(feedbackProvider).buzz(Buzz.select);
         ref.read(showBoughtUpgradesProvider.notifier).state = !showing;
       },
       child: Container(

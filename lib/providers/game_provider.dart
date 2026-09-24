@@ -13,6 +13,8 @@ import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../core/save.dart';
 import '../core/save_code.dart';
+import '../core/sfx.dart';
+import 'feedback_provider.dart';
 import '../engine/formulas.dart';
 import '../engine/game_engine.dart';
 import '../models/game_state.dart';
@@ -145,11 +147,35 @@ class GameNotifier extends Notifier<GameState> {
     state = checked.state;
   }
 
+  /// Отдача — звук и вибрация. Живёт здесь, а не в кнопках, намеренно:
+  /// действие одно, а кнопок к нему может быть несколько, и каждая новая
+  /// иначе обязана была бы помнить про звук.
+  Feedback get _feedback => ref.read(feedbackProvider);
+
   /// Игрок коснулся гаража. Самогона это не даёт — только счётчик и
   /// достижения; производство двигает жар, а его держат зажимом.
   void registerTouch() {
     final engine = ref.read(gameEngineProvider);
     state = engine.registerTouch(state, ref.read(timeProvider)());
+    _feedback.hit(Sfx.stoke, Buzz.light);
+  }
+
+  /// Попался участковому: держал жар, когда тот стоял у ворот.
+  void caughtByPolice() {
+    final engine = ref.read(gameEngineProvider);
+    final before = state;
+    state = engine.seizeByPolice(state, ref.read(timeProvider)());
+    if (state == before) return;
+
+    ref.read(toastProvider.notifier).show(
+          kind: 'ПОПАЛСЯ',
+          title: 'Участковый забрал часть бака',
+          note: 'и сорт пошёл на ступень вниз',
+          event: VityaEvent.overheat,
+        );
+    _feedback.hit(Sfx.overheat, Buzz.medium);
+    // Потеря необратимая — пишем сразу, как и похмелье.
+    saveNow();
   }
 
   /// Сдать бак конкретному покупателю.
@@ -158,10 +184,12 @@ class GameNotifier extends Notifier<GameState> {
     final now = ref.read(timeProvider)();
     if (!engine.canSellTo(state, buyer)) return;
     state = engine.sellTo(state, buyer, now);
-
+    _feedback.hit(Sfx.sell, Buzz.medium);
   }
 
-  /// Сдать бак соседу — он берёт всегда.
+  /// Сдать бак соседу — он берёт всегда. Этим пользуется автопродажа, поэтому
+  /// звука здесь нет: она срабатывает сама, в том числе пока игрок смотрит в
+  /// другую сторону, и звенеть за него незачем.
   void sell() {
     final engine = ref.read(gameEngineProvider);
     state = engine.sell(state, ref.read(timeProvider)());
@@ -170,14 +198,24 @@ class GameNotifier extends Notifier<GameState> {
   void buyGenerator(String id, {int count = 1}) {
     final engine = ref.read(gameEngineProvider);
     final now = ref.read(timeProvider)();
+    final before = state;
     state = count <= 1
         ? engine.buyGenerator(state, id, now)
         : engine.buyGeneratorBulk(state, id, count, now);
+    // Только если покупка ДЕЙСТВИТЕЛЬНО случилась: щелчок в ответ на нажатие
+    // по недоступной кнопке — это обещание, которого игра не выполнила.
+    if (!identical(state, before) && state != before) {
+      _feedback.hit(Sfx.buy, Buzz.select);
+    }
   }
 
   void buyUpgrade(String id) {
     final engine = ref.read(gameEngineProvider);
+    final before = state;
     state = engine.buyUpgrade(state, id, ref.read(timeProvider)());
+    if (!identical(state, before) && state != before) {
+      _feedback.hit(Sfx.buy, Buzz.select);
+    }
   }
 
   /// Уйти в похмелье: сброс гаража ради мудрости.
@@ -195,6 +233,7 @@ class GameNotifier extends Notifier<GameState> {
           note: 'всё причудилось, но руки помнят',
           event: VityaEvent.hangover,
         );
+    _feedback.hit(Sfx.hangover, Buzz.medium);
 
     // Событие необратимое — пишем сразу, не дожидаясь автосейва.
     saveNow();

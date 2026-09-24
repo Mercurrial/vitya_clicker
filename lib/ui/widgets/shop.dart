@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../core/formatters.dart';
@@ -35,12 +34,9 @@ class _BuyButtonState extends State<BuyButton> {
       onTapDown: on ? (_) => setState(() => _down = true) : null,
       onTapUp: (_) => setState(() => _down = false),
       onTapCancel: () => setState(() => _down = false),
-      onTap: on
-          ? () {
-              HapticFeedback.selectionClick();
-              widget.onTap();
-            }
-          : null,
+      // Отдача — внутри самой покупки: денег может не хватить, и щёлкать в
+      // ответ на несостоявшееся действие нечестно.
+      onTap: on ? widget.onTap : null,
       child: AnimatedScale(
         scale: _down ? 0.94 : 1.0,
         duration: const Duration(milliseconds: 110),
