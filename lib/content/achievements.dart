@@ -53,13 +53,13 @@ final List<AchievementRow> kAchievementRows = [
       Achievement(
         id: 'a_first_still',
         name: 'Начало дела',
-        hint: 'Купить трёхлитровую банку',
+        hint: 'Поставить первую трёхлитровую банку',
         check: (s) => _ownedOf(s, 'banka') >= 1,
       ),
       Achievement(
         id: 'a_first_sale',
         name: 'Первый рубль',
-        hint: 'Продать самогон',
+        hint: 'Продать самогон Петровичу',
         check: (s) => s.resources.money >= 1,
       ),
       Achievement(
@@ -157,8 +157,8 @@ final List<AchievementRow> kAchievementRows = [
       ),
       Achievement(
         id: 'a_synergy',
-        name: 'Семейный подряд',
-        hint: 'Купить обе синергии',
+        name: 'Всё по науке',
+        hint: 'Купить «Наставника Петровича» и «Семейный подряд»',
         check: (s) => _boughtWithTarget(s, (id) => id == 'syn_nastavnik') &&
             _boughtWithTarget(s, (id) => id == 'syn_podryad'),
       ),
@@ -187,8 +187,10 @@ final List<AchievementRow> kAchievementRows = [
       ),
       Achievement(
         id: 'a_legacy',
-        name: 'Тонна за плечами',
-        hint: 'Нагнать тонну за всё время',
+        // Миллиард миллилитров — это миллион литров, а не тонна: прежнее
+        // название занижало цель в тысячу раз.
+        name: 'Своё озеро',
+        hint: 'Нагнать миллион литров за всё время',
         check: (s) => s.prestige.totalEverEarned >= 1e9,
       ),
     ],

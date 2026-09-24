@@ -68,8 +68,11 @@ class PixelPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (sprite.width == 0 || size.isEmpty) return;
 
-    // Целое число пикселей на клетку — иначе появляются швы и дрожание.
-    final scale = (size.width / sprite.width).floorToDouble().clamp(1.0, 64.0);
+    // Клетка кратна половине точки. На телефоне это целое число физических
+    // пикселей (там их два-три на точку), поэтому швов нет, а спрайт можно
+    // вписать плотнее, чем при целых точках: фляга в значке списка выходила
+    // вдвое мельче банки только потому, что 1.7 округлялось до единицы.
+    final scale = ((size.width / sprite.width) * 2).floorToDouble().clamp(2.0, 128.0) / 2;
     final drawnW = sprite.width * scale;
     final drawnH = sprite.height * scale;
     final ox = ((size.width - drawnW) / 2).floorToDouble();
@@ -112,7 +115,17 @@ class PixelPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(PixelPainter oldDelegate) =>
-      oldDelegate.sprite != sprite || oldDelegate.rowShift != rowShift;
+      oldDelegate.sprite != sprite ||
+      oldDelegate.rowShift != rowShift ||
+      oldDelegate.palette != palette;
+}
+
+/// Крупнейший размер клетки (с шагом в полточки), при котором спрайт
+/// помещается в квадрат [box].
+double pixelToFit(PixelSprite sprite, double box, {double max = 8}) {
+  final side = sprite.width > sprite.height ? sprite.width : sprite.height;
+  if (side == 0) return 1;
+  return ((box / side) * 2).floorToDouble().clamp(2.0, max * 2) / 2;
 }
 
 /// Виджет-обёртка вокруг [PixelPainter].
@@ -120,13 +133,34 @@ class PixelImage extends StatelessWidget {
   final PixelSprite sprite;
   final double size;
   final int Function(int row)? rowShift;
+  final Map<String, Color> palette;
 
   const PixelImage({
     super.key,
     required this.sprite,
     required this.size,
     this.rowShift,
+    this.palette = kGaragePalette,
   });
+
+  /// Спрайт с заданным размером пикселя, а не шириной.
+  ///
+  /// Для сцены это главное: аппараты разного размера обязаны рисоваться одним
+  /// и тем же пикселем. Когда каждый подгонялся под свою ширину, банка
+  /// выходила крупнозернистой, а цистерна — мелкой, и сцена рассыпалась на
+  /// картинки из разных игр.
+  factory PixelImage.scaled({
+    Key? key,
+    required PixelSprite sprite,
+    required double pixel,
+    Map<String, Color> palette = kGaragePalette,
+  }) =>
+      PixelImage(
+        key: key,
+        sprite: sprite,
+        size: sprite.width * pixel,
+        palette: palette,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +168,7 @@ class PixelImage extends StatelessWidget {
       width: size,
       height: size * (sprite.height / sprite.width),
       child: CustomPaint(
-        painter: PixelPainter(sprite: sprite, rowShift: rowShift),
+        painter: PixelPainter(sprite: sprite, rowShift: rowShift, palette: palette),
         size: Size.infinite,
       ),
     );

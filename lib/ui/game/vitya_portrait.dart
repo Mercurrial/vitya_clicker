@@ -303,7 +303,7 @@ class _Frame extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: GS.s2),
+        const SizedBox(height: 5),
         // Табличка как в музее — сухо и серьёзно, в этом и шутка.
         //
         // Шире рамы намеренно: «В. — директор производства» в ширину портрета
@@ -317,14 +317,35 @@ class _Frame extends StatelessWidget {
         // OverflowBox тут не годится: в колонке он получает неограниченную
         // высоту, растягивается на бесконечность и утаскивает за экран всю
         // сцену. Проверено — пропал и портрет, и полки с аппаратами.
-        Text(
-          // Настроение важнее эпохи: «В. — директор производства» игрок
-          // прочитал один раз, а «не дышит» надо прочитать сейчас.
-          mood.caption ?? era.caption,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          softWrap: false,
-          style: GType.label(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            // Латунь, как у настоящих табличек под портретами в коридорах.
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFD9B26A), Color(0xFF9A7338)],
+            ),
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(color: const Color(0xFF5E4420)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x80000000), blurRadius: 4, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Text(
+            // Настроение важнее эпохи: «В. — директор производства» игрок
+            // прочитал один раз, а «не дышит» надо прочитать сейчас.
+            mood.caption ?? era.caption,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            softWrap: false,
+            style: GType.ui(
+              size: 9,
+              weight: FontWeight.w700,
+              color: tint != null ? Color.lerp(const Color(0xFF2B1A06), tint, 0.55)! : const Color(0xFF2B1A06),
+              letterSpacing: 0.8,
+            ),
+          ),
         ),
       ],
     );

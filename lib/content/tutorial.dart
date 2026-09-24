@@ -44,10 +44,10 @@ enum TutorialStep {
   /// Что показать. Одна строка, глагол в начале: подсказка про действие.
   String get text => switch (this) {
         TutorialStep.hold => 'Зажми палец на гараже — Витя подкинет дров',
-        TutorialStep.window => 'Веди жар в зелёное окно и держи его там',
-        TutorialStep.series => 'Держишь в окне — копится СЕРИЯ. Она множит весь доход',
-        TutorialStep.sell => 'Бак полон, аппараты стоят. Продай Петровичу',
-        TutorialStep.buy => 'Есть деньги — бери ещё аппарат. Он гонит сам',
+        TutorialStep.window => 'Держи стрелку жара в зелёном окне',
+        TutorialStep.series => 'В окне растёт СЕРИЯ — она множит весь доход',
+        TutorialStep.sell => 'Бак полон — продай Петровичу, кнопка наверху',
+        TutorialStep.buy => 'Есть деньги — купи ещё аппарат внизу',
         TutorialStep.done => '',
       };
 

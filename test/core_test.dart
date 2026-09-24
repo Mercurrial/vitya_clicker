@@ -14,11 +14,11 @@ void main() {
     });
 
     test('переходы через степени тысячи', () {
-      expect(Fmt.short(1000), '1.00К');
-      expect(Fmt.short(1500), '1.50К');
-      expect(Fmt.short(2300000), '2.30М');
-      expect(Fmt.short(4.2e9), '4.20Б');
-      expect(Fmt.short(1e12), '1.00Т');
+      expect(Fmt.short(1000), '1К');
+      expect(Fmt.short(1500), '1.5К');
+      expect(Fmt.short(2300000), '2.3М');
+      expect(Fmt.short(4.2e9), '4.2Б');
+      expect(Fmt.short(1e12), '1Т');
     });
 
     test('значащих цифр всегда три — ширина не скачет', () {
@@ -27,10 +27,20 @@ void main() {
       expect(Fmt.short(999000), '999К');
     });
 
+    test('хвостовые нули срезаются, а живым счётчикам остаются', () {
+      // «10К л» читается сразу, «10.00К л» — как ошибка округления. А вот
+      // касса тикает каждый кадр, и её ширина прыгать не должна.
+      expect(Fmt.short(10000), '10К');
+      expect(Fmt.short(2500), '2.5К');
+      expect(Fmt.short(1500, trim: false), '1.50К');
+      expect(Fmt.money(2000, trim: false), '2.00К ₽');
+      expect(Fmt.volume(1200, trim: false), '1.20 л');
+    });
+
     test('крайние случаи не роняют игру', () {
       expect(Fmt.short(double.nan), '0');
       expect(Fmt.short(double.infinity), '∞');
-      expect(Fmt.short(-1500), '-1.50К');
+      expect(Fmt.short(-1500), '-1.5К');
     });
   });
 
@@ -43,21 +53,29 @@ void main() {
     });
 
     test('от литра переключаемся на литры', () {
-      expect(Fmt.volume(1000), '1.00 л');
-      expect(Fmt.volume(1200), '1.20 л');
-      expect(Fmt.volume(2500000), '2.50К л');
+      expect(Fmt.volume(1000), '1 л');
+      expect(Fmt.volume(1200), '1.2 л');
+      expect(Fmt.volume(2500000), '2.5К л');
     });
 
     test('число и единица согласованы между собой', () {
       expect(Fmt.volumeNumber(850), '850');
       expect(Fmt.volumeUnit(850), 'мл');
-      expect(Fmt.volumeNumber(1200), '1.20');
+      expect(Fmt.volumeNumber(1200), '1.2');
       expect(Fmt.volumeUnit(1200), 'л');
     });
 
     test('скорость получает суффикс', () {
       expect(Fmt.rate(120), '120 мл/с');
-      expect(Fmt.rate(5000), '5.00 л/с');
+      expect(Fmt.rate(5000), '5 л/с');
+    });
+  });
+
+  group('Fmt.clock — обратный отсчёт', () {
+    test('минуты и секунды, с часами — если нужно', () {
+      expect(Fmt.clock(const Duration(seconds: 7)), '0:07');
+      expect(Fmt.clock(const Duration(minutes: 12, seconds: 3)), '12:03');
+      expect(Fmt.clock(const Duration(hours: 1, minutes: 5)), '1:05:00');
     });
   });
 

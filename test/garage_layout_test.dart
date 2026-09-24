@@ -176,7 +176,7 @@ void main() {
 
       expect(tester.takeException(), isNull,
           reason: 'при госте верхняя панель переполняется');
-      expect(find.text('Петрович'), findsOneWidget);
+      expect(find.textContaining('ПЕТРОВИЧУ'), findsOneWidget);
       expect(find.byType(VityaPortrait), findsOneWidget);
     });
 
@@ -206,7 +206,7 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Петрович'), findsOneWidget);
+      expect(find.textContaining('ПЕТРОВИЧУ'), findsOneWidget);
       expect(find.textContaining('с оглядкой'), findsOneWidget,
           reason: 'игрок должен видеть, почему Петрович платит меньше');
       expect(find.textContaining('Сахар подорожал'), findsNothing);
@@ -235,12 +235,16 @@ void main() {
       // Разрастётся кружок или кнопка цены — проверка упадёт.
       // «Трубопровод «Дружба-2»» — 22 знака; настоящим шрифтом в 13 кегль это
       // около 145 точек. Берём 160 с запасом.
+      //
+      // Название сидит в FittedBox: на совсем узком экране оно ужимается, а
+      // не режется. Место под него — это ширина коробки, а не самого текста.
       const needed = 160.0;
-      final available = tester.renderObject<RenderBox>(label).size.width;
+      final box = find.ancestor(of: label, matching: find.byType(FittedBox)).first;
+      final available = tester.renderObject<RenderBox>(box).size.width;
 
       expect(available, greaterThanOrEqualTo(needed),
           reason: 'названию досталось $available точек при нужных $needed — '
-              'оно уйдёт в многоточие');
+              'на обычном телефоне оно будет ужиматься');
     });
   });
 }

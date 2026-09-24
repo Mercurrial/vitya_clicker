@@ -5,25 +5,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../content/buyers.dart';
 import '../../content/events.dart';
 import '../../content/expenses.dart';
+import '../../content/sorts.dart';
 import '../../core/formatters.dart';
 import '../../engine/market.dart';
 import '../../models/game_state.dart';
 import '../../providers/game_provider.dart';
-import '../game/heat_controller.dart';
 import '../theme/content_colors.dart';
 import '../theme/garage.dart';
 import 'fill_bar.dart';
+import 'trend_arrow.dart';
 
-/// Верх экрана: касса, рынок, бак, сорт и покупатели.
+/// Верх экрана: касса, рынок, бак и продажа.
 ///
-/// Здесь становится видно главное решение игры. Раньше была одна кнопка
-/// «продать» по абстрактному курсу, и выбора в ней не было. Теперь на экране
-/// одновременно: какой сорт сейчас в баке, что с ним делает жар, и что за него
-/// дадут трое разных покупателей — включая тех, кто заберёт сорт вместе с
-/// товаром.
+/// Здесь живёт вторая половина петли: нагнал → **продал** → купил. Продажа
+/// поэтому не карточка с подписью, а кнопка — янтарная, как всё, что можно
+/// нажать и получить деньги. Прошлая версия рисовала Петровича серой плашкой,
+/// и главное действие игры выглядело как справка.
 class TopPanel extends ConsumerStatefulWidget {
-  final HeatController heat;
-  const TopPanel({super.key, required this.heat});
+  const TopPanel({super.key});
 
   @override
   ConsumerState<TopPanel> createState() => _TopPanelState();
@@ -54,10 +53,16 @@ class _TopPanelState extends ConsumerState<TopPanel>
 
     // Касса догоняет плавно: при продаже число не должно прыгать скачком.
     final target = ref.read(gameProvider).resources.money;
-    _shownMoney += (target - _shownMoney) * (dt * 9).clamp(0.0, 1.0);
-
-    // Цена и бак меняются непрерывно — перерисовываем каждый кадр.
-    if (mounted) setState(() {});
+    final next = _shownMoney + (target - _shownMoney) * (dt * 9).clamp(0.0, 1.0);
+    // Перерисовываемся, только пока касса действительно едет. Цена и бак
+    // приходят сами — с тиком игры через ref.watch.
+    if ((next - _shownMoney).abs() > target.abs() * 1e-6 + 1e-3) {
+      _shownMoney = next;
+      if (mounted) setState(() {});
+    } else if (_shownMoney != target) {
+      _shownMoney = target;
+      if (mounted) setState(() {});
+    }
   }
 
   @override
@@ -65,24 +70,26 @@ class _TopPanelState extends ConsumerState<TopPanel>
     final state = ref.watch(gameProvider);
     // Часы берём из провайдера, а не из DateTime.now(). От времени тут зависит
     // не только цена, но и то, стоит ли в гараже гость, — а появление целой
-    // карточки сделало бы снимок экрана флакающим: тест то ловил бы событие,
-    // то нет, в зависимости от того, в какую минуту его запустили.
+    // карточки сделало бы снимок экрана флакающим.
     final now = ref.read(timeProvider)();
     final price = Market.pricePerLitre(now, state.upgrades) * state.sort.multiplier;
     final rising = Market.wave(now) >= 1.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(GS.s3, GS.s2, GS.s3, GS.s2),
+      padding: const EdgeInsets.fromLTRB(GS.s4, GS.s2, GS.s4, GS.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CashAndMarket(money: _shownMoney, price: price, rising: rising),
+          _CashAndMarket(
+            money: _shownMoney,
+            price: price,
+            rising: rising,
+            good: Market.isGoodMoment(now),
+          ),
           const SizedBox(height: GS.s2),
           _TankBar(state: state),
-          const SizedBox(height: GS.s2),
-          _SortStrip(state: state, heat: widget.heat),
-          const SizedBox(height: GS.s2),
-          _BuyerRow(state: state, now: now),
+          const SizedBox(height: GS.s3),
+          _SellRow(state: state, now: now),
         ],
       ),
     );
@@ -95,10 +102,14 @@ class _CashAndMarket extends StatelessWidget {
   final double price;
   final bool rising;
 
+  /// Рынок заметно выше обычного — самое время сдавать.
+  final bool good;
+
   const _CashAndMarket({
     required this.money,
     required this.price,
     required this.rising,
+    required this.good,
   });
 
   @override
@@ -114,7 +125,9 @@ class _CashAndMarket extends StatelessWidget {
             children: [
               Text('КАССА', style: GType.label()),
               Text(
-                Fmt.money(money),
+                // Касса тикает каждый кадр — нули не срезаем, иначе ширина
+                // числа прыгает туда-сюда.
+                Fmt.money(money, trim: false),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GType.num(
@@ -133,20 +146,18 @@ class _CashAndMarket extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('РЫНОК', style: GType.label()),
+            Text(good ? 'РЫНОК · ВЫГОДНО' : 'РЫНОК', style: GType.label().copyWith(
+              color: good ? GColors.green : null,
+            )),
+            const SizedBox(height: 2),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
                   Fmt.pricePerLitre(price),
-                  style: GType.num(size: 14, weight: FontWeight.w700),
+                  style: GType.num(size: 16, weight: FontWeight.w700),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  rising ? '▲' : '▼',
-                  style: GType.num(size: 11, weight: FontWeight.w600, color: trendColor),
-                ),
+                const SizedBox(width: 5),
+                TrendArrow(up: rising, color: trendColor, size: 10),
               ],
             ),
           ],
@@ -167,46 +178,74 @@ class _TankBar extends StatelessWidget {
     final sort = state.sort;
     final full = state.isTankFull;
     final rate = state.mlPerSecond;
+    final room = state.tankCapacity - state.resources.ml;
+
+    // Главный вопрос к баку — «когда он встанет», а не «сколько в него
+    // влезает». Прошлая подпись «хватит на 30 мин» показывала ёмкость в
+    // минутах производства и читалась как оставшееся время. Оно не убывало.
+    final String status;
+    if (full) {
+      status = 'полный — аппараты стоят';
+    } else if (rate > 0) {
+      status = 'полный через ${Fmt.duration(Duration(seconds: (room / rate).ceil()))}';
+    } else {
+      status = '';
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('БАК', style: GType.label()),
+            const SizedBox(width: GS.s2),
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: Fmt.volume(state.resources.ml, trim: false),
+                    style: GType.num(size: 12, weight: FontWeight.w700, color: GColors.textHi),
+                  ),
+                  TextSpan(
+                    text: ' / ${Fmt.volume(state.tankCapacity)}',
+                    style: GType.num(size: 11, color: GColors.textMid),
+                  ),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              '+${Fmt.rate(rate, trim: false)}',
+              style: GType.num(size: 11, weight: FontWeight.w600, color: GColors.copper),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         FillBar(
           value: state.tankFraction,
-          height: 14,
-          radius: 7,
+          height: 12,
+          radius: 6,
           gradient: LinearGradient(
             colors: full
-                ? const [GColors.hot, GColors.hot]
+                ? const [GColors.hot, Color(0xFFFF7A5C)]
                 : [sort.current.fromColor, sort.current.toColor],
           ),
           // Насечки, как на мерной таре.
           overlay: const CustomPaint(painter: _TicksPainter()),
         ),
         const SizedBox(height: 3),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                '${Fmt.volume(state.resources.ml)} / '
-                '${Fmt.volume(state.tankCapacity)}'
-                '${full ? '' : ' · хватит на ${Fmt.duration(state.tankBuffer)}'}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GType.num(size: 10, color: GColors.textMid),
-              ),
-            ),
-            const SizedBox(width: GS.s2),
-            Text(
-              full ? 'БАК ПОЛОН' : Fmt.rate(rate),
-              style: GType.num(
-                size: 10,
-                weight: FontWeight.w500,
-                color: full ? GColors.hot : GColors.copper,
-              ),
-            ),
-          ],
+        Text(
+          status,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GType.num(
+            size: 10,
+            weight: full ? FontWeight.w700 : FontWeight.w400,
+            color: full ? GColors.hot : GColors.textLo,
+          ),
         ),
       ],
     );
@@ -219,8 +258,8 @@ class _TicksPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = const Color(0x47000000);
-    for (var x = size.width / 10; x < size.width; x += size.width / 10) {
-      canvas.drawRect(Rect.fromLTWH(x, 0, 1, size.height), paint);
+    for (var x = size.width / 10; x < size.width - 1; x += size.width / 10) {
+      canvas.drawRect(Rect.fromLTWH(x.floorToDouble(), 0, 1, size.height), paint);
     }
   }
 
@@ -228,95 +267,16 @@ class _TicksPainter extends CustomPainter {
   bool shouldRepaint(_TicksPainter oldDelegate) => false;
 }
 
-/// Полоса сорта: пипки пройденных ступеней, название, множитель, прогресс и
-/// подсказка о том, что сейчас делает жар.
-class _SortStrip extends StatelessWidget {
-  final GameState state;
-  final HeatController heat;
-
-  const _SortStrip({required this.state, required this.heat});
-
-  @override
-  Widget build(BuildContext context) {
-    // Полоска сорта зависит от жара только цветом подсказки, а он меняется
-    // вместе со статусом — раз в несколько секунд. Подписка на сам контроллер
-    // перестраивала бы её каждый кадр.
-    return ValueListenableBuilder<HeatStatus>(
-      valueListenable: heat.statusNotifier,
-      builder: (context, status, _) {
-        final sort = state.sort;
-        final index = sort.index;
-        final hintColor = switch (status) {
-          HeatStatus.overheated => GColors.hot,
-          HeatStatus.inWindow => GColors.green,
-          HeatStatus.off => GColors.textLo,
-        };
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Пипки: сколько ступеней уже пройдено.
-            for (var i = 0; i < 5; i++) ...[
-              Container(
-                width: 4,
-                height: 6.0 + i * 3,
-                margin: const EdgeInsets.only(right: 3),
-                decoration: BoxDecoration(
-                  color: i <= index
-                      ? GColors.amber
-                      : const Color(0x21FFFFFF),
-                  borderRadius: BorderRadius.circular(1),
-                ),
-              ),
-            ],
-            const SizedBox(width: GS.s1),
-            Flexible(
-              child: Text(
-                sort.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GType.ui(size: 12, weight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              Fmt.mult(sort.multiplier),
-              style: GType.num(
-                size: 11,
-                weight: FontWeight.w700,
-                color: sort.current.toColor,
-              ),
-            ),
-            const SizedBox(width: GS.s2),
-            Expanded(
-              child: FillBar(
-                value: sort.progress,
-                height: 3,
-                color: sort.current.toColor,
-              ),
-            ),
-            const SizedBox(width: GS.s2),
-            Text(
-              heat.hint,
-              style: GType.ui(size: 9, color: hintColor),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Покупатели: Петрович всегда и гость по случаю.
+/// Продажа: Петрович всегда, гость — когда пришёл.
 ///
-/// Гость появляется сам и уходит по таймеру — карточка одна и та же, меняется
-/// только содержимое. Заблокированная карточка показывает, чего не хватает:
-/// это и есть подсказка, ради чего стоит доводить сорт.
-class _BuyerRow extends ConsumerWidget {
+/// Гость появляется сам и уходит по таймеру. Пока сорт не дотягивает, его
+/// кнопка показывает, чего не хватает: это и есть подсказка, ради чего
+/// стоит доводить сорт.
+class _SellRow extends ConsumerWidget {
   final GameState state;
   final DateTime now;
 
-  const _BuyerRow({required this.state, required this.now});
+  const _SellRow({required this.state, required this.now});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -327,72 +287,148 @@ class _BuyerRow extends ConsumerWidget {
     final cut = expense != null && expense.expense.kind == ExpenseKind.neighbor
         ? expense
         : null;
+    final petrovich = kBuyers.first;
+    final guest = active?.event.asBuyer;
+    final payout = engine.saleValueFor(state, petrovich, now);
+    // Кнопка горит, только когда за бак дадут хотя бы рубль. Иначе в первые
+    // секунды игры самым ярким на экране была «ПРОДАТЬ · 0 ₽» — и новичок
+    // жал её вместо того, чтобы зажать гараж.
+    final worth = payout >= 1;
 
-    Widget card(Buyer buyer, {Duration? countdown, ActiveExpense? cut}) =>
-        _BuyerCard(
-          buyer: buyer,
-          available: engine.canSellTo(state, buyer),
-          payout: engine.saleValueFor(state, buyer, now),
-          countdown: countdown,
-          cut: cut,
-          // Вибрация и звук — внутри sellTo: сделка может не состояться, и
-          // тогда отдачи быть не должно.
-          onTap: () => ref.read(gameProvider.notifier).sellTo(buyer),
-        );
+    final main = SellButton(
+      title: guest == null ? 'ПРОДАТЬ ПЕТРОВИЧУ' : 'ПЕТРОВИЧУ',
+      note: cut != null
+          ? '${cut.expense.note} · ${Fmt.clock(cut.remaining)}'
+          : (worth ? petrovich.note : 'бак почти пуст — пусть нальётся'),
+      noteAlert: cut != null,
+      payout: payout,
+      available: worth && engine.canSellTo(state, petrovich),
+      premium: false,
+      compact: guest != null,
+      // Звук и вибрация — внутри sellTo: сделка может не состояться.
+      onTap: () => ref.read(gameProvider.notifier).sellTo(petrovich),
+    );
 
+    if (guest == null) return main;
+
+    final canGuest = engine.canSellTo(state, guest);
     return Row(
       children: [
-        for (final buyer in kBuyers)
-          Expanded(
-            child: card(buyer, cut: buyer.id == kBuyers.first.id ? cut : null),
+        Expanded(flex: 5, child: main),
+        const SizedBox(width: GS.s2),
+        Expanded(
+          flex: 6,
+          child: SellButton(
+            title: guest.name.toUpperCase(),
+            note: '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active!.remaining)}',
+            noteAlert: false,
+            payout: engine.saleValueFor(state, guest, now),
+            // Пока сорт не дотягивает, вместо суммы — чего не хватает. Это и
+            // есть подсказка, ради чего стоит доводить сорт.
+            lockedAmount: canGuest ? null : _needSort(guest),
+            available: canGuest,
+            premium: true,
+            compact: true,
+            onTap: () => ref.read(gameProvider.notifier).sellTo(guest),
           ),
-        if (active != null) ...[
-          const SizedBox(width: 6),
-          Expanded(
-            child: card(active.event.asBuyer, countdown: active.remaining),
-          ),
-        ],
+        ),
       ],
     );
   }
+
+  /// «сорт от „На кедраче“» — конкретная цель вместо «сорт получше».
+  static String _needSort(Buyer b) {
+    final i = b.minSortIndex.clamp(0, kSorts.length - 1);
+    return 'сорт от «${kSorts[i].name}»';
+  }
 }
 
-class _BuyerCard extends StatefulWidget {
-  final Buyer buyer;
-  final bool available;
+/// Кнопка продажи.
+///
+/// Янтарная, пока есть что сдать, — по правилу всей игры: янтарь значит
+/// «можно нажать и получить». Гость подсвечен ярче: он платит втрое и уходит.
+class SellButton extends StatefulWidget {
+  final String title;
+  final String note;
+  final bool noteAlert;
   final double payout;
+  final bool available;
+  final bool premium;
+  final bool compact;
+
+  /// Что написать на месте суммы, пока продать нельзя. `null` — прочерк.
+  final String? lockedAmount;
   final VoidCallback onTap;
 
-  /// Сколько осталось до ухода гостя. `null` — покупатель постоянный.
-  final Duration? countdown;
-
-  /// Расход, который сбивает цену этому покупателю. `null` — всё как обычно.
-  final ActiveExpense? cut;
-
-  const _BuyerCard({
-    required this.buyer,
-    required this.available,
+  const SellButton({
+    super.key,
+    required this.title,
+    required this.note,
+    required this.noteAlert,
     required this.payout,
+    required this.available,
+    required this.premium,
+    required this.compact,
     required this.onTap,
-    this.countdown,
-    this.cut,
+    this.lockedAmount,
   });
 
   @override
-  State<_BuyerCard> createState() => _BuyerCardState();
+  State<SellButton> createState() => _SellButtonState();
 }
 
-class _BuyerCardState extends State<_BuyerCard> {
+class _SellButtonState extends State<SellButton> {
   bool _down = false;
 
   @override
   Widget build(BuildContext context) {
     final on = widget.available;
-    // Премиальные покупатели подсвечиваются: их доступность — событие.
-    final hot = on && widget.buyer.multiplier > 1.0;
-    final cut = widget.cut;
-    // Отсчёт — и у гостя до ухода, и у расхода до конца.
-    final left = widget.countdown ?? cut?.remaining;
+    final premium = widget.premium;
+    final fg = on ? GColors.onAmber : GColors.textLo;
+
+    final locked = widget.lockedAmount;
+    final amount = !on && locked != null
+        ? Text(
+            locked,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GType.ui(size: 11, weight: FontWeight.w600, color: GColors.amberDim),
+          )
+        : Text(
+            on ? Fmt.money(widget.payout) : '—',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GType.num(
+              size: widget.compact ? 14 : 18,
+              weight: FontWeight.w700,
+              color: on ? GColors.onAmber : GColors.textLo,
+            ),
+          );
+
+    final title = Text(
+      widget.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: GType.ui(
+        size: widget.compact ? 10 : 11,
+        weight: FontWeight.w700,
+        color: fg,
+        letterSpacing: 0.8,
+      ),
+    );
+
+    final note = Text(
+      widget.note,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: GType.ui(
+        size: 10,
+        weight: widget.noteAlert ? FontWeight.w700 : FontWeight.w500,
+        color: widget.noteAlert
+            ? (on ? const Color(0xFF7A2410) : GColors.hot)
+            : (on ? const Color(0xB32B1A06) : GColors.textLo),
+      ),
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -401,100 +437,60 @@ class _BuyerCardState extends State<_BuyerCard> {
       onTapCancel: () => setState(() => _down = false),
       onTap: on ? widget.onTap : null,
       child: AnimatedScale(
-        scale: _down ? 0.95 : 1.0,
+        scale: _down ? 0.96 : 1.0,
         duration: const Duration(milliseconds: 110),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: widget.compact ? 58 : 54,
+          padding: const EdgeInsets.symmetric(horizontal: GS.s3),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: on ? (hot ? null : GColors.surface2) : const Color(0x3D000000),
-            gradient: hot
-                ? const LinearGradient(
+            borderRadius: BorderRadius.circular(GR.button),
+            gradient: on
+                ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF3A2A16), GColors.surface2],
+                    colors: premium
+                        ? const [GColors.lamp, GColors.amber]
+                        : const [GColors.amber, GColors.amberDim],
                   )
                 : null,
+            color: on ? null : GColors.wellBg,
             border: Border.all(
-              color: hot
-                  ? GColors.amber
-                  : (on ? GColors.border : const Color(0x14FFFFFF)),
+              color: on
+                  ? (premium ? GColors.lamp : const Color(0x00000000))
+                  : (premium ? const Color(0x55E8A33D) : GColors.border),
             ),
-            boxShadow: hot
-                ? const [BoxShadow(color: GColors.amberGlow, blurRadius: 16)]
-                : GShadow.card,
+            boxShadow: on
+                ? [
+                    BoxShadow(
+                      color: premium ? const Color(0x80FFD089) : GColors.amberGlow,
+                      blurRadius: premium ? 22 : 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      widget.buyer.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GType.ui(
-                        size: 11,
-                        weight: FontWeight.w600,
-                        color: on ? GColors.textHi : GColors.textLo,
+          // Узкая кнопка — в три строки: имя, сумма, условие. В две строки
+          // сумма выдавливала имя в многоточие («ПЕТРОВИ…»).
+          child: widget.compact
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [title, amount, note],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 2), note],
                       ),
                     ),
-                  ),
-                  Text(
-                    // У гостя вместо множителя — срок. Множитель он и так
-                    // отрабатывает суммой ниже, а вот что он уйдёт — надо
-                    // сказать прямо.
-                    left != null ? Fmt.duration(left) : '×${widget.buyer.multiplier}',
-                    style: GType.num(
-                      size: 9,
-                      weight: FontWeight.w700,
-                        color: cut != null
-                          ? GColors.cold
-                          : left != null
-                              ? GColors.lamp
-                              : (on ? GColors.brew : GColors.textLo),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Text(
-                on ? Fmt.money(widget.payout) : '—',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GType.num(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: hot
-                      ? GColors.lamp
-                      : (on ? GColors.textHi : const Color(0xFF4E443A)),
+                    const SizedBox(width: GS.s2),
+                    amount,
+                  ],
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                cut != null
-                    ? cut.expense.note
-                    : (on ? widget.buyer.note : widget.buyer.lockedNote),
-                // Ровно одна строка, и не «до двух». При двух карточка гостя
-                // становилась выше карточки Петровича, панель подрастала — и
-                // на экране 320×640 вёрстка переполнялась на два пикселя.
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GType.ui(
-                  size: 9,
-                  color: cut != null
-                      ? GColors.cold
-                      : hot
-                          ? GColors.lamp
-                          : (on ? GColors.textMid : GColors.textLo),
-                  height: 1.2,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

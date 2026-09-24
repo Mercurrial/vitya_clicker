@@ -32,12 +32,13 @@ class Fmt {
 
   /// Основной формат: 950 → «950», 1500 → «1.5К», 2_300_000 → «2.3М».
   ///
-  /// Значащих цифр всегда 3, поэтому ширина строки почти не скачет при
-  /// обновлении счётчика.
-  static String short(double value) {
+  /// Хвостовые нули срезаются: «10К л», а не «10.00К л», и «2К ₽», а не
+  /// «2.00К ₽». Нули нужны только живым счётчикам, у которых ширина не должна
+  /// прыгать каждый кадр, — для них [trim] выключают.
+  static String short(double value, {bool trim = true}) {
     if (value.isNaN) return '0';
     if (value.isInfinite) return value.isNegative ? '-∞' : '∞';
-    if (value < 0) return '-${short(-value)}';
+    if (value < 0) return '-${short(-value, trim: trim)}';
     if (value < 1000) return value.floor().toString();
 
     var reduced = value;
@@ -56,7 +57,15 @@ class Fmt {
       mantissa = reduced.toStringAsFixed(0);
     }
 
-    return '$mantissa${_suffixes[tier]}';
+    return '${trim ? _trimZeros(mantissa) : mantissa}${_suffixes[tier]}';
+  }
+
+  /// «2.50» → «2.5», «10.0» → «10», «999» → «999».
+  static String _trimZeros(String s) {
+    if (!s.contains('.')) return s;
+    var out = s.replaceFirst(RegExp(r'0+$'), '');
+    if (out.endsWith('.')) out = out.substring(0, out.length - 1);
+    return out;
   }
 
   /// Объём. Внутри игра считает в МИЛЛИЛИТРАХ — так начало ощущается честно:
@@ -64,40 +73,47 @@ class Fmt {
   ///
   /// До литра показываем миллилитры («850 мл»), дальше переключаемся на литры
   /// с суффиксами («1.20 л», «2.30К л»).
-  static String volume(double ml) {
+  static String volume(double ml, {bool trim = true}) {
     if (ml.isNaN) return '0 мл';
-    if (ml < 0) return '-${volume(-ml)}';
+    if (ml < 0) return '-${volume(-ml, trim: trim)}';
     if (ml < 1000) return '${ml.floor()} мл';
-    return '${_litres(ml / 1000)} л';
+    return '${_litres(ml / 1000, trim: trim)} л';
   }
 
   /// Литры с тремя значащими цифрами.
   ///
   /// Отдельно от [short], потому что там значения меньше тысячи округляются до
   /// целого — для литров это потеря: 1200 мл превратились бы в «1 л».
-  static String _litres(double l) {
-    if (l >= 1000) return short(l);
-    if (l < 10) return l.toStringAsFixed(2);
-    if (l < 100) return l.toStringAsFixed(1);
-    return l.toStringAsFixed(0);
+  static String _litres(double l, {bool trim = true}) {
+    if (l >= 1000) return short(l, trim: trim);
+    final String s;
+    if (l < 10) {
+      s = l.toStringAsFixed(2);
+    } else if (l < 100) {
+      s = l.toStringAsFixed(1);
+    } else {
+      s = l.toStringAsFixed(0);
+    }
+    return trim ? _trimZeros(s) : s;
   }
 
   /// Скорость производства: «120 мл/с», «1.20 л/с».
-  static String rate(double mlPerSecond) => '${volume(mlPerSecond)}/с';
+  static String rate(double mlPerSecond, {bool trim = true}) =>
+      '${volume(mlPerSecond, trim: trim)}/с';
 
   /// Только число объёма, без единицы — для крупного счётчика,
   /// где единица выводится отдельным элементом.
-  static String volumeNumber(double ml) =>
-      ml < 1000 ? ml.floor().toString() : _litres(ml / 1000);
+  static String volumeNumber(double ml, {bool trim = true}) =>
+      ml < 1000 ? ml.floor().toString() : _litres(ml / 1000, trim: trim);
 
   /// Единица, подходящая величине: «мл» или «л».
   static String volumeUnit(double ml) => ml < 1000 ? 'мл' : 'л';
 
   /// Рубли: «1.20К ₽». До тысячи — целыми, копейки в игре не нужны.
-  static String money(double value) {
+  static String money(double value, {bool trim = true}) {
     if (value.isNaN) return '0 ₽';
-    if (value < 0) return '-${money(-value)}';
-    return '${short(value)} ₽';
+    if (value < 0) return '-${money(-value, trim: trim)}';
+    return '${short(value, trim: trim)} ₽';
   }
 
   /// Цена за литр — с точностью, потому что её сравнивают глазами.
@@ -121,6 +137,17 @@ class Fmt {
     final sign = p >= 0 ? '+' : '';
     if (p == p.roundToDouble()) return '$sign${p.toStringAsFixed(0)}%';
     return '$sign${p.toStringAsFixed(1)}%';
+  }
+
+  /// Обратный отсчёт: «12:03», «1:05:00». Для того, что тикает на глазах —
+  /// «12 мин» полминуты стоит на месте, и отсчёт кажется зависшим.
+  static String clock(Duration d) {
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (d.inHours > 0) {
+      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+      return '${d.inHours}:$m:$s';
+    }
+    return '${d.inMinutes}:$s';
   }
 
   /// Длительность по-русски для экрана возвращения: «2 ч 14 мин».

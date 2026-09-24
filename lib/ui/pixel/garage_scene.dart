@@ -6,8 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/game_provider.dart';
-import '../theme/garage.dart';
 import '../game/heat_controller.dart';
+import '../theme/garage.dart';
 import 'garage_room.dart';
 import 'pixel_sprite.dart';
 import 'still_sprites.dart';
@@ -15,26 +15,24 @@ import 'still_sprites.dart';
 /// Гараж Вити — сцена, а не список.
 ///
 /// Главная задача: **империю должно быть видно**. Пока покупка меняла лишь
-/// число в таблице, игра ощущалась как ведомость. Теперь каждый купленный
-/// аппарат физически встаёт на полку, кипит и парит, поэтому прогресс читается
-/// глазами, а не только цифрами.
+/// число в таблице, игра ощущалась как ведомость. Здесь каждый купленный
+/// аппарат физически стоит в гараже: три новейших — крупно на полу, старшие
+/// по возрасту перебираются на полки по бокам от портрета.
+///
+/// Все аппараты рисуются **одним размером пикселя**. Раньше каждый подгонялся
+/// под свою ячейку, и банка выходила крупнее цистерны; теперь цистерна
+/// действительно больше, и рост дела читается по силуэтам на полу.
 class GarageScene extends ConsumerStatefulWidget {
-  /// Жар приходит КОНТРОЛЛЕРОМ, а не числом.
-  ///
-  /// Числом он приходил раньше, и ради его обновления сцену оборачивали в
-  /// `AnimatedBuilder`. Контроллер уведомляет каждый кадр, поэтому всё дерево
-  /// сцены перестраивалось шестьдесят раз в секунду — вместе с селектором
-  /// Riverpod и каждым аппаратом. Замер показал кадр в 18 мс при бюджете 16.
-  ///
-  /// Теперь на жар подписаны только те двое, кто от него рисуется: лампа и
-  /// аппараты.
+  /// Жар приходит КОНТРОЛЛЕРОМ, а не числом: на него подписаны только те,
+  /// кто от него рисуется, — лампа и аппараты. Обёртка над всей сценой
+  /// перестраивала бы её шестьдесят раз в секунду.
   final HeatController heat;
 
-  /// Что висит на стене — портрет Вити. Он часть сцены, а не отдельный блок:
-  /// так гараж читается как единое место, а не как набор панелей.
-  final Widget hanging;
+  /// Портрет Вити под заданный размер рамы. Размер решает сцена: она знает,
+  /// сколько у неё высоты и сколько надо оставить аппаратам.
+  final Widget Function(double size) portrait;
 
-  const GarageScene({super.key, required this.heat, required this.hanging});
+  const GarageScene({super.key, required this.heat, required this.portrait});
 
   @override
   ConsumerState<GarageScene> createState() => _GarageSceneState();
@@ -45,16 +43,8 @@ class _GarageSceneState extends ConsumerState<GarageScene>
   late final Ticker _ticker;
   Duration _prev = Duration.zero;
 
-  /// Время сцены живёт в уведомителе, а не в поле состояния.
-  ///
-  /// Раньше каждый кадр звал `setState`, и Flutter перестраивал всё дерево
-  /// сцены шестьдесят раз в секунду: комнату, полки, каждый аппарат с его
-  /// LayoutBuilder — плюс селектор Riverpod, который на каждый вызов собирал
-  /// новый список. Анимации при этом подвержены только два художника: лампа
-  /// и аппараты.
-  ///
-  /// Теперь кадр двигает одно число, на него подписаны только эти двое, а
-  /// дерево виджетов перестраивается лишь когда реально меняется игра.
+  /// Время сцены живёт в уведомителе, а не в поле состояния: кадр двигает
+  /// одно число, и перерисовываются только подписанные на него художники.
   final ValueNotifier<double> _time = ValueNotifier(0);
 
   @override
@@ -80,13 +70,13 @@ class _GarageSceneState extends ConsumerState<GarageScene>
   Widget build(BuildContext context) {
     final owned = ref.watch(
       gameProvider.select(
-        (s) => [
+        (s) => _OwnedList([
           for (var i = 0; i < s.generators.items.length; i++)
             if (s.generators.items[i].ownedCount > 0)
               (id: s.generators.items[i].id, count: s.generators.items[i].ownedCount, tier: i),
-        ],
+        ]),
       ),
-    );
+    ).items;
 
     // Помещение — по старшему аппарату: банка и коллайдер не стоят в одной
     // комнате.
@@ -96,70 +86,33 @@ class _GarageSceneState extends ConsumerState<GarageScene>
       borderRadius: BorderRadius.circular(GR.card),
       child: Stack(
         children: [
-          // RepaintBoundary тут пробовался и НЕ помог: замер не изменился в
-          // пределах шума, а лишний слой стоит памяти. Комната и так рисуется
-          // один раз — её painter возвращает shouldRepaint == false.
+          // Комната рисуется один раз на стадию: её painter возвращает
+          // shouldRepaint == false.
           Positioned.fill(child: RoomBackground(stage: stage)),
           Positioned.fill(
-            child: ListenableBuilder(
-              listenable: Listenable.merge([_time, widget.heat]),
-              builder: (_, __) => SwingingLamp(
-                time: _time.value,
-                heat: widget.heat.heat,
+            child: LayoutBuilder(
+              builder: (context, c) => _SceneLayout(
+                size: c.biggest,
+                owned: owned,
+                portrait: widget.portrait,
+                time: _time,
+                heat: widget.heat,
               ),
             ),
           ),
+          // Лампа — поверх аппаратов: её свет ложится и на них.
           Positioned.fill(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: GS.s3),
-                  child: widget.hanging,
+            child: IgnorePointer(
+              child: ListenableBuilder(
+                listenable: Listenable.merge([_time, widget.heat]),
+                builder: (_, __) => SwingingLamp(
+                  time: _time.value,
+                  heat: widget.heat.heat,
                 ),
-                Expanded(
-                  child: owned.isEmpty
-                      ? const _EmptyGarage()
-                      : _Shelves(
-                          items: owned,
-                          time: _time,
-                          heat: widget.heat,
-                        ),
-                ),
-              ],
-            ),
-          ),
-          // Табличка помещения. Мелкая и в углу: это подпись к сцене, а не
-          // заголовок.
-          Positioned(
-            left: GS.s2,
-            bottom: GS.s1,
-            child: Text(
-              stageName(stage),
-              style: GType.label().copyWith(
-                fontSize: 8,
-                color: GColors.textLo,
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptyGarage extends StatelessWidget {
-  const _EmptyGarage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(GS.s5),
-        child: Text(
-          'Пусто.\nКупи первую банку.',
-          textAlign: TextAlign.center,
-          style: GType.body(),
-        ),
       ),
     );
   }
@@ -168,35 +121,242 @@ class _EmptyGarage extends StatelessWidget {
 /// То, что стоит в гараже.
 typedef _Owned = ({String id, int count, int tier});
 
-/// Полки с аппаратами. Заполняются снизу вверх по мере роста производства.
-class _Shelves extends StatelessWidget {
+/// Список со сравнением по содержимому.
+///
+/// Селектор Riverpod сравнивает результат через `==`, а у двух списков с
+/// одинаковым содержимым оно ложно. Без обёртки сцена перестраивалась на
+/// каждом тике игры — десять раз в секунду, хотя купленное не менялось.
+class _OwnedList {
   final List<_Owned> items;
+  const _OwnedList(this.items);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _OwnedList && listEquals(other.items, items);
+
+  @override
+  int get hashCode => Object.hashAll(items);
+}
+
+/// Раскладка сцены: портрет на стене, полки по бокам, аппараты на полу.
+///
+/// Всё считается от размера сцены, а не прибито числами: сцена живёт и на
+/// 320×640, и на планшете, и в обоих случаях аппараты обязаны помещаться.
+class _SceneLayout extends StatelessWidget {
+  final Size size;
+  final List<_Owned> owned;
+  final Widget Function(double size) portrait;
   final ValueListenable<double> time;
   final HeatController heat;
 
-  const _Shelves({required this.items, required this.time, required this.heat});
+  const _SceneLayout({
+    required this.size,
+    required this.owned,
+    required this.portrait,
+    required this.time,
+    required this.heat,
+  });
+
+  /// Сколько новейших аппаратов стоит на полу.
+  static const int _onFloor = 3;
+
+  /// Сколько помещается на одну полку.
+  static const int _perShelf = 3;
 
   @override
   Widget build(BuildContext context) {
-    // Новые аппараты — ближе к зрителю: показываем последние приобретения.
-    final shown = items.length > 6 ? items.sublist(items.length - 6) : items;
-    final rows = (shown.length / 3).ceil();
+    final w = size.width;
+    final h = size.height;
+    if (w <= 0 || h <= 0) return const SizedBox.shrink();
 
-    return Padding(
-      // Снизу оставляем ровно полосу пола: нижний ряд обязан стоять на полу,
-      // а не висеть над ним.
-      padding: const EdgeInsets.fromLTRB(GS.s2, GS.s4, GS.s2, kFloorHeight),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          for (var row = 0; row < rows; row++)
-            Expanded(
-              child: _ShelfRow(
-                items: shown.skip(row * 3).take(3).toList(),
+    final floorY = h - kFloorHeight;
+
+    // Портрет — треть высоты, но не мельче, чем его можно узнать.
+    final frame = (h * 0.34).clamp(64.0, 112.0).floorToDouble();
+    final frameH = frame * 1.1;
+    const portraitTop = 10.0;
+    final plaqueBottom = portraitTop + frameH + 26;
+
+    final floor = owned.length > _onFloor ? owned.sublist(owned.length - _onFloor) : owned;
+    final older = owned.length > _onFloor ? owned.sublist(0, owned.length - _onFloor) : <_Owned>[];
+    // На полках — самые свежие из старших, по три с каждой стороны.
+    final shelved = older.length > _perShelf * 2
+        ? older.sublist(older.length - _perShelf * 2)
+        : older;
+    final left = shelved.take(_perShelf).toList();
+    final right = shelved.skip(_perShelf).toList();
+
+    // --- Пол -------------------------------------------------------------
+    final floorPixel = _fitPixel(
+      floor,
+      width: w - 24,
+      height: floorY + 4 - plaqueBottom - _tagSpace,
+      max: 5,
+      onFloor: true,
+    );
+
+    // --- Полки -----------------------------------------------------------
+    final shelfY = (portraitTop + frameH - 2).floorToDouble();
+    final sideW = (w - frame) / 2 - 20;
+    // Над аппаратом на полке висит бирка — оставляем ей место.
+    final shelfPixel = math.min(
+      floorPixel,
+      math.min(
+        _fitPixel(left, width: sideW, height: shelfY - 30, max: 3),
+        _fitPixel(right, width: sideW, height: shelfY - 30, max: 3),
+      ),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // Полки висят всегда, даже пустые: пустая полка — это обещание, что
+        // на ней что-то появится.
+        for (final side in [0, 1])
+          Positioned(
+            left: side == 0 ? 10 : null,
+            right: side == 1 ? 10 : null,
+            top: shelfY,
+            width: sideW,
+            child: const _ShelfBoard(),
+          ),
+        for (final (side, items) in [(0, left), (1, right)])
+          if (items.isNotEmpty)
+            Positioned(
+              left: side == 0 ? 10 : null,
+              right: side == 1 ? 10 : null,
+              width: sideW,
+              bottom: h - shelfY,
+              child: _Row(
+                items: items,
+                pixel: shelfPixel,
                 time: time,
                 heat: heat,
-                // Нижний ряд стоит на полу — доски под ним не нужно.
-                onFloor: row == rows - 1,
+                steam: false,
+                tagBelow: false,
+              ),
+            ),
+        Positioned(
+          top: portraitTop,
+          left: 0,
+          right: 0,
+          child: Center(child: portrait(frame)),
+        ),
+        if (floor.isEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: kFloorHeight + 16,
+            child: Text(
+              'Пусто. Купи первую банку.',
+              textAlign: TextAlign.center,
+              style: GType.body(),
+            ),
+          )
+        else
+          Positioned(
+            left: 12,
+            right: 12,
+            // Основания стоят чуть ниже кромки пола — так предметы стоят НА
+            // полу, а не на линии стены.
+            bottom: h - floorY - 4,
+            child: _Row(
+              items: floor,
+              pixel: floorPixel,
+              time: time,
+              heat: heat,
+              steam: true,
+              tagBelow: true,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Место под бирку с количеством под аппаратами на полу.
+  static const double _tagSpace = 6;
+
+  /// Крупнейший целый пиксель, при котором ряд помещается в заданную область.
+  static double _fitPixel(
+    List<_Owned> items, {
+    required double width,
+    required double height,
+    required double max,
+    bool onFloor = false,
+  }) {
+    if (items.isEmpty) return max;
+    var spriteW = 0.0;
+    var spriteH = 0.0;
+    for (final it in items) {
+      final s = stillSpriteFor(it.id);
+      spriteW += s.width + _gap;
+      spriteH = math.max(
+        spriteH,
+        s.height + (onFloor ? (stillHasFire(it.id) ? _fireRows : 0) + _steamRows : 0),
+      );
+    }
+    final byW = width / spriteW;
+    final byH = height / spriteH;
+    // Шаг в полточки — см. PixelPainter: на телефоне это целые пиксели.
+    return (math.min(byW, byH) * 2).floorToDouble().clamp(2.0, max * 2) / 2;
+  }
+
+  /// Зазор между аппаратами в пикселях спрайта.
+  static const double _gap = 4;
+}
+
+/// Сколько строк спрайта занимает огонь под аппаратом.
+const double _fireRows = 4;
+
+/// Сколько строк занимает пар над аппаратом.
+const double _steamRows = 4;
+
+/// Доска полки на кронштейнах.
+class _ShelfBoard extends StatelessWidget {
+  const _ShelfBoard();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 14,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 6,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF5A3D25),
+                border: Border(
+                  top: BorderSide(color: Color(0xFF8A6440), width: 2),
+                  bottom: BorderSide(color: Color(0xFF2E1E12), width: 2),
+                ),
+              ),
+            ),
+          ),
+          // Тень доски на стене.
+          const Positioned(
+            left: 2,
+            right: 2,
+            top: 6,
+            height: 4,
+            child: ColoredBox(color: Color(0x40000000)),
+          ),
+          for (final a in const [0.12, 0.84])
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 6,
+              child: Align(
+                alignment: Alignment(a * 2 - 1, -1),
+                child: const SizedBox(
+                  width: 4,
+                  height: 8,
+                  child: ColoredBox(color: Color(0xFF2E2822)),
+                ),
               ),
             ),
         ],
@@ -205,205 +365,180 @@ class _Shelves extends StatelessWidget {
   }
 }
 
-class _ShelfRow extends StatelessWidget {
+/// Ряд аппаратов одного масштаба, выровненный по основанию.
+class _Row extends StatelessWidget {
   final List<_Owned> items;
+  final double pixel;
   final ValueListenable<double> time;
   final HeatController heat;
-  final bool onFloor;
+  final bool steam;
 
-  const _ShelfRow({
+  /// Бирка под аппаратом (на полу) или на нём самом (на полке, где под ним
+  /// доска).
+  final bool tagBelow;
+
+  const _Row({
     required this.items,
+    required this.pixel,
     required this.time,
     required this.heat,
-    required this.onFloor,
+    required this.steam,
+    required this.tagBelow,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Expanded(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (final it in items)
-                _Still(
-                  id: it.id,
-                  count: it.count,
-                  time: time,
-                  heat: heat,
-                  // Чем меньше аппаратов в ряду, тем крупнее каждый. Первая
-                  // купленная банка в одиночестве посреди гаража терялась
-                  // точкой — а это ровно тот момент, когда игроку важнее
-                  // всего увидеть, что он что-то приобрёл.
-                  maxWidth: switch (items.length) {
-                    1 => 104.0,
-                    2 => 76.0,
-                    _ => _maxStillWidth,
-                  },
-                ),
-            ],
-          ),
-        ),
-        if (!onFloor)
-          Container(
-            height: 5,
-            margin: const EdgeInsets.only(top: 2),
-            decoration: const BoxDecoration(
-              color: Color(0xFF4A3524),
-              border: Border(
-                top: BorderSide(color: Color(0xFF6B4E33), width: 2),
-              ),
-            ),
+        for (final it in items)
+          _Still(
+            id: it.id,
+            count: it.count,
+            pixel: pixel,
+            time: time,
+            heat: heat,
+            steam: steam,
+            tagBelow: tagBelow,
           ),
       ],
     );
   }
 }
 
-/// Один аппарат на полке: пар, корпус, счётчик штук.
+/// Один аппарат: пар, корпус, огонь, бирка с количеством.
 class _Still extends StatelessWidget {
   final String id;
   final int count;
+  final double pixel;
   final ValueListenable<double> time;
   final HeatController heat;
-
-  /// Насколько крупным позволено быть этому аппарату.
-  final double maxWidth;
+  final bool steam;
+  final bool tagBelow;
 
   const _Still({
     required this.id,
     required this.count,
+    required this.pixel,
     required this.time,
     required this.heat,
-    required this.maxWidth,
+    required this.steam,
+    required this.tagBelow,
   });
 
   @override
   Widget build(BuildContext context) {
     final sprite = stillSpriteFor(id);
-    final animation = Listenable.merge([time, heat]);
+    // На полке огня нет: горящая полка читается как пожар, а не как работа.
+    final fire = steam && stillHasFire(id);
+    final spriteW = sprite.width * pixel;
+    final fireH = fire ? _fireRows * pixel : 0.0;
+    final steamPixel = math.max(1.0, (pixel * 0.75).floorToDouble());
 
-    return Flexible(
-      child: LayoutBuilder(
-        builder: (context, c) {
-          // Аппарат подгоняется под высоту полки, а не стоит фиксированным.
-          // Раньше ширина была прибита к 56 пикселям, и высокий спрайт в два
-          // ряда вылезал за край полки — ровно та «обрезанная вёрстка», на
-          // которую жаловался плейтест.
-          //
-          // Когда места совсем мало, лишнее отбрасывается по порядку
-          // важности: сам аппарат нужен всегда, счётчик — почти всегда, пар —
-          // украшение. Так сцена сжимается, а не рвётся.
-          final available = c.maxHeight;
-          final showSteam = available >= 58;
-          final showCounter = available >= 36;
-          final reserved = (showSteam ? _steamHeight : 0.0) +
-              (showCounter ? _counterHeight + 2 : 0.0);
-          final forSprite = math.max(6.0, available - reserved);
-          final width = math.min(
-            maxWidth,
-            forSprite * sprite.width / sprite.height,
-          );
+    final body = ListenableBuilder(
+      listenable: Listenable.merge([time, heat]),
+      builder: (_, __) {
+        final status = heat.status;
+        final inWindow = status == HeatStatus.inWindow;
+        final overheated = status == HeatStatus.overheated;
+        // Кипение ускоряется вместе с жаром — видно, что палец что-то делает.
+        final speed = 1.0 + heat.heat;
+        final t = time.value;
 
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // На время подписаны только эти двое. Остальное в аппарате —
-              // счётчик, отступы, раскладка — от кадра не зависит и
-              // перестраиваться каждые 16 мс не должно.
-              // Подписаны на кадр только эти двое. Счётчик, отступы и
-              // раскладка от времени не зависят и перестраиваться не должны.
-              if (showSteam)
-                SizedBox(
-                  height: _steamHeight,
-                  child: ListenableBuilder(
-                    listenable: animation,
-                    builder: (_, __) {
-                      // Кипение ускоряется вместе с жаром — видно, что тапы
-                      // что-то делают.
-                      final speed = 1.0 + heat.heat;
-                      final frame = ((time.value * 2.2 * speed).floor()) %
-                          kSteamFrames.length;
-                      return PixelImage(
-                        sprite: kSteamFrames[frame],
-                        size: width * 0.8,
-                      );
-                    },
-                  ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (steam)
+              SizedBox(
+                height: _steamRows * pixel,
+                child: PixelImage.scaled(
+                  sprite: kSteamFrames[(t * 2.2 * speed).floor() % kSteamFrames.length],
+                  pixel: steamPixel,
+                  palette: kStillPalette,
                 ),
-              ListenableBuilder(
-                listenable: animation,
-                builder: (_, __) {
-                  final speed = 1.0 + heat.heat;
-                  final t = time.value;
-                  final status = heat.status;
-                  final frames = fireFramesFor(
-                    inWindow: status == HeatStatus.inWindow,
-                    overheated: status == HeatStatus.overheated,
-                  );
-
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.bottomCenter,
-                    children: [
-                      PixelImage(
-                        sprite: sprite,
-                        size: width,
-                      ),
-                      // Огонь лижет аппарат снизу и немного заходит на него —
-                      // отдельной полосой он читался бы как подставка.
-                      Positioned(
-                        bottom: -2,
-                        child: PixelImage(
-                          sprite: frames[
-                              ((t * 9 * speed).floor()) % frames.length],
-                          size: width * 0.85,
-                        ),
-                      ),
-                    ],
-                  );
-                },
               ),
-              if (showCounter) ...[
-                const SizedBox(height: 2),
-                SizedBox(
-                  height: _counterHeight,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC1A1410),
-                      borderRadius: BorderRadius.circular(GR.pill),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: GType.num(
-                        size: 11,
-                        weight: FontWeight.w700,
-                        color: GColors.amber,
-                      ),
-                    ),
+            PixelImage.scaled(
+              sprite: sprite,
+              pixel: pixel,
+              palette: stillPaletteFor(inWindow: inWindow, overheated: overheated),
+            ),
+            if (fire)
+              SizedBox(
+                width: spriteW,
+                height: fireH,
+                child: Center(
+                  child: PixelImage.scaled(
+                    sprite: () {
+                      final frames = fireFramesFor(inWindow: inWindow, overheated: overheated);
+                      return frames[(t * 9 * speed).floor() % frames.length];
+                    }(),
+                    pixel: pixel,
+                    palette: kStillPalette,
                   ),
                 ),
-              ],
-            ],
-          );
-        },
-      ),
+              ),
+          ],
+        );
+      },
+    );
+
+
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.bottomCenter,
+      children: [
+        // Контактная тень: без неё предмет висит в воздухе.
+        Positioned(
+          bottom: -3,
+          child: Container(
+            width: spriteW * 0.9,
+            height: 6,
+            decoration: BoxDecoration(
+              color: const Color(0x66000000),
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        ),
+        body,
+        // На полу бирка — под аппаратом, на полосе пола. На полке под
+        // аппаратом доска, а ниже — табличка портрета, поэтому там бирка
+        // висит над ним.
+        Positioned(
+          bottom: tagBelow ? -18 : null,
+          top: tagBelow ? null : -15,
+          child: _CountTag(count: count, small: !tagBelow),
+        ),
+      ],
     );
   }
 }
 
-/// Что занимает место над и под аппаратом. Вынесено в константы, потому что
-/// эти же числа вычитаются из высоты полки — разъедутся, и спрайт снова
-/// полезет за край.
-const double _steamHeight = 18;
-const double _counterHeight = 16;
+/// Сколько штук этого аппарата у Вити.
+class _CountTag extends StatelessWidget {
+  final int count;
+  final bool small;
+  const _CountTag({required this.count, required this.small});
 
-/// Предел для полного ряда: три аппарата в ряд на телефоне и так впритык.
-/// Когда их меньше, каждому достаётся больше — см. `maxWidth` у `_Still`.
-const double _maxStillWidth = 56;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: small ? 3 : 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: const Color(0xE6120D09),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: const Color(0x33E8A33D)),
+      ),
+      child: Text(
+        '×$count',
+        maxLines: 1,
+        softWrap: false,
+        style: GType.num(
+          size: small ? 9 : 10,
+          weight: FontWeight.w700,
+          color: GColors.amber,
+        ),
+      ),
+    );
+  }
+}

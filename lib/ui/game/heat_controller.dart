@@ -88,18 +88,37 @@ class HeatController extends ChangeNotifier {
   /// Импульс жара за покупку — «растопил новый аппарат».
   static const double purchaseStoke = 0.18;
 
-  /// Ширина окна по шкале. Шире прежнего: держать должно быть можно, а не
+  /// Ширина окна по шкале без улучшений. Держать должно быть можно, а не
   /// «теоретически возможно».
-  static const double windowSize = 0.24;
+  static const double baseWindowSize = 0.24;
+
+  /// Шире этого окно не бывает, сколько улучшений ни купи: окно на всю шкалу
+  /// превращает жар в «зажал и забыл», а ради этого механику и не делали.
+  static const double maxWindowSize = 0.5;
 
   /// Скорость хода окна в секунду.
   static const double windowSpeed = 0.022;
 
   static const double windowMin = 0.10;
-  static const double windowMax = 0.72;
 
   /// Выше этого — перегрев, серия сгорает.
   static const double overheatAt = 0.93;
+
+  /// Во сколько раз окно шире базового — от улучшений «Крепкая рука» и
+  /// компании.
+  ///
+  /// Эти улучшения продавались с первой версии и не делали ничего: множитель
+  /// считался в состоянии игры, а контроллер жара о нём не знал. Игрок платил
+  /// сорок рублей за строчку в списке. Теперь экран передаёт множитель сюда
+  /// при каждой сборке.
+  double windowScale = 1.0;
+
+  /// Текущая ширина окна.
+  double get windowSize => math.min(baseWindowSize * windowScale, maxWindowSize);
+
+  /// Правый край хода окна: оно не заезжает в перегрев, иначе «в окне» и
+  /// «перегрел» наступали бы одновременно.
+  double get _windowMax => overheatAt - 0.03 - windowSize;
 
   late final Ticker _ticker;
   Duration _last = Duration.zero;
@@ -147,19 +166,19 @@ class HeatController extends ChangeNotifier {
   /// Во сколько раз серия множит производство прямо сейчас.
   double get multiplier => 1.0 + (maxSeriesMultiplier - 1.0) * _series;
 
-  /// Подпись под шкалой.
+  /// Состояние одним словом — для заголовка шкалы.
   String get label => switch (status) {
         HeatStatus.overheated => 'ПЕРЕГРЕВ',
         HeatStatus.inWindow => 'В САМЫЙ РАЗ',
-        HeatStatus.off => _heat < _windowPos ? 'МАЛО ЖАРА' : 'МНОГО ЖАРА',
+        HeatStatus.off => _heat < _windowPos ? 'СЛАБО' : 'ГОРЯЧО',
       };
 
   /// Что делать прямо сейчас. Подсказка обязана быть про ДЕЙСТВИЕ, а не про
   /// состояние: «много жара» не говорит новичку, что отпустить.
   String get hint => switch (status) {
-        HeatStatus.overheated => 'отпусти, сейчас сгорит',
+        HeatStatus.overheated => 'отпусти, серия сгорает',
         HeatStatus.inWindow => 'так и держи',
-        HeatStatus.off => _heat < _windowPos ? 'держи палец' : 'отпусти немного',
+        HeatStatus.off => _heat < _windowPos ? 'зажми гараж' : 'отпусти немного',
       };
 
   /// Начать поддув.
@@ -188,9 +207,13 @@ class HeatController extends ChangeNotifier {
   }
 
   void _onTick(Duration elapsed) {
+    // Шаг кадра ограничен десятой секунды. Браузер притормаживает кадры в
+    // фоне, телефон — на фризе, и после паузы приходил один кадр длиной в
+    // несколько секунд: жар прыгал из холодного сразу в перегрев, и серия
+    // сгорала без единой ошибки игрока.
     final dt = _last == Duration.zero
         ? 0.016
-        : (elapsed - _last).inMicroseconds / 1e6;
+        : math.min(0.1, (elapsed - _last).inMicroseconds / 1e6);
     _last = elapsed;
 
     // --- Жар ---------------------------------------------------------
@@ -222,8 +245,8 @@ class HeatController extends ChangeNotifier {
 
     // --- Окно --------------------------------------------------------
     _windowPos += _windowDir * windowSpeed * dt;
-    if (_windowPos > windowMax) {
-      _windowPos = windowMax;
+    if (_windowPos > _windowMax) {
+      _windowPos = _windowMax;
       _windowDir = -1;
     } else if (_windowPos < windowMin) {
       _windowPos = windowMin;

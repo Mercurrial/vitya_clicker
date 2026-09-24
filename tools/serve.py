@@ -9,6 +9,14 @@
 worker'а вырезается из index.html на лету. Обычного F5 достаточно.
 
     python tools/serve.py [порт]
+
+Для осмотра событий по расписанию часы страницы можно сдвинуть:
+
+    http://localhost:8770/?t=1790280000000
+
+— страница поверит, что сейчас этот момент (миллисекунды UTC), и часы пойдут
+от него дальше. Гость, участковый и неприятности выводятся из часов, поэтому
+так их можно вызвать, не дожидаясь. Моменты подбирает tools/moments.dart.
 """
 
 import functools
@@ -17,6 +25,7 @@ import os
 import re
 import socketserver
 import sys
+import urllib.parse
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "web")
 
@@ -41,6 +50,34 @@ _UNREGISTER_SW = """<script>
 </script>"""
 
 
+def _shift_clock(target_ms):
+    """Скрипт, который сдвигает часы страницы так, будто сейчас target_ms.
+
+    Сдвигается и конструктор Date без аргументов: Dart в браузере берёт время
+    через него же, а подменённый наполовину календарь дал бы два разных «сейчас».
+    """
+    return f"""<script>
+(function () {{
+  var RealDate = Date;
+  var realNow = RealDate.now.bind(RealDate);
+  var offset = {target_ms} - realNow();
+  function ShiftedDate(a, b, c, d, e, f, g) {{
+    if (!(this instanceof ShiftedDate)) return new RealDate(realNow() + offset).toString();
+    switch (arguments.length) {{
+      case 0: return new RealDate(realNow() + offset);
+      case 1: return new RealDate(a);
+      default: return new RealDate(a, b, c || 1, d || 0, e || 0, f || 0, g || 0);
+    }}
+  }}
+  ShiftedDate.prototype = RealDate.prototype;
+  ShiftedDate.now = function () {{ return realNow() + offset; }};
+  ShiftedDate.UTC = RealDate.UTC;
+  ShiftedDate.parse = RealDate.parse;
+  window.Date = ShiftedDate;
+}})();
+</script>"""
+
+
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -51,7 +88,9 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         # index.html правим на лету: без регистрации service worker'а браузер
         # физически не может показать вчерашнюю сборку.
-        if self.path in ("/", "/index.html"):
+        url = urllib.parse.urlparse(self.path)
+        if url.path in ("/", "/index.html"):
+            shift = urllib.parse.parse_qs(url.query).get("t", [None])[0]
             try:
                 with open(os.path.join(ROOT, "index.html"), "rb") as f:
                     html = f.read().decode("utf-8")
@@ -66,6 +105,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             # раньше, продолжит перехватывать запросы и отдавать вчерашнюю
             # сборку. Поэтому при каждой загрузке сносим всё, что осталось.
             html = html.replace("<head>", "<head>\n" + _UNREGISTER_SW, 1)
+            if shift and shift.isdigit():
+                html = html.replace("<head>", "<head>\n" + _shift_clock(int(shift)), 1)
             body = html.encode("utf-8")
 
             self.send_response(200)

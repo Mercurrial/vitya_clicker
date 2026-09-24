@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bootstrap.dart';
 import 'core/sfx_player.dart';
+import 'models/achievement.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
 import 'ui/screens/balance_news.dart';
@@ -120,6 +121,7 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
       context,
       offline: widget.boot.offline,
       gained: widget.boot.offlineGain,
+      tankFull: _tankStuck(),
     );
   }
 
@@ -144,7 +146,12 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
         notifier.applyOffline(away.credited);
         final gained = ref.read(gameProvider).resources.ml - before;
         if (away.isMeaningful && gained > 0 && mounted) {
-          showWelcomeBack(context, offline: away, gained: gained);
+          showWelcomeBack(
+            context,
+            offline: away,
+            gained: gained,
+            tankFull: _tankStuck(),
+          );
         }
     }
     if (state != AppLifecycleState.resumed) {
@@ -153,6 +160,13 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
   }
 
   int? _leftAt;
+
+  /// Стоит ли производство из-за полного бака. С автопродажей не стоит: она
+  /// сдаст бак на первом же тике, и писать «аппараты стоят» было бы неправдой.
+  bool _tankStuck() {
+    final s = ref.read(gameProvider);
+    return s.isTankFull && !s.achievements.hasPerk(AchievementPerk.autoSell);
+  }
 
   @override
   Widget build(BuildContext context) {
