@@ -83,7 +83,8 @@ class _TutorialHintState extends ConsumerState<TutorialHint> {
         wasInWindow: _wasInWindow,
         series: widget.heat.series,
         tankFraction: state.tankFraction,
-        canAffordStill: state.resources.money >= engine.generatorCost(first),
+        canAffordStill: state.resources.money >=
+            engine.generatorCost(first, ref.read(timeProvider)()),
         stillsOwned: state.generators.items
             .fold(0, (sum, g) => sum + g.ownedCount),
       ),

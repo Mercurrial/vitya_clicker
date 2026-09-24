@@ -489,7 +489,7 @@ class BalanceSim {
     final rateNow = state.mlPerSecond;
 
     for (final g in state.generators.items) {
-      final cost = engine.generatorCost(g);
+      final cost = engine.generatorCost(g, state.lastUpdateTime);
       final after = engine.buyGenerator(
         state.copyWith(
           resources: state.resources.copyWith(money: double.maxFinite),
@@ -529,7 +529,7 @@ class BalanceSim {
       out.add(_Candidate(
         id: u.id,
         label: u.name,
-        cost: u.cost,
+        cost: engine.upgradeCost(u, state.lastUpdateTime),
         deltaRevenuePerSecond: gain,
         apply: (s) => engine.buyUpgrade(s, u.id, s.lastUpdateTime),
       ));

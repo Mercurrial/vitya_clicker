@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../content/buyers.dart';
 import '../../content/events.dart';
+import '../../content/expenses.dart';
 import '../../core/formatters.dart';
 import '../../engine/market.dart';
 import '../../models/game_state.dart';
@@ -321,12 +322,19 @@ class _BuyerRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final engine = ref.read(gameEngineProvider);
     final active = eventAt(now);
+    // Тёща у Петровича: сбивает цену ему, и только ему.
+    final expense = expenseAt(now);
+    final cut = expense != null && expense.expense.kind == ExpenseKind.neighbor
+        ? expense
+        : null;
 
-    Widget card(Buyer buyer, {Duration? countdown}) => _BuyerCard(
+    Widget card(Buyer buyer, {Duration? countdown, ActiveExpense? cut}) =>
+        _BuyerCard(
           buyer: buyer,
           available: engine.canSellTo(state, buyer),
           payout: engine.saleValueFor(state, buyer, now),
           countdown: countdown,
+          cut: cut,
           // Вибрация и звук — внутри sellTo: сделка может не состояться, и
           // тогда отдачи быть не должно.
           onTap: () => ref.read(gameProvider.notifier).sellTo(buyer),
@@ -334,7 +342,10 @@ class _BuyerRow extends ConsumerWidget {
 
     return Row(
       children: [
-        for (final buyer in kBuyers) Expanded(child: card(buyer)),
+        for (final buyer in kBuyers)
+          Expanded(
+            child: card(buyer, cut: buyer.id == kBuyers.first.id ? cut : null),
+          ),
         if (active != null) ...[
           const SizedBox(width: 6),
           Expanded(
@@ -355,12 +366,16 @@ class _BuyerCard extends StatefulWidget {
   /// Сколько осталось до ухода гостя. `null` — покупатель постоянный.
   final Duration? countdown;
 
+  /// Расход, который сбивает цену этому покупателю. `null` — всё как обычно.
+  final ActiveExpense? cut;
+
   const _BuyerCard({
     required this.buyer,
     required this.available,
     required this.payout,
     required this.onTap,
     this.countdown,
+    this.cut,
   });
 
   @override
@@ -375,7 +390,9 @@ class _BuyerCardState extends State<_BuyerCard> {
     final on = widget.available;
     // Премиальные покупатели подсвечиваются: их доступность — событие.
     final hot = on && widget.buyer.multiplier > 1.0;
-    final left = widget.countdown;
+    final cut = widget.cut;
+    // Отсчёт — и у гостя до ухода, и у расхода до конца.
+    final left = widget.countdown ?? cut?.remaining;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -434,9 +451,11 @@ class _BuyerCardState extends State<_BuyerCard> {
                     style: GType.num(
                       size: 9,
                       weight: FontWeight.w700,
-                      color: left != null
-                          ? GColors.lamp
-                          : (on ? GColors.brew : GColors.textLo),
+                        color: cut != null
+                          ? GColors.cold
+                          : left != null
+                              ? GColors.lamp
+                              : (on ? GColors.brew : GColors.textLo),
                     ),
                   ),
                 ],
@@ -456,7 +475,9 @@ class _BuyerCardState extends State<_BuyerCard> {
               ),
               const SizedBox(height: 2),
               Text(
-                on ? widget.buyer.note : widget.buyer.lockedNote,
+                cut != null
+                    ? cut.expense.note
+                    : (on ? widget.buyer.note : widget.buyer.lockedNote),
                 // Ровно одна строка, и не «до двух». При двух карточка гостя
                 // становилась выше карточки Петровича, панель подрастала — и
                 // на экране 320×640 вёрстка переполнялась на два пикселя.
@@ -464,7 +485,11 @@ class _BuyerCardState extends State<_BuyerCard> {
                 overflow: TextOverflow.ellipsis,
                 style: GType.ui(
                   size: 9,
-                  color: hot ? GColors.lamp : (on ? GColors.textMid : GColors.textLo),
+                  color: cut != null
+                      ? GColors.cold
+                      : hot
+                          ? GColors.lamp
+                          : (on ? GColors.textMid : GColors.textLo),
                   height: 1.2,
                 ),
               ),

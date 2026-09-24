@@ -180,6 +180,38 @@ void main() {
       expect(find.byType(VityaPortrait), findsOneWidget);
     });
 
+    testWidgets('полоса «сахар подорожал» не ломает узкий экран',
+        (tester) async {
+      // Полоса появляется над списком сама, игрок ничего не нажимал.
+      await openOn(
+        tester,
+        withStills({'banka': 5}),
+        const Size(320, 640),
+        now: supplyMoment,
+      );
+
+      expect(tester.takeException(), isNull,
+          reason: 'полоса подорожания переполняет полку');
+      expect(find.textContaining('Сахар подорожал'), findsOneWidget);
+      expect(find.byType(VityaPortrait), findsOneWidget);
+    });
+
+    testWidgets('тёща видна на карточке Петровича, а не где-то ещё',
+        (tester) async {
+      await openOn(
+        tester,
+        withStills({'banka': 5}),
+        const Size(320, 640),
+        now: neighborMoment,
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Петрович'), findsOneWidget);
+      expect(find.textContaining('с оглядкой'), findsOneWidget,
+          reason: 'игрок должен видеть, почему Петрович платит меньше');
+      expect(find.textContaining('Сахар подорожал'), findsNothing);
+    });
+
     testWidgets('название аппарата в списке не обрезается многоточием',
         (tester) async {
       await openOn(tester, withStills({'banka': 1}), const Size(375, 812));

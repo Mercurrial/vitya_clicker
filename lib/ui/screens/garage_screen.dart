@@ -19,6 +19,7 @@ import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
 import '../../core/sfx.dart';
 import '../../providers/feedback_provider.dart';
+import '../../content/expenses.dart';
 import '../../content/raid.dart';
 import '../widgets/fill_bar.dart';
 import '../widgets/raid_banner.dart';
@@ -797,6 +798,8 @@ class _Shelf extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(GS.s4, GS.s3, GS.s4, GS.s2),
             child: _Tabs(index: tab, onChanged: onTab),
           ),
+          // Подорожание видно там, где за него платят: над списками покупок.
+          if (tab < 2) const _SupplyStrip(),
           Expanded(
             child: switch (tab) {
               0 => const _StillsTab(),
@@ -821,12 +824,14 @@ class _Tabs extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
+    final engine = ref.read(gameEngineProvider);
+    final now = ref.read(timeProvider)();
     final money = state.resources.money;
 
     // Сколько улучшений можно взять прямо сейчас. Без этого числа вкладку
     // приходится открывать наугад: вдруг там что-то появилось.
     final affordableUpgrades = state.upgrades.items
-        .where((u) => !u.purchased && money >= u.cost)
+        .where((u) => !u.purchased && money >= engine.upgradeCost(u, now))
         .length;
 
     final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
@@ -931,6 +936,7 @@ class _StillsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
     final engine = ref.read(gameEngineProvider);
+    final now = ref.read(timeProvider)();
     final gens = state.generators.items;
     // Аппараты покупаются за ДЕНЬГИ, а не за товар в баке.
     final money = state.resources.money;
@@ -967,11 +973,13 @@ class _StillsTab extends ConsumerWidget {
               // Сколько уйдёт за одно нажатие в текущем режиме.
               final wanted = (!bulk || mode == 1)
                   ? 1
-                  : (mode == kBuyMax ? engine.affordableCount(state, g) : mode);
+                  : (mode == kBuyMax
+                      ? engine.affordableCount(state, g, now)
+                      : mode);
               final count = wanted < 1 ? 1 : wanted;
               final cost = count > 1
-                  ? engine.bulkCost(g, count)
-                  : engine.generatorCost(g);
+                  ? engine.bulkCost(g, count, now)
+                  : engine.generatorCost(g, now);
 
               return StillRow(
                 name: g.name,
@@ -1013,6 +1021,8 @@ class _UpgradesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
     final showBought = ref.watch(showBoughtUpgradesProvider);
+    final engine = ref.read(gameEngineProvider);
+    final now = ref.read(timeProvider)();
     // Улучшения тоже покупаются за деньги.
     final money = state.resources.money;
 
@@ -1021,6 +1031,8 @@ class _UpgradesTab extends ConsumerWidget {
     // Показываем только те, что уже имеют смысл: иначе список пугает.
     final visible = state.upgrades.items.where((u) {
       if (u.purchased) return showBought;
+      // По обычной цене, а не по сегодняшней: подорожание сахара не должно
+      // прятать из списка то, что там только что было.
       return money >= u.cost * 0.35;
     }).toList();
 
@@ -1047,15 +1059,57 @@ class _UpgradesTab extends ConsumerWidget {
           return _ToggleBought(count: bought, showing: showBought);
         }
         final u = visible[i];
+        final cost = engine.upgradeCost(u, now);
         return UpgradeRow(
           name: u.name,
           effect: u.description,
-          cost: u.cost,
-          affordable: money >= u.cost,
+          cost: cost,
+          affordable: money >= cost,
           purchased: u.purchased,
           onBuy: () => ref.read(gameProvider.notifier).buyUpgrade(u.id),
         );
       },
+    );
+  }
+}
+
+/// Полоса «сахар подорожал» над списками покупок.
+///
+/// Только для подорожания: тёща бьёт по продаже и показывается на карточке
+/// Петровича, там, где продают.
+class _SupplyStrip extends ConsumerWidget {
+  const _SupplyStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Подписка на игру — ради перерисовки каждым тиком: отсчёт должен идти.
+    ref.watch(gameProvider);
+    final active = expenseAt(ref.read(timeProvider)());
+    if (active == null || active.expense.kind != ExpenseKind.supplies) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(GS.s4, 0, GS.s4, GS.s1),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              '${active.expense.title} · ${active.expense.note}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              // Не красный: красный в игре один раз, у участкового. Расход —
+              // неприятность, а не тревога.
+              style: GType.ui(size: 10, weight: FontWeight.w600, color: GColors.cold),
+            ),
+          ),
+          const SizedBox(width: GS.s2),
+          Text(
+            Fmt.duration(active.remaining),
+            style: GType.num(size: 10, weight: FontWeight.w700, color: GColors.cold),
+          ),
+        ],
+      ),
     );
   }
 }

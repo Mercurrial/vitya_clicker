@@ -193,7 +193,7 @@ void main() {
     test('пачка добавляет ровно столько штук и списывает ровно столько денег', () {
       var s = withMoney(1e6);
       final g = s.generators.items.first;
-      final cost = engine.bulkCost(g, 10);
+      final cost = engine.bulkCost(g, 10, t0);
 
       s = engine.buyGeneratorBulk(s, g.id, 10, t0);
 

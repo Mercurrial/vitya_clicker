@@ -1,6 +1,7 @@
 import '../content/achievements.dart';
 import '../content/balance.dart';
 import '../content/buyers.dart';
+import '../content/expenses.dart';
 import '../content/game_content.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
@@ -140,12 +141,18 @@ class GameEngine {
   ///
   /// Цена складывается из рыночной за миллилитр, надбавки за **сорт** (чем
   /// лучше нагнали, тем дороже) и коэффициента покупателя.
+  ///
+  /// Постоянному покупателю цену может сбить расход (тёща гостит, см.
+  /// `expenses.dart`). Гостей это не касается: их множитель — их условие.
   double saleValueFor(GameState state, Buyer buyer, DateTime currentTime) {
     final volume = buyer.volumeFrom(state.resources.ml);
+    final neighbor =
+        buyer.id == kBuyers.first.id ? neighborFactorAt(currentTime) : 1.0;
     return volume *
         Market.pricePerMl(currentTime, state.upgrades) *
         state.sort.multiplier *
-        buyer.multiplier;
+        buyer.multiplier *
+        neighbor;
   }
 
   /// Сдать товар покупателю.
@@ -180,12 +187,24 @@ class GameEngine {
   /// Скорость удорожания — одна на всю игру, из баланса.
   double get _growth => Balance.current.costGrowth;
 
-  /// Стоимость следующей штуки аппарата, в рублях.
-  double generatorCost(Generator g) => formulas.calculateUpgradeCost(
-        g.baseCost,
-        _growth,
-        g.ownedCount,
-      );
+  /// Базовая цена аппарата с поправкой на расход в момент [at].
+  ///
+  /// Весь ряд цен линеен по базовой, поэтому подорожание сахара достаточно
+  /// приложить к ней одной — и цена штуки, и цена пачки, и «сколько влезет»
+  /// сойдутся сами.
+  ///
+  /// Время во всех ценах обязательное, а не необязательное с «обычной ценой»
+  /// по умолчанию. Иначе первое же место, которое про него забудет, покажет
+  /// игроку одну цену, а спишет другую.
+  double _base(Generator g, DateTime at) => g.baseCost * supplyFactorAt(at);
+
+  /// Стоимость следующей штуки аппарата в момент [at], в рублях.
+  double generatorCost(Generator g, DateTime at) =>
+      formulas.calculateUpgradeCost(_base(g, at), _growth, g.ownedCount);
+
+  /// Стоимость улучшения в момент [at]. Цена в самом [Upgrade] — обычная,
+  /// без поправки на расход; показывать и списывать надо эту.
+  double upgradeCost(Upgrade u, DateTime at) => u.cost * supplyFactorAt(at);
 
   /// Покупка одного аппарата — за деньги, а не за товар.
   GameState buyGenerator(GameState state, String generatorId, DateTime currentTime) {
@@ -193,7 +212,7 @@ class GameEngine {
     if (index == -1) return state;
 
     final generator = state.generators.items[index];
-    final cost = generatorCost(generator);
+    final cost = generatorCost(generator, currentTime);
     if (state.resources.money < cost) return state;
 
     final items = List<Generator>.from(state.generators.items);
@@ -207,16 +226,17 @@ class GameEngine {
   }
 
   /// Сколько штук игрок может позволить прямо сейчас.
-  int affordableCount(GameState state, Generator g) => formulas.maxAffordable(
-        g.baseCost,
+  int affordableCount(GameState state, Generator g, DateTime at) =>
+      formulas.maxAffordable(
+        _base(g, at),
         _growth,
         g.ownedCount,
         state.resources.money,
       );
 
-  /// Цена пачки в [count] штук.
-  double bulkCost(Generator g, int count) =>
-      formulas.bulkCost(g.baseCost, _growth, g.ownedCount, count);
+  /// Цена пачки в [count] штук в момент [at].
+  double bulkCost(Generator g, int count, DateTime at) =>
+      formulas.bulkCost(_base(g, at), _growth, g.ownedCount, count);
 
   /// Купить сразу несколько штук.
   ///
@@ -235,11 +255,11 @@ class GameEngine {
     if (index == -1) return state;
 
     final generator = state.generators.items[index];
-    final affordable = affordableCount(state, generator);
+    final affordable = affordableCount(state, generator, currentTime);
     final take = count < affordable ? count : affordable;
     if (take <= 0) return state;
 
-    final cost = bulkCost(generator, take);
+    final cost = bulkCost(generator, take, currentTime);
 
     final items = List<Generator>.from(state.generators.items);
     items[index] = generator.copyWith(ownedCount: generator.ownedCount + take);
@@ -258,13 +278,14 @@ class GameEngine {
 
     final upgrade = state.upgrades.items[index];
     if (upgrade.purchased) return state;
-    if (state.resources.money < upgrade.cost) return state;
+    final cost = upgradeCost(upgrade, currentTime);
+    if (state.resources.money < cost) return state;
 
     final items = List<Upgrade>.from(state.upgrades.items);
     items[index] = upgrade.copyWith(purchased: true);
 
     return state.copyWith(
-      resources: state.resources.copyWith(money: state.resources.money - upgrade.cost),
+      resources: state.resources.copyWith(money: state.resources.money - cost),
       upgrades: state.upgrades.copyWith(items: items),
       lastUpdateTime: currentTime,
     );
