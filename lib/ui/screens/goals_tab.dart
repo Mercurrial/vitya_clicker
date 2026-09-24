@@ -9,6 +9,7 @@ import '../../providers/feedback_provider.dart';
 import '../../providers/game_provider.dart';
 import '../pixel/goal_icons.dart';
 import '../pixel/pixel_sprite.dart';
+import '../pixel/still_sprites.dart';
 import '../theme/garage.dart';
 import '../widgets/panel.dart';
 
@@ -141,7 +142,7 @@ class _GoalCard extends StatelessWidget {
             ),
             child: Opacity(
               opacity: done ? 1 : 0.55,
-              child: PixelImage(sprite: goalIcon(goal.id), size: 32),
+              child: PixelImage(sprite: goalIcon(goal.id), size: 32, palette: kStillPalette),
             ),
           ),
           const SizedBox(width: GS.s3),
@@ -274,7 +275,7 @@ class _AchievementCell extends ConsumerWidget {
             // «ещё нет» различаются мгновенно.
             Opacity(
               opacity: done ? 1.0 : 0.3,
-              child: PixelImage(sprite: goalIcon(a.id), size: 30),
+              child: PixelImage(sprite: goalIcon(a.id), size: 32, palette: kStillPalette),
             ),
             const Spacer(),
             Text(

@@ -145,6 +145,11 @@ class HeatController extends ChangeNotifier {
   final ValueNotifier<HeatStatus> statusNotifier =
       ValueNotifier(HeatStatus.off);
 
+  /// Держат ли палец — тоже отдельно: от этого зависит подсказка («зажми» или
+  /// «держи, греется»), а статус при зажиме не меняется, пока жар не дойдёт
+  /// до окна.
+  final ValueNotifier<bool> stokingNotifier = ValueNotifier(false);
+
   HeatController({required TickerProvider vsync}) {
     _ticker = vsync.createTicker(_onTick)..start();
   }
@@ -178,13 +183,16 @@ class HeatController extends ChangeNotifier {
   String get hint => switch (status) {
         HeatStatus.overheated => 'отпусти, серия сгорает',
         HeatStatus.inWindow => 'так и держи',
-        HeatStatus.off => _heat < _windowPos ? 'зажми гараж' : 'отпусти немного',
+        HeatStatus.off => _heat >= _windowPos
+            ? 'отпусти немного'
+            : (_stoking ? 'держи, греется' : 'зажми гараж'),
       };
 
   /// Начать поддув.
   void startStoking() {
     if (_stoking) return;
     _stoking = true;
+    stokingNotifier.value = true;
     notifyListeners();
   }
 
@@ -192,6 +200,7 @@ class HeatController extends ChangeNotifier {
   void stopStoking() {
     if (!_stoking) return;
     _stoking = false;
+    stokingNotifier.value = false;
     notifyListeners();
   }
 
@@ -207,13 +216,14 @@ class HeatController extends ChangeNotifier {
   }
 
   void _onTick(Duration elapsed) {
-    // Шаг кадра ограничен десятой секунды. Браузер притормаживает кадры в
+    // Шаг кадра ограничен четвертью секунды. Браузер притормаживает кадры в
     // фоне, телефон — на фризе, и после паузы приходил один кадр длиной в
     // несколько секунд: жар прыгал из холодного сразу в перегрев, и серия
-    // сгорала без единой ошибки игрока.
+    // сгорала без единой ошибки игрока. Четверть секунды — это ещё рывок,
+    // который глаз успевает связать с пальцем.
     final dt = _last == Duration.zero
         ? 0.016
-        : math.min(0.1, (elapsed - _last).inMicroseconds / 1e6);
+        : math.min(0.25, (elapsed - _last).inMicroseconds / 1e6);
     _last = elapsed;
 
     // --- Жар ---------------------------------------------------------
@@ -260,6 +270,7 @@ class HeatController extends ChangeNotifier {
   @override
   void dispose() {
     statusNotifier.dispose();
+    stokingNotifier.dispose();
     _ticker.dispose();
     super.dispose();
   }

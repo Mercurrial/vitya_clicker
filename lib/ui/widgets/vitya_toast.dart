@@ -4,6 +4,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../content/vitya_quotes.dart';
+import '../pixel/goal_icons.dart';
+import '../pixel/pixel_sprite.dart';
+import '../pixel/still_sprites.dart';
 import '../theme/garage.dart';
 
 /// Что показать во всплывающей плашке.
@@ -20,11 +23,15 @@ class ToastMessage {
   /// Реплика Вити — здесь шутка уместна, потому что видят её редко.
   final String voice;
 
+  /// Цель, значок которой показать вместо галочки. `null` — галочка.
+  final String? goalId;
+
   const ToastMessage({
     required this.kind,
     required this.title,
     this.note = '',
     this.voice = '',
+    this.goalId,
   });
 }
 
@@ -46,12 +53,14 @@ class ToastQueue extends Notifier<ToastMessage?> {
     required String title,
     String note = '',
     VityaEvent? event,
+    String? goalId,
   }) {
     state = ToastMessage(
       kind: kind,
       title: title,
       note: note,
       voice: event == null ? '' : _voice.line(event),
+      goalId: goalId,
     );
     _timer?.cancel();
     _timer = Timer(const Duration(milliseconds: 2800), () => state = null);
@@ -97,7 +106,7 @@ class _Card extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: GS.s3),
         padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
         decoration: BoxDecoration(
-          color: const Color(0xF02A2118),
+          color: GColors.surface2,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: GColors.amber),
           boxShadow: const [
@@ -108,8 +117,8 @@ class _Card extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 40,
+              height: 40,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(11),
@@ -120,14 +129,20 @@ class _Card extends StatelessWidget {
                 ),
                 border: Border.all(color: GColors.amber.withOpacity(0.6)),
               ),
-              child: Text(
-                '✓',
-                style: GType.num(
-                  size: 15,
-                  weight: FontWeight.w700,
-                  color: GColors.lamp,
-                ),
-              ),
+              child: message.goalId != null
+                  ? PixelImage(
+                      sprite: goalIcon(message.goalId!),
+                      size: 32,
+                      palette: kStillPalette,
+                    )
+                  : Text(
+                      '✓',
+                      style: GType.num(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: GColors.lamp,
+                      ),
+                    ),
             ),
             const SizedBox(width: GS.s3),
             Expanded(

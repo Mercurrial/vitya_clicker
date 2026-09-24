@@ -121,16 +121,19 @@ class _HeatHeader extends StatelessWidget {
         Expanded(
           // Подписи меняются раз в несколько секунд — подписываемся на
           // статус, а не на каждый кадр контроллера.
-          child: ValueListenableBuilder<HeatStatus>(
-            valueListenable: controller.statusNotifier,
-            builder: (context, status, _) => Text.rich(
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              controller.statusNotifier,
+              controller.stokingNotifier,
+            ]),
+            builder: (context, _) => Text.rich(
               TextSpan(children: [
                 TextSpan(
                   text: controller.label,
                   style: GType.ui(
                     size: 11,
                     weight: FontWeight.w700,
-                    color: heatAccent(status),
+                    color: heatAccent(controller.status),
                     letterSpacing: 0.6,
                   ),
                 ),

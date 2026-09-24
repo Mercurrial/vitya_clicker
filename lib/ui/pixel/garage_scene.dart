@@ -308,8 +308,9 @@ class _SceneLayout extends StatelessWidget {
 /// Сколько строк спрайта занимает огонь под аппаратом.
 const double _fireRows = 4;
 
-/// Сколько строк занимает пар над аппаратом.
-const double _steamRows = 4;
+/// Сколько строк занимает пар над аппаратом. Клуб пара — шесть строк по
+/// три четверти пикселя, то есть четыре с половиной.
+const double _steamRows = 5;
 
 /// Доска полки на кронштейнах.
 class _ShelfBoard extends StatelessWidget {
@@ -450,13 +451,21 @@ class _Still extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (steam)
+              // Пар идёт от работы: остывший аппарат не парит, в окне — ровно,
+              // при перегреве валит клубами. Место под пар есть всегда, иначе
+              // аппарат подпрыгивал бы на полу при каждой смене жара.
               SizedBox(
                 height: _steamRows * pixel,
-                child: PixelImage.scaled(
-                  sprite: kSteamFrames[(t * 2.2 * speed).floor() % kSteamFrames.length],
-                  pixel: steamPixel,
-                  palette: kStillPalette,
-                ),
+                child: status == HeatStatus.off && heat.heat < 0.15
+                    ? null
+                    : PixelImage.scaled(
+                        sprite: () {
+                          final frames = overheated ? kHeavySteamFrames : kSteamFrames;
+                          return frames[(t * 3 * speed).floor() % frames.length];
+                        }(),
+                        pixel: steamPixel,
+                        palette: kStillPalette,
+                      ),
               ),
             PixelImage.scaled(
               sprite: sprite,
