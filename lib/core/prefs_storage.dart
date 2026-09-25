@@ -22,6 +22,10 @@ class PrefsSaveStorage implements SaveStorage {
   /// сейве показывается, пока нет своего, то есть один раз.
   static const String _testKey = 'vitya_save_v1';
 
+  /// Копии нечитаемых сейвов. Свой ключ, а не соседний с номером: основной
+  /// перезапишет автосейв, а копия должна пережить и его, и полный сброс.
+  static const String _rescueKey = 'vitya_save_rescue';
+
   final SharedPreferences _prefs;
 
   const PrefsSaveStorage(this._prefs);
@@ -44,6 +48,22 @@ class PrefsSaveStorage implements SaveStorage {
 
   @override
   Future<bool> hasTestSave() async => _prefs.containsKey(_testKey);
+
+  @override
+  Future<String?> readRescue() async => _prefs.getString(_rescueKey);
+
+  @override
+  Future<void> writeRescue(String data) async {
+    // Плагин сначала кладёт значение в свой кэш в памяти, а потом пишет на
+    // диск, поэтому чтение обратно отказ не покажет — только ответ записи.
+    // Копия, которая не легла, хуже отсутствующей: игроку скажут «отложено».
+    if (!await _prefs.setString(_rescueKey, data)) {
+      throw StateError('хранилище не приняло копию сейва');
+    }
+  }
+
+  @override
+  Future<void> clearRescue() async => _prefs.remove(_rescueKey);
 }
 
 /// Настройки поверх того же `shared_preferences`.

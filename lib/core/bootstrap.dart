@@ -30,8 +30,23 @@ class Bootstrap {
   /// Сколько потока принесло отсутствие, секунд.
   final double fluxGained;
 
-  /// Сейв был испорчен и игра начата заново — об этом честно скажем игроку.
-  final bool saveWasLost;
+  /// Сейв не прочитался — строка, как она лежала. Гараж начат заново, и
+  /// игроку надо сказать это и дать строку скопировать: её можно прислать
+  /// разработчику.
+  final String? brokenSave;
+
+  /// Легла ли копия [brokenSave] отдельно (см. [SaveService.rescue]). Если
+  /// нет, игроку нельзя говорить «отложено» — только «скопируй сейчас».
+  final bool brokenSaveKept;
+
+  /// Сейв записан более новой версией игры. Играть в этой версии нельзя:
+  /// любой её автосейв затёр бы новый прогресс старым гаражом. Поэтому
+  /// `main` не показывает гараж и не отдаёт игре сервис сейва.
+  final bool saveFromFuture;
+
+  /// Отложенная раньше копия, которая теперь читается, — например, после
+  /// обновления. Игроку предложат вернуть из неё гараж.
+  final RescuedGarage? rescuedGarage;
 
   /// Своего сейва нет, но есть сейв тестовой сборки: гараж новый, и игроку
   /// надо объяснить почему, до того как он решит, что прогресс пропал.
@@ -50,10 +65,16 @@ class Bootstrap {
     required this.settings,
     required this.offline,
     required this.fluxGained,
-    required this.saveWasLost,
+    this.brokenSave,
+    this.brokenSaveKept = false,
+    this.saveFromFuture = false,
+    this.rescuedGarage,
     this.testSaveDropped = false,
     this.balanceNews = const [],
   });
+
+  /// Сейв не прочитался, и игра начата заново.
+  bool get saveWasLost => brokenSave != null;
 
   /// Показать экран возвращения. С полной копилкой — тоже, хотя ничего не
   /// прибавилось: игрок должен узнать, что поток переливается мимо.
@@ -73,26 +94,50 @@ Future<Bootstrap> bootstrapGame({
   final saves = SaveService(storage: storages.saves);
   final loaded = await saves.load();
   final now = clock.nowUtc();
+  GameState fresh() =>
+      newGame(content: kGenerators, upgrades: kUpgrades, now: now);
 
-  if (loaded.isEmpty) {
+  // Сейв новой версии не читается и не трогается: ни копии, ни нового
+  // гаража поверх. Состояние — заглушка, игру не покажут.
+  if (loaded.fromFuture) {
     return Bootstrap(
-      state: newGame(content: kGenerators, upgrades: kUpgrades, now: now),
+      state: fresh(),
       saves: saves,
       settings: storages.settings,
       offline: OfflineResult.none,
       fluxGained: 0,
-      saveWasLost: loaded.wasCorrupt,
-      testSaveDropped: loaded.fromTestVersion,
+      saveFromFuture: true,
     );
   }
 
-  final data = loaded.data!;
-  var state = serializer.fromJson(
-    data,
-    content: kGenerators,
-    upgrades: kUpgrades,
-    now: now,
-  );
+  final data = loaded.data;
+  var state = data == null ? null : _readState(serializer, data, now);
+
+  // Сейв, который кодек разобрал, но сериализатор не собрал, — тоже
+  // нечитаемый. Упади он здесь, игрок видел бы белый экран на каждом
+  // запуске.
+  final broken =
+      loaded.wasCorrupt || (data != null && state == null) ? loaded.raw : null;
+
+  // Копия — до первой записи. Запуск идёт до первого кадра, а автосейв и
+  // запись при сворачивании появляются только с игрой, так что поверх
+  // битого сейва никто не успеет написать новый гараж.
+  final kept = broken != null && await saves.rescue(broken);
+  final rescued = await _readableCopy(saves, serializer, now);
+
+  if (data == null || state == null) {
+    return Bootstrap(
+      state: fresh(),
+      saves: saves,
+      settings: storages.settings,
+      offline: OfflineResult.none,
+      fluxGained: 0,
+      brokenSave: broken,
+      brokenSaveKept: kept,
+      rescuedGarage: rescued,
+      testSaveDropped: loaded.fromTestVersion,
+    );
+  }
 
   // Баланс мог поменяться, пока игрок не заходил.
   //
@@ -123,8 +168,58 @@ Future<Bootstrap> bootstrapGame({
     settings: storages.settings,
     offline: offline,
     fluxGained: credited.gained,
-    saveWasLost: false,
+    rescuedGarage: rescued,
     balanceNews: news,
   );
+}
+
+/// Отложенная копия, которая теперь читается.
+class RescuedGarage {
+  /// Строка, как она лежит среди копий: по ней гараж и возвращают, и
+  /// копию выбрасывают.
+  final String raw;
+
+  /// Во что копия читается сейчас — показать игроку, что он вернёт.
+  final GameState state;
+
+  const RescuedGarage({required this.raw, required this.state});
+}
+
+GameState? _readState(
+  GameSerializer serializer,
+  Map<String, dynamic> data,
+  DateTime now,
+) {
+  try {
+    return serializer.fromJson(
+      data,
+      content: kGenerators,
+      upgrades: kUpgrades,
+      now: now,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Копия, которую теперь можно прочитать, — после обновления, починившего
+/// разбор. Если таких несколько, предлагаем ту, где нагнано больше всего:
+/// спрашивать игрока «какую из двух» — хуже, чем выбрать дорогую ему.
+Future<RescuedGarage?> _readableCopy(
+  SaveService saves,
+  GameSerializer serializer,
+  DateTime now,
+) async {
+  RescuedGarage? best;
+  for (final raw in await saves.rescued()) {
+    final data = saves.codec.decode(raw).data;
+    final state = data == null ? null : _readState(serializer, data, now);
+    if (state == null) continue;
+    final earned = state.prestige.totalEverEarned;
+    if (best == null || earned > best.state.prestige.totalEverEarned) {
+      best = RescuedGarage(raw: raw, state: state);
+    }
+  }
+  return best;
 }
 

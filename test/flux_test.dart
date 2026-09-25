@@ -396,7 +396,6 @@ void main() {
         settings: MemorySettingsStore(),
         offline: OfflineResult.none,
         fluxGained: 0,
-        saveWasLost: false,
       );
       await tester.pumpWidget(ProviderScope(
         overrides: [
