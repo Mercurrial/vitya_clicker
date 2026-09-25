@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/save_code.dart';
+import '../../core/sfx.dart';
+import '../../providers/feedback_provider.dart';
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
 
@@ -24,9 +26,21 @@ class TransferProgress extends ConsumerStatefulWidget {
 class _TransferProgressState extends ConsumerState<TransferProgress> {
   String? _note;
 
+  // Буфер обмена в браузере — не гарантия, а просьба. Встроенные браузеры
+  // мессенджеров, вкладка без фокуса, запрет в настройках — и браузер
+  // отказывает. Раньше отказ улетал необработанным исключением: игрок жал
+  // «СКОПИРОВАТЬ», не видел ничего и уходил в уверенности, что код у него.
+  // Поэтому у обеих кнопок есть ручной путь: код показывается целиком, а
+  // вставить его можно в поле.
+
   Future<void> _copy() async {
     final code = ref.read(gameProvider.notifier).exportCode();
-    await Clipboard.setData(ClipboardData(text: code));
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+    } catch (_) {
+      if (mounted) await _showCode(code);
+      return;
+    }
     if (!mounted) return;
     setState(() => _note = 'Код скопирован. Отправь его себе в сообщения.');
   }
@@ -35,8 +49,21 @@ class _TransferProgressState extends ConsumerState<TransferProgress> {
     final confirmed = await _confirmOverwrite();
     if (!confirmed || !mounted) return;
 
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final error = await ref.read(gameProvider.notifier).importCode(data?.text);
+    String? code;
+    try {
+      code = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    } catch (_) {
+      code = null;
+    }
+    // Пустой буфер — то же, что недоступный: код, скорее всего, в другом
+    // приложении, и его проще вставить руками, чем читать «это не код».
+    if (code == null || code.trim().isEmpty) {
+      if (!mounted) return;
+      code = await _askForCode();
+      if (code == null || !mounted) return;
+    }
+
+    final error = await ref.read(gameProvider.notifier).importCode(code);
     if (!mounted) return;
     setState(() {
       // Объяснения живут рядом с самим форматом кода — здесь их не дублируем.
@@ -44,6 +71,63 @@ class _TransferProgressState extends ConsumerState<TransferProgress> {
           ? 'Прогресс принят.'
           : SaveCodeResult.failed(error).message;
     });
+  }
+
+  /// Код целиком — чтобы скопировать руками, когда браузер не дал сам.
+  Future<void> _showCode(String code) => showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: GColors.surface1,
+          title: Text('Скопируй вручную',
+              style: GType.ui(size: 17, weight: FontWeight.w600)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Браузер не дал скопировать сам. Выдели код целиком и отправь '
+                'себе в сообщения.',
+                style: GType.body(),
+              ),
+              const SizedBox(height: GS.s3),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 160),
+                padding: const EdgeInsets.all(GS.s2),
+                decoration: BoxDecoration(
+                  color: GColors.wellBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: GColors.border),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    code,
+                    style: GType.num(size: 11, color: GColors.textMid),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Готово', style: GType.body()),
+            ),
+          ],
+        ),
+      );
+
+  /// Поле для кода — когда прочитать буфер браузер не дал или он пуст.
+  /// `null` — игрок передумал.
+  Future<String?> _askForCode() => showDialog<String>(
+        context: context,
+        builder: (context) => const _CodeDialog(),
+      );
+
+  /// Нажатие кнопки: отдача — через общий фасад, чтобы выключатель вибрации
+  /// в настройках действовал и здесь.
+  void _tap(Future<void> Function() action) {
+    ref.read(feedbackProvider).buzz(Buzz.select);
+    action();
   }
 
   /// Приём кода стирает текущий гараж. Спрашиваем прямо: это единственное
@@ -101,10 +185,16 @@ class _TransferProgressState extends ConsumerState<TransferProgress> {
           const SizedBox(height: GS.s3),
           Row(
             children: [
-              Expanded(child: _Action(label: 'СКОПИРОВАТЬ', onTap: _copy)),
+              Expanded(
+                child: _Action(label: 'СКОПИРОВАТЬ', onTap: () => _tap(_copy)),
+              ),
               const SizedBox(width: GS.s2),
               Expanded(
-                child: _Action(label: 'ВСТАВИТЬ', onTap: _paste, quiet: true),
+                child: _Action(
+                  label: 'ВСТАВИТЬ',
+                  onTap: () => _tap(_paste),
+                  quiet: true,
+                ),
               ),
             ],
           ),
@@ -129,10 +219,7 @@ class _Action extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
+      onTap: onTap,
       child: Container(
         height: 42,
         alignment: Alignment.center,
@@ -151,6 +238,61 @@ class _Action extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Диалог с полем для кода.
+///
+/// Отдельный виджет, а не `TextEditingController` в методе экрана: диалог
+/// ещё доигрывает анимацию закрытия, когда ответ уже получен, и контроллер,
+/// уничтоженный сразу после ответа, ронял поле посреди этой анимации.
+class _CodeDialog extends StatefulWidget {
+  const _CodeDialog();
+
+  @override
+  State<_CodeDialog> createState() => _CodeDialogState();
+}
+
+class _CodeDialogState extends State<_CodeDialog> {
+  final _field = TextEditingController();
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: GColors.surface1,
+      title: Text('Вставь код', style: GType.ui(size: 17, weight: FontWeight.w600)),
+      content: TextField(
+        controller: _field,
+        autofocus: true,
+        maxLines: 4,
+        minLines: 2,
+        style: GType.num(size: 11, color: GColors.textHi),
+        decoration: InputDecoration(
+          hintText: '$kSaveCodePrefix…',
+          hintStyle: GType.num(size: 11, color: GColors.textLo),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: GType.body()),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _field.text),
+          child: Text(
+            'Принять',
+            style: GType.ui(size: 14, weight: FontWeight.w600, color: GColors.amber),
+          ),
+        ),
+      ],
     );
   }
 }
