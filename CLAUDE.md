@@ -54,7 +54,6 @@
 ```bash
 flutter analyze                                   # должно быть пусто
 flutter test                                      # всё зелёное
-flutter test --tags golden --run-skipped          # снимки экрана
 dart run tools/balance_report.dart 4              # если трогали экономику
 ```
 
@@ -63,8 +62,15 @@ dart run tools/balance_report.dart 4              # если трогали эк
 
 - **Flutter 3.24.3**, и CI прибит к нему же. API новее 3.24 не использовать:
   `Color.withValues` уже ломал сборку — нужен `withOpacity`.
-- Снимки (`test/goldens/`) после `--update-goldens` **смотреть глазами**.
-  Обновлённый не глядя снимок перестаёт что-либо проверять.
+- **Снимки экрана (`test/goldens/`) — только через GitHub Actions.** Эталон
+  снят на ubuntu, там же его сверяет «Проверка PR». Локально на Windows
+  снимки с текстом не совпадут — шрифты рисуются иначе; это ожидаемо, не
+  поломка. Локально не переснимать и не коммитить. Переснять:
+  `gh workflow run goldens.yml --ref <ветка>` — workflow закоммитит снимки
+  в ветку и сам перезапустит проверку; потом `git pull`. Порядок —
+  шаг 1 [docs/RELEASE.md](docs/RELEASE.md).
+- Переснятые снимки **смотреть глазами** (Read показывает PNG) и сравнивать
+  со старыми. Обновлённый не глядя снимок перестаёт что-либо проверять.
 - Флакающий тест хуже отсутствующего. Время в тестах — через `timeProvider`
   и `test/support/moments.dart`, а не `DateTime.now()`.
 - Полный порядок выпуска версии — [docs/RELEASE.md](docs/RELEASE.md).
