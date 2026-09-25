@@ -2,10 +2,12 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/core/game_serializer.dart';
+import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/models/game_state.dart';
 import 'package:idle_game/providers/game_provider.dart';
 import 'package:idle_game/ui/screens/garage_screen.dart';
@@ -18,37 +20,63 @@ import 'support/moments.dart';
 /// Плейтест жаловался на обрезанную вёрстку, а проверить это можно только
 /// глазами и только целиком: по отдельности все блоки помещаются.
 ///
-/// На снимке две вещи выглядят «сломанными», но сломанными не являются:
-/// текст — квадратиками (в тестах шрифт подменяется на Ahem) и портрет —
-/// ровной заливкой (фотография декодируется асинхронно, а тестовый кадр её
-/// не ждёт). Настоящую заливку портрета ловит pixel_portrait_test.dart —
-/// именно этой ошибкой он и вызван к жизни.
+/// Шрифты настоящие, а не Ahem. Раньше текст на этих снимках был
+/// квадратиками, и по ним нельзя было понять главного — сколько чего видно
+/// на экране. Теперь по снимкам шторки владелец принимает главный экран
+/// (docs/DECISIONS.md, «Главный экран»).
+///
+/// Портрет на снимке — ровной заливкой: фотография декодируется асинхронно,
+/// а тестовый кадр её не ждёт. Настоящую заливку портрета ловит
+/// pixel_portrait_test.dart — именно этой ошибкой он и вызван к жизни.
 ///
 /// Запуск:
 ///   flutter test --tags golden --run-skipped --update-goldens
-GameState _stateWith({required int banki, required double money}) {
+///
+/// Цели, до которых такой гараж уже дорос, взяты заранее, а сейв записан в
+/// ту же минуту, что и снимок: иначе первый тик наливал бы бак за месяцы
+/// оффлайна, открывал цели пачкой, и на снимок попадала плашка «цель взята».
+GameState _stateWith({required int banki, required double money, required DateTime now}) {
   var state = newGame(
     content: kGenerators,
     upgrades: kUpgrades,
-    now: DateTime.utc(2026),
+    now: now,
   );
   final items = [
     for (final g in state.generators.items)
       g.id == 'banka' ? g.copyWith(ownedCount: banki) : g,
   ];
-  return state.copyWith(
+  state = state.copyWith(
     generators: state.generators.copyWith(items: items),
     resources: state.resources.copyWith(money: money, ml: 640),
   );
+  return const GameEngine().checkAchievements(state).state;
 }
 
 void main() {
+  setUpAll(() async {
+    const fonts = {
+      GType.uiFamily: ['Rubik-Variable.ttf'],
+      GType.numFamily: [
+        'IBMPlexMono-Regular.ttf',
+        'IBMPlexMono-Medium.ttf',
+        'IBMPlexMono-SemiBold.ttf',
+        'IBMPlexMono-Bold.ttf',
+      ],
+    };
+    for (final MapEntry(key: family, value: files) in fonts.entries) {
+      final loader = FontLoader(family);
+      for (final file in files) {
+        loader.addFont(rootBundle.load('assets/fonts/$file'));
+      }
+      await loader.load();
+    }
+  });
+
   /// Часы подменяются намеренно: от них зависит и цена на рынке, и то, стоит
   /// ли в гараже гость. См. `test/support/moments.dart`.
-  Future<void> open(WidgetTester tester, DateTime now) async {
-    // Размер средней «рабочей лошадки»: на ней вёрстка и жаловалась.
+  Future<void> open(WidgetTester tester, DateTime now, Size size) async {
     tester.view
-      ..physicalSize = const Size(390, 844)
+      ..physicalSize = size
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -56,7 +84,7 @@ void main() {
       ProviderScope(
         overrides: [
           initialStateProvider
-              .overrideWithValue(_stateWith(banki: 7, money: 1840)),
+              .overrideWithValue(_stateWith(banki: 7, money: 840, now: now)),
           timeProvider.overrideWithValue(() => now),
         ],
         child: MaterialApp(
@@ -77,25 +105,51 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('гараж целиком помещается на экране телефона', (tester) async {
-    await open(tester, quietMoment);
+  /// Развернуть магазин и дать шторке доехать.
+  Future<void> expand(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('shelf-grabber')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+  }
 
-    // Снимок делается ДО проверки на исключения намеренно: переполнение
-    // Flutter рисует жёлто-чёрной полосой, и по картинке сразу видно, какой
-    // именно блок вылез. Проверка идёт следом и всё равно валит тест.
-    await expectLater(
-      find.byType(GarageScreen),
-      matchesGoldenFile('goldens/screen_garage.png'),
-    );
+  // 390×844 — средняя «рабочая лошадка», на ней вёрстка и жаловалась;
+  // 390×740 — телефон владельца: Android, Chrome с адресной строкой.
+  for (final (size, name) in const [
+    (Size(390, 844), '844'),
+    (Size(390, 740), '740'),
+  ]) {
+    testWidgets('гараж целиком помещается на экране ${size.width.toInt()}×$name',
+        (tester) async {
+      await open(tester, quietMoment, size);
 
-    expect(tester.takeException(), isNull);
-  });
+      // Снимок делается ДО проверки на исключения намеренно: переполнение
+      // Flutter рисует жёлто-чёрной полосой, и по картинке сразу видно, какой
+      // именно блок вылез. Проверка идёт следом и всё равно валит тест.
+      await expectLater(
+        find.byType(GarageScreen),
+        matchesGoldenFile('goldens/screen_garage_$name.png'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('развёрнутый магазин на ${size.width.toInt()}×$name',
+        (tester) async {
+      await open(tester, quietMoment, size);
+      await expand(tester);
+
+      await expectLater(
+        find.byType(GarageScreen),
+        matchesGoldenFile('goldens/screen_shop_$name.png'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('с гостем в гараже верхняя панель не разъезжается',
       (tester) async {
     // Второй покупатель — единственное, что может появиться на экране само,
     // без действий игрока. Поэтому у него свой снимок.
-    await open(tester, eventMoment);
+    await open(tester, eventMoment, const Size(390, 844));
 
     await expectLater(
       find.byType(GarageScreen),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../core/formatters.dart';
@@ -308,20 +310,33 @@ class _MilestoneBar extends StatelessWidget {
     final prev = steps > 0 ? Production.milestones[steps - 1] : 0;
     final frac = next != null ? (owned - prev) / (next - prev) : 1.0;
 
-    return Row(
-      children: [
-        Expanded(
-          child: FillBar(value: frac, height: 4, color: GColors.copper),
-        ),
-        const SizedBox(width: GS.s2),
-        // Подпись важнее полоски: полоска ужимается, подпись — нет. Когда
-        // они делили ширину поровну, «→ ×16» уходило в многоточие.
-        Text(
-          next != null ? 'ещё ${next - owned} → ×${mult * 2}' : '×$mult · предел',
-          maxLines: 1,
-          style: GType.num(size: 10, color: GColors.textMid),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, c) => Row(
+        children: [
+          Expanded(
+            child: FillBar(value: frac, height: 4, color: GColors.copper),
+          ),
+          const SizedBox(width: GS.s2),
+          // Подпись важнее полоски: полоска ужимается, подпись — нет. Когда
+          // они делили ширину поровну, «→ ×16» уходило в многоточие.
+          //
+          // Но и подписи есть предел: у дорогого аппарата кнопка цены шире
+          // («1.23 Скс ₽»), и на 320 точках подпись вылезала за край
+          // строки, когда от полоски уже ничего не оставалось. Тогда она
+          // ужимается.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: math.max(0, c.maxWidth - GS.s2)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                next != null ? 'ещё ${next - owned} → ×${mult * 2}' : '×$mult · предел',
+                maxLines: 1,
+                style: GType.num(size: 10, color: GColors.textMid),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

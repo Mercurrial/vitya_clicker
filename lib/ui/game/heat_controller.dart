@@ -13,6 +13,9 @@ enum HeatStatus {
 
   /// Перегрев — серия сгорает.
   overheated,
+
+  /// У Вити заняты руки: магазин развёрнут. Жар, серия и сорт стоят.
+  paused,
 }
 
 /// ЖАР ПОД КУБОМ — единственное, ради чего игрок касается экрана.
@@ -50,6 +53,14 @@ enum HeatStatus {
 ///   и оно за настоящую ошибку, а не за поход в магазин.
 /// * **Покупка подкидывает жару** (см. [stokeOnPurchase]): купил аппарат —
 ///   Витя его растопил. Магазин не мешает серии, а помогает.
+///
+/// ## Пауза — «у Вити заняты руки»
+///
+/// Пока магазин развёрнут на весь экран, гаража не видно и держать жар
+/// нечем. Поэтому всё, что двигается от пальца, стоит: жар, серия, окно и
+/// сорт (см. [paused]). Серия при этом не множит производство — оно идёт по
+/// базе, иначе сидеть в магазине было бы выгоднее, чем играть. Заморозка
+/// сберегает не больше, чем стоит набрать заново: 45 с серии.
 class HeatController extends ChangeNotifier {
   /// Насколько быстро растёт жар, пока палец на экране.
   ///
@@ -136,6 +147,8 @@ class HeatController extends ChangeNotifier {
   /// Сколько секунд серии ещё позволено не таять.
   double _grace = 0.0;
 
+  bool _paused = false;
+
   /// Состояние относительно окна отдельным уведомителем.
   ///
   /// Сам контроллер уведомляет каждый кадр — этого требует движущаяся шкала.
@@ -160,19 +173,42 @@ class HeatController extends ChangeNotifier {
   double get series => _series;
   bool get isStoking => _stoking;
 
+  /// Магазин развёрнут — у Вити заняты руки.
+  ///
+  /// Пауза снимает зажим: палец мог остаться на гараже, пока другой рукой
+  /// тянули шторку, и после сворачивания жар поехал бы вверх сам.
+  bool get paused => _paused;
+  set paused(bool value) {
+    if (_paused == value) return;
+    _paused = value;
+    if (value) {
+      _stoking = false;
+      stokingNotifier.value = false;
+    }
+    statusNotifier.value = status;
+    notifyListeners();
+  }
+
   bool get isOverheated => _heat > overheatAt;
   bool get isInWindow =>
       !isOverheated && _heat >= _windowPos && _heat <= _windowPos + windowSize;
 
-  HeatStatus get status => isOverheated
-      ? HeatStatus.overheated
-      : (isInWindow ? HeatStatus.inWindow : HeatStatus.off);
+  HeatStatus get status => _paused
+      ? HeatStatus.paused
+      : isOverheated
+          ? HeatStatus.overheated
+          : (isInWindow ? HeatStatus.inWindow : HeatStatus.off);
 
-  /// Во сколько раз серия множит производство прямо сейчас.
-  double get multiplier => 1.0 + (maxSeriesMultiplier - 1.0) * _series;
+  /// Во сколько раз набранная серия множит производство — то, что она даст,
+  /// когда руки освободятся. На паузе показывается, но не действует.
+  double get seriesMultiplier => 1.0 + (maxSeriesMultiplier - 1.0) * _series;
+
+  /// Во сколько раз серия множит производство прямо сейчас. На паузе — база.
+  double get multiplier => _paused ? 1.0 : seriesMultiplier;
 
   /// Состояние одним словом — для заголовка шкалы.
   String get label => switch (status) {
+        HeatStatus.paused => 'ПАУЗА',
         HeatStatus.overheated => 'ПЕРЕГРЕВ',
         HeatStatus.inWindow => 'В САМЫЙ РАЗ',
         HeatStatus.off => _heat < _windowPos ? 'СЛАБО' : 'ГОРЯЧО',
@@ -181,6 +217,7 @@ class HeatController extends ChangeNotifier {
   /// Что делать прямо сейчас. Подсказка обязана быть про ДЕЙСТВИЕ, а не про
   /// состояние: «много жара» не говорит новичку, что отпустить.
   String get hint => switch (status) {
+        HeatStatus.paused => 'руки заняты магазином',
         HeatStatus.overheated => 'отпусти, серия сгорает',
         HeatStatus.inWindow => 'так и держи',
         HeatStatus.off => _heat >= _windowPos
@@ -190,7 +227,7 @@ class HeatController extends ChangeNotifier {
 
   /// Начать поддув.
   void startStoking() {
-    if (_stoking) return;
+    if (_stoking || _paused) return;
     _stoking = true;
     stokingNotifier.value = true;
     notifyListeners();
@@ -208,7 +245,11 @@ class HeatController extends ChangeNotifier {
   ///
   /// Не украшение: без этого поход в магазин ощущался бы наказанием, потому
   /// что ради него приходится снимать палец.
+  ///
+  /// На паузе не подкидывает: иначе после сворачивания жар оказался бы выше,
+  /// чем был, а серия выигрывала бы от покупок без пальца.
   void stokeOnPurchase() {
+    if (_paused) return;
     _heat = math.min(1.0, _heat + purchaseStoke);
     _grace = math.max(_grace, seriesGraceSeconds);
     statusNotifier.value = status;
@@ -225,6 +266,13 @@ class HeatController extends ChangeNotifier {
         ? 0.016
         : math.min(0.25, (elapsed - _last).inMicroseconds / 1e6);
     _last = elapsed;
+
+    // На паузе стоит всё, но уведомлять надо дальше: этот тик — пульс «игра
+    // на экране» для времени в игре (см. GarageScreen._pushHeat).
+    if (_paused) {
+      notifyListeners();
+      return;
+    }
 
     // --- Жар ---------------------------------------------------------
     // Без задержек в обе стороны: держишь — растёт, отпустил — падает.
@@ -243,6 +291,8 @@ class HeatController extends ChangeNotifier {
       case HeatStatus.inWindow:
         _series = math.min(1.0, _series + dt / seriesFillSeconds);
         _grace = seriesGraceSeconds;
+      case HeatStatus.paused:
+        break;
       case HeatStatus.off:
         // Пара секунд форы: этого хватает, чтобы сходить в магазин, и мало,
         // чтобы отойти от игры совсем.
