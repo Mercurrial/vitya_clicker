@@ -136,6 +136,7 @@ void main() {
     String fingerprint(Balance b) => [
           b.costGrowth,
           b.firstWisdomMl,
+          b.firstWisdomBonus,
           b.bonusPerWisdom,
           b.basePricePerMl,
           b.baseTankMl,
@@ -146,6 +147,12 @@ void main() {
           b.tierCostRatio,
           b.firstGeneratorOutput,
           b.tierOutputRatio,
+          b.tierUpgradeCosts.join(','),
+          b.tierUpgradeMultiplier,
+          b.globalUpgradeCost,
+          b.globalUpgradeMultiplier,
+          b.qualityUpgradeCost,
+          b.qualityUpgradeMultiplier,
         ].join('|');
 
     // Отпечаток записан при чистом старте и до выпуска не сверяется:

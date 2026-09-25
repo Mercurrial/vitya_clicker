@@ -49,7 +49,7 @@ void main() {
     }
   });
 
-  GameState state() {
+  GameState state({double money = 500}) {
     const engine = GameEngine();
     final t = quietMoment;
     var s = GameState.initial(
@@ -61,7 +61,7 @@ void main() {
     s = engine.buyGeneratorBulk(s, 'banka', 5, t);
     s = engine.buyGeneratorBulk(s, 'bidon', 2, t);
     return s.copyWith(
-      resources: s.resources.copyWith(money: 500, ml: 300),
+      resources: s.resources.copyWith(money: money, ml: 300),
       // «Целый литр» открывает кнопку количества — она тоже кнопка.
       achievements: s.achievements.withUnlocked(['a_litre']),
     );
@@ -72,6 +72,7 @@ void main() {
     Size size, {
     DateTime? now,
     double textScale = 1.0,
+    double money = 500,
   }) async {
     tester.view
       ..physicalSize = size
@@ -81,7 +82,7 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        initialStateProvider.overrideWithValue(state()),
+        initialStateProvider.overrideWithValue(state(money: money)),
         timeProvider.overrideWithValue(() => now ?? quietMoment),
       ],
       child: MaterialApp(
@@ -427,6 +428,43 @@ void main() {
         expect(room / natural, greaterThanOrEqualTo(0.95),
             reason: '«$label» ужалась до ${(room / natural).toStringAsFixed(2)}');
       }
+    });
+  });
+
+  group('Длинный список улучшений', () {
+    // Улучшения идут по формуле вдоль всей лестницы — их около семидесяти
+    // (docs/PLAN-1.0.md, раздел 3). Шторка делалась под два десятка.
+    testWidgets('все ~70 пролистываются до конца в обоих положениях',
+        (tester) async {
+      // Касса такая, что видно всё сразу: худший случай для списка.
+      await openOn(tester, const Size(320, 640), money: 1e30);
+      await tester.tap(find.text('УЛУЧШЕНИЯ'));
+      await tester.pump();
+
+      final byCost = [...kUpgrades]..sort((a, b) => a.cost.compareTo(b.cost));
+      final list = find.descendant(
+        of: find.byType(ShelfSheet),
+        matching: find.byType(Scrollable),
+      ).last;
+
+      Future<void> walk() async {
+        for (final u in byCost) {
+          // scrollUntilVisible останавливается, как только строка построена,
+          // — а строится она и в запасе за краем списка. Довести до экрана.
+          await tester.scrollUntilVisible(find.text(u.name), 120, scrollable: list);
+          await tester.ensureVisible(find.text(u.name));
+          await tester.pump();
+          expect(find.text(u.name).hitTestable(), findsOneWidget,
+              reason: '«${u.name}» не долистать');
+        }
+        expect(tester.takeException(), isNull);
+      }
+
+      await walk();
+      await tester.tap(grabber);
+      await settle(tester);
+      await tester.scrollUntilVisible(find.text(byCost.first.name), -600, scrollable: list);
+      await walk();
     });
   });
 }

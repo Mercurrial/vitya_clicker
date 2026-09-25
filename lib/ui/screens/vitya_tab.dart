@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../models/prestige_state.dart';
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
 import '../widgets/fill_bar.dart';
@@ -41,7 +40,7 @@ class VityaTab extends ConsumerWidget {
                 ),
               ),
               Text(
-                '+${(PrestigeState.bonusPerWisdom * 100 * p.wisdom).toStringAsFixed(0)}% ко всему производству',
+                '+${((p.globalMultiplier - 1) * 100).toStringAsFixed(0)}% ко всему производству',
                 style: GType.body(),
               ),
             ],

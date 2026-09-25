@@ -5,16 +5,21 @@
 /// целиком разваливалась за полчаса — и узнали мы об этом от человека, который
 /// в неё поиграл. Теперь границы проверяются тестом при каждом изменении.
 ///
-/// Числа не с потолка:
+/// Числа — из docs/PLAN-1.0.md, раздел «Новые цели баланса»:
 ///
-/// * **Первое похмелье через 20–75 минут.** Меньше — престиж наступает раньше,
-///   чем игрок понял правила, и обесценивает всё, что было до него. Больше —
-///   половина игроков до него не доживает.
-/// * **Окупаемость покупки в районе минуты.** Это и есть то самое «ещё чуть-чуть
-///   накоплю»: короче — покупки перестают быть решением, длиннее — игра
-///   ощущается стоячей.
-/// * **Не вся лестница за вечер.** Тринадцать аппаратов — это контент; если
-///   внимательный игрок проходит их за четыре часа, дальше играть не во что.
+/// * **Первая мудрость — через 2,5 часа** активной игры у того, кто считает.
+///   Это решение владельца, принятое вместе с потоком времени: 20 минут игры
+///   и час потока в день дают первую мудрость на 2–3-й день. Не попадает —
+///   крутится поток, а не эти 2,5 часа.
+/// * **Окупаемость — минуты, а не часы, в каждом заходе.** Прежняя экономика
+///   после первого часа вставала: множители кончались, окупаемость лучшей
+///   покупки уходила к 7–10 часам. Растянуть такой заход значило заставить
+///   игрока ждать.
+/// * **Рывок после похмелья.** Второй заход до той же точки — 40–55 %
+///   первого: при +8 % за мудрость он был всего на 20 % короче, и похмелье не
+///   ощущалось наградой.
+/// * **Ночь открытой вкладки не приносит мудрость тому, кто поиграл пару
+///   минут.** Было 17 минут игры — и утром мудрость.
 library;
 
 import 'dart:math' as math;
@@ -22,47 +27,138 @@ import 'dart:math' as math;
 import '../content/balance.dart';
 import '../content/game_content.dart';
 import 'balance_sim.dart';
+import 'sim_profiles.dart';
 
 abstract final class BalanceTargets {
-  /// Первое похмелье у внимательного игрока.
-  static const prestigeMin = Duration(minutes: 20);
-  static const prestigeMax = Duration(minutes: 75);
+  /// К этому моменту «считает» нагоняет ровно на первую мудрость — с него
+  /// порог и снимается ([firstWisdomFromCurve]).
+  static const firstWisdomAt = Duration(hours: 2, minutes: 30);
 
-  /// Медианная окупаемость лучшей покупки.
-  static const paybackMin = Duration(seconds: 25);
-  static const paybackMax = Duration(minutes: 8);
+  /// Первая мудрость у того, кто считает.
+  static const firstWisdomMin = Duration(hours: 2, minutes: 15);
+  static const firstWisdomMax = Duration(hours: 2, minutes: 45);
 
-  /// Сколько ступеней из тринадцати позволительно открыть за четыре часа.
-  static const maxTiersInFourHours = 11;
+  /// Первая мудрость у обычного игрока — не позже.
+  static const firstWisdomCasualMax = Duration(hours: 4, minutes: 30);
 
-  /// Сколько ступеней обязано открыться — иначе игра не «долгая», а мёртвая.
-  static const minTiersInFourHours = 3;
+  /// Окупаемость лучшей покупки в каждом заходе, после его 10-й минуты.
+  ///
+  /// Первые минуты захода не считаются: сразу после похмелья окупается всё
+  /// за секунды, и эти секунды тянули бы медиану вниз, пряча стену в конце.
+  static const paybackSkip = Duration(minutes: 10);
+  static const paybackMedianMin = Duration(minutes: 3);
+  static const paybackMedianMax = Duration(minutes: 10);
+  static const paybackP90Max = Duration(minutes: 20);
+  static const paybackWorstMax = Duration(minutes: 30);
+
+  /// Сколько ступеней открыто к первой мудрости. Меньше — первый заход
+  /// беден; больше — на потом ничего не остаётся.
+  static const tiersAtFirstWisdomMin = 8;
+  static const tiersAtFirstWisdomMax = 10;
+
+  /// Второй заход до той же точки — доля первого.
+  static const rerunMin = 0.40;
+  static const rerunMax = 0.55;
+
+  /// Когда «считает» доходит до 12-й ступени. Коллайдер (13-я) — отдельная
+  /// долгая цель, его отодвигают вехи мудрости (задача 7 плана).
+  static const tier12Min = Duration(hours: 10);
+  static const tier12Max = Duration(hours: 14);
+
+  /// Длина партии с похмельями, на которой меряются окупаемость и 12-я
+  /// ступень: с запасом за верхней границей [tier12Max].
+  static const marathonLength = Duration(hours: 15);
+
+  /// Сколько надо сыграть, чтобы ночь (8 ч) открытой вкладки принесла первую
+  /// мудрость, — не меньше.
+  static const overnightTabMin = Duration(minutes: 60);
 
   /// Бак: и «слишком мал» и «слишком велик» одинаково ломают игру.
   static const tankMin = Duration(minutes: 1);
   static const tankMax = Duration(minutes: 45);
 
   static String get summary => '''
-  • первое похмелье: ${prestigeMin.inMinutes}–${prestigeMax.inMinutes} мин
-  • окупаемость покупки: ${paybackMin.inSeconds} с – ${paybackMax.inMinutes} мин
-  • за 4 часа открыто $minTiersInFourHours–$maxTiersInFourHours из 13 аппаратов
+  • первая мудрость: «считает» ${_hm(firstWisdomMin)}–${_hm(firstWisdomMax)}, «обычный» ≤ ${_hm(firstWisdomCasualMax)}
+  • окупаемость в каждом заходе после ${paybackSkip.inMinutes}-й минуты: медиана ${paybackMedianMin.inMinutes}–${paybackMedianMax.inMinutes} мин, 90 % ≤ ${paybackP90Max.inMinutes} мин, худшая ≤ ${paybackWorstMax.inMinutes} мин
+  • ступеней к первой мудрости: $tiersAtFirstWisdomMin–$tiersAtFirstWisdomMax из 13
+  • второй заход до той же точки: ${(rerunMin * 100).round()}–${(rerunMax * 100).round()} % первого
+  • 12-я ступень у «считает»: ${tier12Min.inHours}–${tier12Max.inHours} ч
+  • ночь открытой вкладки даёт мудрость не раньше ${overnightTabMin.inMinutes} мин игры
   • запас бака: ${tankMin.inMinutes}–${tankMax.inMinutes} мин производства''';
+
+  static String _hm(Duration d) =>
+      '${d.inHours}:${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+}
+
+/// Сколько «считает» нагоняет к [BalanceTargets.firstWisdomAt] — это и есть
+/// порог первой мудрости для такой кривой.
+///
+/// Порог не подбирается: 2,5 часа — решение владельца, а кривая — лестница и
+/// улучшения. Поменял кривую — сними порог заново и перепиши в `kBalance`;
+/// тест сверяет, что записанный не разошёлся с кривой.
+///
+/// До первой мудрости порог ни на что не влияет, поэтому прогон с любым
+/// порогом даёт то же нагнанное.
+double firstWisdomFromCurve(Balance candidate) => withBalance(candidate, () {
+      const sim = BalanceSim(sampleEvery: Duration(hours: 1));
+      final r = sim.run(
+        PlayStyle.tryhard.withPrestige(null),
+        horizon: BalanceTargets.firstWisdomAt,
+      );
+      return r.finalState.prestige.totalEverEarned;
+    });
+
+/// Окупаемость одного захода.
+class RunPayback {
+  final Duration median;
+  final Duration p90;
+  final Duration worst;
+
+  /// Заход доигран до похмелья. У недоигранного последнего медиана не
+  /// в счёт: его длину решил конец прогона, а не игрок, и полчаса свежего
+  /// захода, где всё дёшево, тянут медиану вниз. Стену в нём видно и так —
+  /// по 90 % и худшей.
+  final bool finished;
+
+  const RunPayback({
+    required this.median,
+    required this.p90,
+    required this.worst,
+    required this.finished,
+  });
 }
 
 /// Насколько вариант баланса промахивается мимо целей.
 class Score {
-  final Duration? firstPrestige;
-  final double medianPayback;
-  final int tiersReached;
+  /// Первая мудрость у «считает» и у «обычного». `null` — не дождались.
+  final Duration? firstWisdom;
+  final Duration? firstWisdomCasual;
+
+  final int tiersAtFirstWisdom;
+
+  /// Окупаемость по заходам партии с похмельями. Пусто в быстрой оценке.
+  final List<RunPayback> paybackByRun;
+
+  final double? rerunShare;
+
+  /// Когда куплена 12-я ступень. `null` — не за партию (или быстрая оценка).
+  final Duration? tier12At;
+
+  final Duration? overnightTab;
+
   final Duration maxTankBuffer;
 
   /// Ноль — попал во всё. Чем больше, тем хуже.
   final double penalty;
 
   const Score({
-    required this.firstPrestige,
-    required this.medianPayback,
-    required this.tiersReached,
+    required this.firstWisdom,
+    required this.firstWisdomCasual,
+    required this.tiersAtFirstWisdom,
+    required this.paybackByRun,
+    required this.rerunShare,
+    required this.tier12At,
+    required this.overnightTab,
     required this.maxTankBuffer,
     required this.penalty,
   });
@@ -73,59 +169,135 @@ class Score {
 /// Прогнать вариант и оценить.
 ///
 /// Считает по внимательному игроку: он быстрее всех доходит до краёв, поэтому
-/// на нём раньше всего видно, что экономика поехала.
-Score scoreBalance(Balance candidate, {Duration horizon = const Duration(hours: 4)}) {
+/// на нём раньше всего видно, что экономика поехала. «Обычный» нужен только
+/// для верхней границы первой мудрости.
+///
+/// [quick] — только первый заход: без партии на 15 часов и без ночи. Этого
+/// хватает, чтобы поймать разнос, и это в десятки раз быстрее.
+Score scoreBalance(Balance candidate, {bool quick = false}) {
   return withBalance(candidate, () {
-    const sim = BalanceSim(sampleEvery: Duration(minutes: 2));
-    // Старое правило похмелья — до задачи 4, которая меняет эти цели. На
-    // новом правиле «считает» не ложится каждые полчаса, доживает до стены
-    // v6 после первого часа, и медиана окупаемости уходит к 26 минутам:
-    // цели упали бы раньше, чем переделана экономика.
-    final r = sim.run(PlayStyle.tryhard.onLegacyRule, horizon: horizon);
+    const sim = BalanceSim(sampleEvery: Duration(minutes: 1));
 
-    final paybacks = [
-      for (final c in r.timeline)
-        if (c.payback != null) c.payback!.inMilliseconds / 1000.0,
-    ];
-    final med = median(paybacks);
-    final tiers = kGeneratorCount - r.unreached.length;
+    // Первый заход без похмелья: до первой мудрости правило похмелья ни на
+    // что не влияет, а дальше смотреть незачем.
+    final first = sim.start(PlayStyle.tryhard.withPrestige(null));
+    sim.play(first, BalanceTargets.firstWisdomMax * 2,
+        until: (p) => p.firstPrestige != null);
+    final firstWisdom = first.firstPrestige;
+    final tiers = [
+      for (final g in kGenerators)
+        if (first.firstBuy.containsKey(g.id)) g.id,
+    ].length;
+
+    final casual = sim.start(PlayStyle.casual.withPrestige(null));
+    sim.play(casual, BalanceTargets.firstWisdomCasualMax * 2,
+        until: (p) => p.firstPrestige != null);
 
     var maxTank = Duration.zero;
-    for (final c in r.timeline) {
+    for (final c in first.timeline) {
       if (c.tankBuffer > maxTank) maxTank = c.tankBuffer;
+    }
+
+    final runs = <RunPayback>[];
+    double? rerun;
+    Duration? tier12;
+    Duration? overnight;
+    if (!quick) {
+      final m = marathon(sim, PlayStyle.tryhard, horizon: BalanceTargets.marathonLength);
+      runs.addAll(_paybackByRun(m.result));
+      rerun = m.rerunShare;
+      tier12 = m.result.firstBuy[kGenerators[11].id];
+      for (final c in m.result.timeline) {
+        if (c.tankBuffer > maxTank) maxTank = c.tankBuffer;
+      }
+      overnight = overnightThreshold(sim, PlayStyle.tryhard, Absence.tabOpen);
     }
 
     var penalty = 0.0;
     penalty += _miss(
-      r.firstPrestige?.inSeconds.toDouble(),
-      BalanceTargets.prestigeMin.inSeconds.toDouble(),
-      BalanceTargets.prestigeMax.inSeconds.toDouble(),
+      firstWisdom?.inSeconds.toDouble(),
+      BalanceTargets.firstWisdomMin.inSeconds.toDouble(),
+      BalanceTargets.firstWisdomMax.inSeconds.toDouble(),
     );
     penalty += _miss(
-      med,
-      BalanceTargets.paybackMin.inSeconds.toDouble(),
-      BalanceTargets.paybackMax.inSeconds.toDouble(),
+      casual.firstPrestige?.inSeconds.toDouble(),
+      1,
+      BalanceTargets.firstWisdomCasualMax.inSeconds.toDouble(),
     );
-    if (tiers > BalanceTargets.maxTiersInFourHours) {
-      penalty += (tiers - BalanceTargets.maxTiersInFourHours) * 0.5;
+    if (tiers > BalanceTargets.tiersAtFirstWisdomMax) {
+      penalty += (tiers - BalanceTargets.tiersAtFirstWisdomMax) * 0.5;
     }
-    if (tiers < BalanceTargets.minTiersInFourHours) {
-      penalty += (BalanceTargets.minTiersInFourHours - tiers) * 2.0;
+    if (tiers < BalanceTargets.tiersAtFirstWisdomMin) {
+      penalty += (BalanceTargets.tiersAtFirstWisdomMin - tiers) * 0.5;
     }
     if (maxTank > BalanceTargets.tankMax) {
-      penalty += _ratio(
-        maxTank.inSeconds / BalanceTargets.tankMax.inSeconds,
+      penalty += _ratio(maxTank.inSeconds / BalanceTargets.tankMax.inSeconds);
+    }
+    if (!quick) {
+      for (final r in runs) {
+        if (r.finished) {
+          penalty += _miss(
+            r.median.inSeconds.toDouble(),
+            BalanceTargets.paybackMedianMin.inSeconds.toDouble(),
+            BalanceTargets.paybackMedianMax.inSeconds.toDouble(),
+          );
+        }
+        penalty += _ratio(r.p90.inSeconds / BalanceTargets.paybackP90Max.inSeconds);
+        penalty += _ratio(r.worst.inSeconds / BalanceTargets.paybackWorstMax.inSeconds);
+      }
+      penalty += _miss(rerun, BalanceTargets.rerunMin, BalanceTargets.rerunMax);
+      penalty += _miss(
+        tier12?.inSeconds.toDouble(),
+        BalanceTargets.tier12Min.inSeconds.toDouble(),
+        BalanceTargets.tier12Max.inSeconds.toDouble(),
+      );
+      penalty += _miss(
+        overnight?.inSeconds.toDouble(),
+        BalanceTargets.overnightTabMin.inSeconds.toDouble(),
+        double.infinity,
       );
     }
 
     return Score(
-      firstPrestige: r.firstPrestige,
-      medianPayback: med,
-      tiersReached: tiers,
+      firstWisdom: firstWisdom,
+      firstWisdomCasual: casual.firstPrestige,
+      tiersAtFirstWisdom: tiers,
+      paybackByRun: runs,
+      rerunShare: rerun,
+      tier12At: tier12,
+      overnightTab: overnight,
       maxTankBuffer: maxTank,
       penalty: penalty,
     );
   });
+}
+
+/// Окупаемость по заходам: от похмелья до похмелья, без первых
+/// [BalanceTargets.paybackSkip] каждого. Последний, недоигранный заход
+/// тоже входит — стена в нём так же видна игроку (см. [RunPayback.finished]).
+List<RunPayback> _paybackByRun(SimResult r) {
+  final bounds = [Duration.zero, ...r.hangovers];
+  final out = <RunPayback>[];
+  for (var i = 0; i < bounds.length; i++) {
+    final from = bounds[i] + BalanceTargets.paybackSkip;
+    final to = i + 1 < bounds.length ? bounds[i + 1] : null;
+    final seconds = [
+      for (final c in r.timeline)
+        if (c.at >= from && (to == null || c.at < to) && c.payback != null)
+          c.payback!.inMilliseconds / 1000.0,
+    ];
+    if (seconds.isEmpty) continue;
+    seconds.sort();
+    Duration at(double q) => Duration(
+        seconds: seconds[math.min(seconds.length - 1, (q * seconds.length).floor())].round());
+    out.add(RunPayback(
+      median: Duration(seconds: median(seconds).round()),
+      p90: at(0.9),
+      worst: Duration(seconds: seconds.last.round()),
+      finished: to != null,
+    ));
+  }
+  return out;
 }
 
 /// Промах мимо коридора — в двоичных порядках.

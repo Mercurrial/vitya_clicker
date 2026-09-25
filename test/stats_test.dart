@@ -142,8 +142,8 @@ void main() {
     });
 
     test('улучшение считается один раз', () {
-      var s = engine.buyUpgrade(rich(), 'tap_ruka', t0);
-      s = engine.buyUpgrade(s, 'tap_ruka', t0);
+      var s = engine.buyUpgrade(rich(), 'heat_1', t0);
+      s = engine.buyUpgrade(s, 'heat_1', t0);
       expect(s.stats.upgradesBought, 1);
     });
   });
@@ -202,7 +202,7 @@ void main() {
   group('Сейв', () {
     GameState played() {
       var s = engine.buyGenerator(rich(), 'banka', t0);
-      s = engine.buyUpgrade(s, 'tap_ruka', t0);
+      s = engine.buyUpgrade(s, 'heat_1', t0);
       s = engine.recordPlay(s, 125.4, holding: true, inWindow: true);
       s = engine.recordPlay(s, 30, holding: false, inWindow: false);
       s = s.copyWith(resources: s.resources.copyWith(ml: 4200));

@@ -159,8 +159,8 @@ final List<AchievementRow> kAchievementRows = [
         id: 'a_synergy',
         name: 'Всё по науке',
         hint: 'Купить «Наставника Петровича» и «Семейный подряд»',
-        check: (s) => _boughtWithTarget(s, (id) => id == 'syn_nastavnik') &&
-            _boughtWithTarget(s, (id) => id == 'syn_podryad'),
+        check: (s) => _boughtWithTarget(s, (id) => id == 'syn_1') &&
+            _boughtWithTarget(s, (id) => id == 'syn_2'),
       ),
     ],
   ),

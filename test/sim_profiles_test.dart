@@ -4,6 +4,7 @@ import 'package:idle_game/models/achievement.dart';
 import 'package:idle_game/models/game_state.dart';
 import 'package:idle_game/models/prestige_state.dart';
 import 'package:idle_game/sim/balance_sim.dart';
+import 'package:idle_game/sim/balance_targets.dart';
 import 'package:idle_game/sim/sim_profiles.dart';
 
 /// Симулятор с отсутствием: партия режется на куски игры и ухода.
@@ -182,7 +183,11 @@ void main() {
     // Сверка с числами, снятыми до смены правила, идёт через него: если
     // «считает» на старом правиле ляжет не при первой возможности, сверять
     // станет не с чем.
-    final r = sim.run(PlayStyle.tryhard.onLegacyRule, horizon: const Duration(hours: 1));
+    // Горизонт — из целей, а не число: первая мудрость переехала с 37-й
+    // минуты на 2,5 часа, и прежний час отсюда её уже не видел.
+    final p = sim.start(PlayStyle.tryhard.onLegacyRule);
+    sim.play(p, BalanceTargets.firstWisdomMax, until: (p) => p.hangovers.isNotEmpty);
+    final r = p.result;
     expect(r.firstPrestige, isNotNull);
     expect(r.hangovers.first, r.firstPrestige);
   });

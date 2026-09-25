@@ -12,13 +12,16 @@
 ///            остальные превратились в декорацию.
 ///
 /// Вторая половина — профили с отсутствием (lib/sim/sim_profiles.dart). Их
-/// длина не зависит от аргумента: ночь — 8 часов, сутки — сутки.
+/// длина не зависит от аргумента: ночь — 8 часов, сутки — сутки. В конце —
+/// цели баланса с числами. Весь отчёт идёт несколько минут.
 library;
 
 import 'dart:io';
 
+import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/sim/balance_sim.dart';
+import 'package:idle_game/sim/balance_targets.dart';
 import 'package:idle_game/sim/sim_profiles.dart';
 
 void main(List<String> args) {
@@ -37,13 +40,18 @@ void main(List<String> args) {
   }
 
   _printLadder(results);
-  _printDeadContent(results);
 
   const players = [PlayStyle.tryhard, PlayStyle.casual];
   _printAway(sim, players);
   _printOvernight(sim, players);
   _printDaily(sim, players);
-  _printMarathon(sim, players);
+  final marathons = _printMarathon(sim, players);
+
+  // Мёртвый контент — после партии на 30 часов: улучшения идут вдоль всей
+  // лестницы, и старшие за несколько часов не купит никто. Без неё раздел
+  // показывал бы полсписка, который на деле покупается.
+  _printDeadContent([...results, ...marathons]);
+  _printTargets();
 }
 
 void _printRun(SimResult r) {
@@ -115,7 +123,7 @@ void _printLadder(List<SimResult> results) {
 /// Контент, до которого никто не дотянулся, — это выброшенная работа.
 void _printDeadContent(List<SimResult> results) {
   stdout.writeln('─' * 76);
-  stdout.writeln('МЁРТВЫЙ КОНТЕНТ: улучшения, не купленные НИ ОДНИМ игроком');
+  stdout.writeln('МЁРТВЫЙ КОНТЕНТ: улучшения, не купленные НИ ОДНИМ игроком, в том числе за 30 ч');
   stdout.writeln('─' * 76);
 
   final dead = <String>{for (final u in kUpgrades) u.id};
@@ -201,10 +209,12 @@ void _printDaily(BalanceSim sim, List<PlayStyle> players) {
 }
 
 /// 30 часов подряд, похмелье — когда прибавка окупает заход.
-void _printMarathon(BalanceSim sim, List<PlayStyle> players) {
+List<SimResult> _printMarathon(BalanceSim sim, List<PlayStyle> players) {
   _header('30 ЧАСОВ С ПОХМЕЛЬЯМИ — ложится, когда прибавка окупает заход');
+  final out = <SimResult>[];
   for (final style in players) {
     final m = marathon(sim, style);
+    out.add(m.result);
     final r = m.result;
     final share = m.rerunShare;
     stdout.writeln('  ${style.name}: похмелий ${r.prestiges}, '
@@ -216,5 +226,47 @@ void _printMarathon(BalanceSim sim, List<PlayStyle> players) {
     stdout.writeln('    мудрость к 6 / 10 / 12 / 30 ч: '
         '${[6, 10, 12, 30].map((h) => m.wisdomAt(Duration(hours: h))).join(' / ')}');
   }
+  stdout.writeln('');
+  return out;
+}
+
+/// Цели из lib/sim/balance_targets.dart — то же, что проверяет
+/// test/balance_test.dart, но с числами, а не только «прошёл / нет».
+void _printTargets() {
+  _header('ЦЕЛИ — то же, что проверяет test/balance_test.dart');
+  final s = scoreBalance(kBalance);
+  final curve = firstWisdomFromCurve(kBalance);
+  String mark(bool ok) => ok ? '  ' : '✗ ';
+  bool within(Duration? d, Duration lo, Duration hi) => d != null && d >= lo && d <= hi;
+
+  stdout.writeln('${mark(within(s.firstWisdom, BalanceTargets.firstWisdomMin, BalanceTargets.firstWisdomMax))}'
+      '1-я мудрость, «считает»: ${formatClock(s.firstWisdom)}');
+  stdout.writeln('${mark(within(s.firstWisdomCasual, Duration.zero, BalanceTargets.firstWisdomCasualMax))}'
+      '1-я мудрость, «обычный»: ${formatClock(s.firstWisdomCasual)}');
+  stdout.writeln('${mark((kBalance.firstWisdomMl / curve - 1).abs() <= 0.02)}'
+      'порог: в балансе ${kBalance.firstWisdomMl.toStringAsExponential(3)}, '
+      'с кривой к ${formatClock(BalanceTargets.firstWisdomAt)} — ${curve.toStringAsExponential(3)} мл');
+  stdout.writeln('${mark(s.tiersAtFirstWisdom >= BalanceTargets.tiersAtFirstWisdomMin && s.tiersAtFirstWisdom <= BalanceTargets.tiersAtFirstWisdomMax)}'
+      'ступеней к 1-й мудрости: ${s.tiersAtFirstWisdom} из $kGeneratorCount');
+  stdout.writeln('  окупаемость по заходам после ${BalanceTargets.paybackSkip.inMinutes}-й минуты, медиана / 90 % / худшая:');
+  for (final (i, r) in s.paybackByRun.indexed) {
+    final ok = (!r.finished ||
+            (r.median >= BalanceTargets.paybackMedianMin &&
+                r.median <= BalanceTargets.paybackMedianMax)) &&
+        r.p90 <= BalanceTargets.paybackP90Max &&
+        r.worst <= BalanceTargets.paybackWorstMax;
+    stdout.writeln('${mark(ok)}  заход ${i + 1}${r.finished ? '' : ' (недоигран)'}: '
+        '${formatDuration(r.median)} / ${formatDuration(r.p90)} / ${formatDuration(r.worst)}');
+  }
+  final rerun = s.rerunShare;
+  stdout.writeln('${mark(rerun != null && rerun >= BalanceTargets.rerunMin && rerun <= BalanceTargets.rerunMax)}'
+      'рывок: 2-й заход до той же точки — ${rerun == null ? '—' : '${(rerun * 100).toStringAsFixed(1)} %'} первого');
+  stdout.writeln('${mark(within(s.tier12At, BalanceTargets.tier12Min, BalanceTargets.tier12Max))}'
+      '12-я ступень, «считает»: ${formatDuration(s.tier12At)}');
+  stdout.writeln('${mark(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin)}'
+      'ночь открытой вкладки даёт мудрость после ${s.overnightTab?.inMinutes} мин игры');
+  stdout.writeln('${mark(s.maxTankBuffer <= BalanceTargets.tankMax)}'
+      'запас бака, наибольший: ${formatDuration(s.maxTankBuffer)}');
+  stdout.writeln('  штраф: ${s.penalty.toStringAsFixed(2)} (ноль — всё в целях)');
   stdout.writeln('');
 }

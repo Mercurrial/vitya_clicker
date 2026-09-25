@@ -15,42 +15,75 @@ import 'package:idle_game/sim/balance_targets.dart';
 /// испорченный вечер у игрока.
 void main() {
   group('Действующий баланс попадает в цели', () {
+    // Одна оценка на всю группу: в ней партия на 15 часов с похмельями, и
+    // гонять её на каждый тест — минуты впустую.
     late Score score;
 
     setUpAll(() => score = scoreBalance(kBalance));
 
-    test('первое похмелье наступает не слишком рано и не слишком поздно', () {
-      final at = score.firstPrestige;
-      expect(at, isNotNull, reason: 'до похмелья вообще не дошли за 4 часа');
-      expect(
-        at!,
-        greaterThanOrEqualTo(BalanceTargets.prestigeMin),
-        reason: 'престиж раньше, чем игрок понял правила, обесценивает всё до него',
-      );
-      expect(at, lessThanOrEqualTo(BalanceTargets.prestigeMax));
+    test('первая мудрость у того, кто считает, — через 2,5 часа', () {
+      final at = score.firstWisdom;
+      expect(at, isNotNull, reason: 'первой мудрости нет вовсе');
+      expect(at!, greaterThanOrEqualTo(BalanceTargets.firstWisdomMin),
+          reason: 'первая мудрость в ${formatClock(at)} — раньше решения владельца');
+      expect(at, lessThanOrEqualTo(BalanceTargets.firstWisdomMax),
+          reason: 'первая мудрость в ${formatClock(at)} — позже решения владельца');
     });
 
-    test('окупаемость покупки держится в районе минут, а не секунд', () {
-      final median = Duration(seconds: score.medianPayback.round());
-      expect(
-        median,
-        greaterThanOrEqualTo(BalanceTargets.paybackMin),
-        reason: 'покупка, которая окупается за секунды, перестаёт быть решением',
-      );
-      expect(
-        median,
-        lessThanOrEqualTo(BalanceTargets.paybackMax),
-        reason: 'слишком долгая окупаемость ощущается как стоячая игра',
-      );
+    test('обычный игрок доходит до первой мудрости не позже 4,5 часа', () {
+      expect(score.firstWisdomCasual, isNotNull);
+      expect(score.firstWisdomCasual!, lessThanOrEqualTo(BalanceTargets.firstWisdomCasualMax),
+          reason: 'у «обычного» первая мудрость в ${formatClock(score.firstWisdomCasual)}');
     });
 
-    test('лестница не проходится за один вечер', () {
-      expect(score.tiersReached, greaterThanOrEqualTo(BalanceTargets.minTiersInFourHours));
-      expect(
-        score.tiersReached,
-        lessThanOrEqualTo(BalanceTargets.maxTiersInFourHours),
-        reason: 'если все 13 аппаратов открыты за 4 часа, дальше играть не во что',
-      );
+    test('порог первой мудрости снят с кривой, а не подобран', () {
+      // Поменяли лестницу или улучшения и забыли снять порог заново — 2,5
+      // часа уехали бы молча. Цель выше это тоже поймает, но позже и
+      // невнятно; здесь сказано, что делать.
+      final curve = firstWisdomFromCurve(kBalance);
+      expect(kBalance.firstWisdomMl / curve, closeTo(1, 0.02),
+          reason: 'кривая к 2,5 ч даёт ${curve.toStringAsExponential(3)} мл, '
+              'а в kBalance записано ${kBalance.firstWisdomMl.toStringAsExponential(3)}: '
+              'перепиши firstWisdomMl');
+    });
+
+    test('к первой мудрости открыто 8–10 ступеней из 13', () {
+      expect(score.tiersAtFirstWisdom,
+          inInclusiveRange(BalanceTargets.tiersAtFirstWisdomMin, BalanceTargets.tiersAtFirstWisdomMax));
+    });
+
+    test('окупаемость в каждом заходе — минуты, а не часы', () {
+      expect(score.paybackByRun, isNotEmpty);
+      for (final (i, r) in score.paybackByRun.indexed) {
+        final run = 'заход ${i + 1}: медиана ${formatDuration(r.median)}, '
+            '90 % ${formatDuration(r.p90)}, худшая ${formatDuration(r.worst)}';
+        if (r.finished) {
+          expect(r.median, greaterThanOrEqualTo(BalanceTargets.paybackMedianMin),
+              reason: '$run — покупка, которая окупается за секунды, перестаёт быть решением');
+          expect(r.median, lessThanOrEqualTo(BalanceTargets.paybackMedianMax), reason: run);
+        }
+        expect(r.p90, lessThanOrEqualTo(BalanceTargets.paybackP90Max), reason: run);
+        expect(r.worst, lessThanOrEqualTo(BalanceTargets.paybackWorstMax),
+            reason: '$run — стена: игрок ждёт, а не играет');
+      }
+    });
+
+    test('после первой мудрости — рывок: второй заход 40–55 % первого', () {
+      expect(score.rerunShare, isNotNull);
+      expect(score.rerunShare!,
+          inInclusiveRange(BalanceTargets.rerunMin, BalanceTargets.rerunMax));
+    });
+
+    test('12-я ступень — через 10–14 часов игры', () {
+      expect(score.tier12At, isNotNull, reason: 'за партию до 12-й ступени не дошли');
+      final reason = '12-я ступень на ${formatDuration(score.tier12At)}';
+      expect(score.tier12At!, greaterThanOrEqualTo(BalanceTargets.tier12Min), reason: reason);
+      expect(score.tier12At!, lessThanOrEqualTo(BalanceTargets.tier12Max), reason: reason);
+    });
+
+    test('ночь открытой вкладки не даёт мудрость за пару минут игры', () {
+      expect(score.overnightTab!, greaterThanOrEqualTo(BalanceTargets.overnightTabMin),
+          reason: 'хватает ${score.overnightTab!.inMinutes} мин игры и ночи вкладки');
     });
 
     test('бак не разрастается до размеров, при которых продажа не нужна', () {
@@ -163,7 +196,7 @@ void main() {
       // они бесполезны. Дешёвые аппараты — это та самая экономика,
       // которая развалилась в первый раз.
       final broken = kBalance.copyWith(costGrowth: 1.05, tierCostRatio: 4);
-      expect(scoreBalance(broken).penalty, greaterThan(0));
+      expect(scoreBalance(broken, quick: true).penalty, greaterThan(0));
     });
   });
 }
