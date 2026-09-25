@@ -20,6 +20,7 @@ import 'dart:io';
 
 import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
+import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/sim/balance_sim.dart';
 import 'package:idle_game/sim/balance_targets.dart';
 import 'package:idle_game/sim/sim_profiles.dart';
@@ -333,7 +334,7 @@ void _printTargets(Score s) {
       'самый длинный заход до портала: ${formatDuration(longest)}');
   final worst = s.milestoneRunsWorst;
   stdout.writeln('${mark(!s.milestonesRunOut && (worst ?? 0) <= BalanceTargets.milestoneRunsMax)}'
-      'следующая веха — не дальше ${worst ?? '—'} заходов'
+      'следующая веха — не дальше ${worst == null ? '—' : '$worst ${Fmt.plural(worst, 'захода', 'заходов', 'заходов')}'}'
       '${s.milestonesRunOut ? ', но дорожка кончилась раньше портала' : ''}');
   stdout.writeln('${mark(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin)}'
       'ночь открытой вкладки даёт мудрость после ${s.overnightTab?.inMinutes} мин игры');

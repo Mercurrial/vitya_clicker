@@ -5,6 +5,7 @@ import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/buyers.dart';
 import 'package:idle_game/content/events.dart';
 import 'package:idle_game/content/sorts.dart';
+import 'package:idle_game/content/wisdom_milestones.dart';
 import 'package:idle_game/models/achievement.dart';
 import 'package:idle_game/models/generator.dart';
 import 'package:idle_game/models/upgrade.dart';
@@ -38,6 +39,33 @@ void main() {
       for (final edit in _balanceEdits.entries) {
         final changed = withBalance(edit.value(Balance.current), currentEconomy);
         expectSeen('Balance.${edit.key}', changed);
+      }
+    });
+
+    test('каждая веха мудрости и каждое число её эффекта', () {
+      final path = Balance.current.wisdomMilestones;
+      expect(path, isNotEmpty);
+      for (var i = 0; i < path.length; i++) {
+        final m = path[i];
+        final edits = <String, WisdomMilestone>{
+          'wisdom': WisdomMilestone(m.world, m.wisdom + 1, m.effect),
+          for (final edit in _effectEdits.entries)
+            if (edit.value(m.effect) case final effect?)
+              'effect.${edit.key}': WisdomMilestone(m.world, m.wisdom, effect),
+        };
+        for (final edit in edits.entries) {
+          final changed = withBalance(
+            Balance.current.copyWith(wisdomMilestones: _replaced(path, i, edit.value)),
+            currentEconomy,
+          );
+          expectSeen('Balance.wisdomMilestones[$i].${edit.key}', changed);
+        }
+      }
+      // Каждое поле эффекта хоть раз проверено: тип вехи, которого нет в
+      // дорожке, проверить не на чем — и это надо видеть, а не пропустить.
+      for (final key in _effectEdits.keys) {
+        expect(path.any((m) => _effectEdits[key]!(m.effect) != null), isTrue,
+            reason: 'в дорожке нет вехи, на которой проверить $key');
       }
     });
 
@@ -263,7 +291,32 @@ final Map<String, Balance Function(Balance)> _balanceEdits = {
   'fluxBankCostBase': (b) => b.copyWith(fluxBankCostBase: _up(b.fluxBankCostBase)),
   'fluxBankCostStep': (b) => b.copyWith(fluxBankCostStep: _up(b.fluxBankCostStep)),
   'fluxMaxSpeed': (b) => b.copyWith(fluxMaxSpeed: _up(b.fluxMaxSpeed)),
+  'colliderCostFactor': (b) => b.copyWith(colliderCostFactor: _up(b.colliderCostFactor)),
+  // Каждую веху по отдельности проверяет свой тест; здесь — что список
+  // вообще в отпечатке.
+  'wisdomMilestones': (b) => b.copyWith(wisdomMilestones: b.wisdomMilestones.sublist(1)),
 };
+
+/// По правке на каждое поле каждого эффекта вехи: `Класс.поле`. Правка
+/// возвращает `null`, если эффект не того класса.
+final Map<String, MilestoneEffect? Function(MilestoneEffect)> _effectEdits = {
+  'StillBoost.generatorId': (e) =>
+      e is StillBoost ? StillBoost('${e.generatorId}_', e.factor) : null,
+  'StillBoost.factor': (e) => e is StillBoost ? StillBoost(e.generatorId, _up(e.factor)) : null,
+  'AllBoost.factor': (e) => e is AllBoost ? AllBoost(_up(e.factor)) : null,
+  'RunStart.money': (e) => e is RunStart ? RunStart(_up(e.money)) : null,
+  'KeepUpgrades.target': (e) => e is KeepUpgrades
+      ? KeepUpgrades(UpgradeTarget.values[(e.target.index + 1) % UpgradeTarget.values.length])
+      : null,
+  'SortSpeed.factor': (e) => e is SortSpeed ? SortSpeed(_up(e.factor)) : null,
+  'GuestPay.factor': (e) => e is GuestPay ? GuestPay(_up(e.factor)) : null,
+};
+
+/// Поля эффекта [cls], которые видит отпечаток, — по списку правок.
+Set<String> _effectFields(String cls) => {
+      for (final k in _effectEdits.keys)
+        if (k.startsWith('$cls.')) k.substring(cls.length + 1),
+    };
 
 final Map<String, Generator Function(Generator)> _generatorEdits = {
   'id': (g) => g.copyWith(id: '${g.id}_'),
@@ -383,6 +436,18 @@ final Map<String, Set<String>> _covered = {
   'GarageEvent': _guestEdits.keys.toSet(),
   'Achievement': _goalEdits.keys.toSet(),
   'AchievementRow': _rowEdits.keys.toSet(),
+  'WisdomMilestone': {'wisdom', 'effect'},
+  // Сам эффект — только тип: полей у него нет, числа — у наследников.
+  'MilestoneEffect': const {},
+  for (final cls in const [
+    'StillBoost',
+    'AllBoost',
+    'RunStart',
+    'KeepUpgrades',
+    'SortSpeed',
+    'GuestPay',
+  ])
+    cls: _effectFields(cls),
 };
 
 /// Поля классов экономики, которых нет в отпечатке, — и почему.
@@ -408,6 +473,10 @@ const Map<String, Map<String, String>> _notInFingerprint = {
     'check': 'условие цели — код: пороги отпечаток не видит',
   },
   'AchievementRow': {'title': 'текст'},
+  // В отпечатке мир есть — в строке каждой вехи. Но мир пока один, и
+  // правку «в другой мир» сделать не на чем: проверит её первый же новый
+  // мир, когда у перечисления появится второе значение.
+  'WisdomMilestone': {'world': 'мир один — поменять не на что; в строке вехи он есть'},
 };
 
 /// Классы контента, которые не экономика.
@@ -418,6 +487,8 @@ const Map<String, String> _notEconomyClasses = {
   'Measure': 'меры статистики («нагнано N рюмок»), на доход не влияют',
   'TutorialFacts': 'обучение',
   'VityaVoice': 'реплики Вити',
+  'MilestoneBonuses': 'бонусы взятых вех, сложенные вместе, — вычисляются '
+      'из Balance.wisdomMilestones',
 };
 
 /// Файлы классов экономики: весь контент и модели, из которых он собран.
@@ -454,6 +525,7 @@ const Map<String, String> _coveredElsewhere = {
   '_fastPeriodSeconds': 'Market.wave в контрольных точках',
   '_menteeId': 'Production.mlPerSecond(пробный гараж, связки)',
   '_mentorId': 'Production.mlPerSecond(пробный гараж, связки)',
+  'kGarageMilestones': 'Balance.wisdomMilestones',
 };
 
 /// Объявления в файлах экономики, которые не экономика, — и почему.
@@ -470,6 +542,8 @@ const Map<String, String> _notEconomy = {
   '_tickInterval': 'шаг тика: производство и сорт считаются в секундах, '
       'итог от шага не зависит',
   '_autosaveInterval': 'как часто писать сейв',
+  'none': 'MilestoneBonuses.none — пустые бонусы вех, вывод, а не число',
+  '_bonuses': 'PrestigeState — память бонусов вех по мудрости, вывод',
 };
 
 // --- Чтение исходников -----------------------------------------------------
@@ -480,11 +554,16 @@ Iterable<File> _dartFiles(String dir) => Directory(dir)
     .where((f) => f.path.endsWith('.dart'));
 
 /// Тела классов контента и моделей, из которых он собран: имя → текст.
+///
+/// С модификаторами тоже: эффекты вех объявлены `final class`, и разбор по
+/// одному `class` пропускал их поля — а в них множители и деньги старта.
 Map<String, String> _classBodies() {
   final bodies = <String, String>{};
   for (final file in [..._dartFiles('lib/content'), ..._classFiles.map(File.new)]) {
     final source = file.readAsStringSync();
-    for (final m in RegExp(r'^class (\w+)\b[^{]*\{([\s\S]*?)^\}', multiLine: true)
+    for (final m in RegExp(
+            r'^(?:(?:sealed|final|base|abstract|interface)[ \t]+)*class (\w+)\b[^{]*\{([\s\S]*?)^\}',
+            multiLine: true)
         .allMatches(source)) {
       bodies[m.group(1)!] = m.group(2)!;
     }

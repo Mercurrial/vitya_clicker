@@ -17,7 +17,8 @@
 ///
 /// ## Что входит
 ///
-/// * `Balance` — все поля.
+/// * `Balance` — все поля, в том числе цена коллайдера и дорожка вех
+///   мудрости: веха может дать и отнять бонус, как любое другое число.
 /// * Таблицы: аппараты и улучшения (`kGenerators` и `kUpgrades` строятся из
 ///   `Balance`; улучшения жара, бака и связки — руками), сорта, постоянный
 ///   покупатель, гости — такими, какими их видит продажа (`asBuyer`), ряды
@@ -61,6 +62,7 @@ import 'package:idle_game/content/buyers.dart';
 import 'package:idle_game/content/events.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/content/sorts.dart';
+import 'package:idle_game/content/wisdom_milestones.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/engine/market.dart';
 import 'package:idle_game/engine/production.dart';
@@ -184,6 +186,11 @@ String economyFingerprint(Economy e) {
     'Balance.fluxBankCostBase = ${_n(b.fluxBankCostBase)}',
     'Balance.fluxBankCostStep = ${_n(b.fluxBankCostStep)}',
     'Balance.fluxMaxSpeed = ${_n(b.fluxMaxSpeed)}',
+    'Balance.colliderCostFactor = ${_n(b.colliderCostFactor)}',
+    // Веха — по строке: правка одной вехи видна в diff отдельно, и сдвиг
+    // списка на одну веху не перекрашивает все строки ниже неё в «новые».
+    for (var i = 0; i < b.wisdomMilestones.length; i++)
+      'Balance.wisdomMilestones[$i] = ${_milestone(b.wisdomMilestones[i])}',
     for (final g in e.generators)
       'kGenerators.${g.id} = baseCost=${_n(g.baseCost)} '
           'baseProduction=${_n(g.baseProduction)}',
@@ -235,6 +242,18 @@ String _goals(AchievementRow row) => [
       for (final a in row.items)
         a.perk == AchievementPerk.none ? a.id : '${a.id}:${a.perk.name}',
     ].join(' ');
+
+/// Веха — мир, порог и эффект со всеми его числами.
+String _milestone(WisdomMilestone m) =>
+    'world=${m.world.name} wisdom=${m.wisdom} ${switch (m.effect) {
+      StillBoost(:final generatorId, :final factor) =>
+        'StillBoost generatorId=$generatorId factor=${_n(factor)}',
+      AllBoost(:final factor) => 'AllBoost factor=${_n(factor)}',
+      RunStart(:final money) => 'RunStart money=${_n(money)}',
+      KeepUpgrades(:final target) => 'KeepUpgrades target=${target.name}',
+      SortSpeed(:final factor) => 'SortSpeed factor=${_n(factor)}',
+      GuestPay(:final factor) => 'GuestPay factor=${_n(factor)}',
+    }}';
 
 String _buyer(Buyer b) =>'multiplier=${_n(b.multiplier)} '
     'minSortIndex=${b.minSortIndex} minMl=${_n(b.minMl)} '
