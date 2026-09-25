@@ -15,7 +15,7 @@ import 'package:idle_game/providers/game_provider.dart';
 /// ровно в тот момент, когда прогресс уже потерян.
 void main() {
   const save = '{"version":5,"ml":1234.5,"money":99,"stills":{"banka":7},'
-      '"bought":["tap_ruka"],"claimedMl":250000.0,"lifetime":3e6}';
+      '"bought":["heat_1"],"claimedMl":250000.0,"lifetime":3e6}';
 
   group('Круг: свернуть и развернуть', () {
     test('прогресс возвращается байт в байт', () {
@@ -171,7 +171,7 @@ void main() {
         notifier.buyGenerator('banka');
       }
       notifier.buyGenerator('bidon');
-      notifier.buyUpgrade('tap_ruka');
+      notifier.buyUpgrade('heat_1');
       notifier.registerTouch();
       final before = container.read(gameProvider);
 
@@ -199,7 +199,7 @@ void main() {
       expect(after.clicker.totalTaps, before.clicker.totalTaps);
       expect(
         after.upgrades.items.where((u) => u.purchased).map((u) => u.id),
-        contains('tap_ruka'),
+        contains('heat_1'),
       );
     });
 

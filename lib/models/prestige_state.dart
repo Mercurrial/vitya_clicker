@@ -58,7 +58,10 @@ class PrestigeState extends Equatable {
     this.hangovers = 0,
   });
 
-  /// Каждая единица мудрости даёт прибавку ко всему производству.
+  /// Прибавка за первую мудрость.
+  static double get firstWisdomBonus => Balance.current.firstWisdomBonus;
+
+  /// Прибавка за каждую мудрость после первой.
   static double get bonusPerWisdom => Balance.current.bonusPerWisdom;
 
   /// Сколько надо нагнать до первой мудрости.
@@ -67,7 +70,17 @@ class PrestigeState extends Equatable {
   /// Накопленная мудрость.
   int get wisdom => wisdomFor(claimedMl) + bonusWisdom;
 
-  double get globalMultiplier => 1.0 + bonusPerWisdom * wisdom;
+  /// Множитель всего производства от мудрости: первая — ×2, каждая
+  /// следующая — ещё +50 %.
+  ///
+  /// Первая весит вдвое больше остальных намеренно: это рывок после первого
+  /// похмелья. Общий множитель сокращает заход почти пропорционально, и при
+  /// прежних ровных +8 % второй заход выходил всего на 20 % короче первого.
+  double get globalMultiplier => multiplierFor(wisdom);
+
+  static double multiplierFor(int wisdom) => wisdom <= 0
+      ? 1.0
+      : 1.0 + firstWisdomBonus + bonusPerWisdom * (wisdom - 1);
 
   /// Сколько мудрости стоит такая история.
   ///

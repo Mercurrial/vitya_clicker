@@ -58,8 +58,8 @@ void main() {
 
     test('качество поднимает цену ровно на свой множитель', () {
       final t = DateTime.utc(2026, 5, 17, 9, 30);
-      final better = withPurchased({'q_peregonka'});
-      final factor = kUpgrades.firstWhere((u) => u.id == 'q_peregonka').multiplier;
+      final better = withPurchased({'price_banka'});
+      final factor = kUpgrades.firstWhere((u) => u.id == 'price_banka').multiplier;
 
       expect(
         Market.pricePerMl(t, better),
@@ -68,9 +68,9 @@ void main() {
     });
 
     test('несколько улучшений качества перемножаются', () {
-      final both = withPurchased({'q_peregonka', 'q_filtr'});
-      final f1 = kUpgrades.firstWhere((u) => u.id == 'q_peregonka').multiplier;
-      final f2 = kUpgrades.firstWhere((u) => u.id == 'q_filtr').multiplier;
+      final both = withPurchased({'price_banka', 'price_bidon'});
+      final f1 = kUpgrades.firstWhere((u) => u.id == 'price_banka').multiplier;
+      final f2 = kUpgrades.firstWhere((u) => u.id == 'price_bidon').multiplier;
 
       expect(
         Market.qualityMultiplier(both),
@@ -79,7 +79,7 @@ void main() {
     });
 
     test('улучшения не про качество на цену не влияют', () {
-      final onlyTank = withPurchased({'tank_kanistra'});
+      final onlyTank = withPurchased({'tank_1'});
       expect(Market.qualityMultiplier(onlyTank), 1.0);
     });
 

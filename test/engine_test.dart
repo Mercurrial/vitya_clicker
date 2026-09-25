@@ -80,7 +80,7 @@ void main() {
     test('не проходят без денег', () {
       final s = fresh();
       expect(engine.buyGenerator(s, 'banka', t0), same(s));
-      expect(engine.buyUpgrade(s, 'tap_ruka', t0), same(s));
+      expect(engine.buyUpgrade(s, 'heat_1', t0), same(s));
     });
 
     test('цена растёт с каждой купленной штукой', () {
@@ -96,10 +96,10 @@ void main() {
     test('апгрейд тапа удваивает силу и покупается один раз', () {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
-      s = engine.buyUpgrade(s, 'tap_ruka', t0);
+      s = engine.buyUpgrade(s, 'heat_1', t0);
 
       final spent = s.resources.money;
-      s = engine.buyUpgrade(s, 'tap_ruka', t0);
+      s = engine.buyUpgrade(s, 'heat_1', t0);
       expect(s.resources.money, spent, reason: 'повторная покупка не должна списывать');
     });
 
@@ -152,7 +152,7 @@ void main() {
         s = engine.buyGenerator(s, 'bidon', t0);
       }
       final before = s.tankBuffer;
-      s = engine.buyUpgrade(s, 'tank_kanistra', t0);
+      s = engine.buyUpgrade(s, 'tank_1', t0);
 
       expect(s.tankBuffer.inSeconds, closeTo(before.inSeconds * 2, 2));
     });
@@ -196,7 +196,7 @@ void main() {
         s = engine.buyGenerator(s, 'bidon', t0);
       }
       final before = s.tankCapacity;
-      s = engine.buyUpgrade(s, 'tank_kanistra', t0);
+      s = engine.buyUpgrade(s, 'tank_1', t0);
       expect(s.tankCapacity, closeTo(before * 2, 1e-6));
     });
   });
@@ -263,7 +263,7 @@ void main() {
       good = good.copyWith(
         resources: good.resources.copyWith(money: 1e6, ml: 1000),
       );
-      good = engine.buyUpgrade(good, 'q_peregonka', t0);
+      good = engine.buyUpgrade(good, 'price_banka', t0);
 
       expect(
         engine.saleValue(good, t0),
@@ -357,7 +357,11 @@ void main() {
 
       expect(
         richWise.mlPerSecond,
-        closeTo(rich.mlPerSecond * (1 + PrestigeState.bonusPerWisdom * 10), 1e-9),
+        closeTo(
+          rich.mlPerSecond *
+              (1 + PrestigeState.firstWisdomBonus + PrestigeState.bonusPerWisdom * 9),
+          1e-9,
+        ),
       );
     });
 

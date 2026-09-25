@@ -64,11 +64,21 @@ class Balance {
 
   /// Сколько нагнать до первой мудрости, мл.
   ///
-  /// Прямо задаёт длину первого захода: это единственное число, которым время
-  /// до первого похмелья настраивается в лоб.
+  /// Не подбирается, а снимается с кривой: столько «считает» нагоняет к 2,5 ч
+  /// игры (docs/DECISIONS.md, «Экономика и мудрость»). Подбирать его как
+  /// ручку бесполезно: к этому моменту производство растёт экспоненциально,
+  /// и порог ×4 сдвигал похмелье всего на 10 минут. Длину захода задаёт
+  /// кривая — лестница и улучшения, — а порог только ставит отметку на ней.
   final double firstWisdomMl;
 
-  /// Прибавка к производству за каждую единицу мудрости.
+  /// Прибавка к производству за первую мудрость: +100 %, то есть ×2.
+  ///
+  /// Отдельно от [bonusPerWisdom], потому что первая мудрость — рывок. При
+  /// ровных +8 % за каждую второй заход был всего на 20 % короче первого, и
+  /// похмелье не ощущалось наградой.
+  final double firstWisdomBonus;
+
+  /// Прибавка за каждую мудрость после первой.
   final double bonusPerWisdom;
 
   /// Базовая цена за миллилитр, ₽.
@@ -100,6 +110,30 @@ class Balance {
   /// Выход первого аппарата, мл/с.
   final double firstGeneratorOutput;
 
+  /// Цены улучшений «×2 этой ступени» — в базовых ценах самой ступени.
+  ///
+  /// Улучшения строятся по формуле вдоль всей лестницы, как сами аппараты.
+  /// Раньше их было 22 штуки руками, и они обрывались на 60 млн ₽: дальше
+  /// рост шёл только поштучной покупкой, которая дорожает геометрически, и
+  /// заход после первого часа вставал. Множители должны идти до конца
+  /// лестницы — тогда окупаемость не уезжает в часы.
+  final List<double> tierUpgradeCosts;
+
+  /// Во сколько раз улучшение ступени поднимает её выход.
+  final double tierUpgradeMultiplier;
+
+  /// Цена улучшения «все аппараты» на каждой ступени — в её базовых ценах.
+  final double globalUpgradeCost;
+
+  /// Во сколько раз «все аппараты» поднимает выход всей лестницы.
+  final double globalUpgradeMultiplier;
+
+  /// Цена улучшения качества на каждой ступени — в её базовых ценах.
+  final double qualityUpgradeCost;
+
+  /// Во сколько раз качество поднимает цену за литр.
+  final double qualityUpgradeMultiplier;
+
   /// Во сколько раз больше гонит каждый следующий аппарат лестницы.
   ///
   /// Вместе с [tierCostRatio] это главный регулятор длины игры: отношение
@@ -110,6 +144,7 @@ class Balance {
   const Balance({
     required this.costGrowth,
     required this.firstWisdomMl,
+    required this.firstWisdomBonus,
     required this.bonusPerWisdom,
     required this.basePricePerMl,
     required this.baseTankMl,
@@ -120,6 +155,12 @@ class Balance {
     required this.tierCostRatio,
     required this.firstGeneratorOutput,
     required this.tierOutputRatio,
+    required this.tierUpgradeCosts,
+    required this.tierUpgradeMultiplier,
+    required this.globalUpgradeCost,
+    required this.globalUpgradeMultiplier,
+    required this.qualityUpgradeCost,
+    required this.qualityUpgradeMultiplier,
   });
 
   /// Действующий баланс.
@@ -128,6 +169,7 @@ class Balance {
   Balance copyWith({
     double? costGrowth,
     double? firstWisdomMl,
+    double? firstWisdomBonus,
     double? bonusPerWisdom,
     double? basePricePerMl,
     double? baseTankMl,
@@ -138,10 +180,17 @@ class Balance {
     double? tierCostRatio,
     double? firstGeneratorOutput,
     double? tierOutputRatio,
+    List<double>? tierUpgradeCosts,
+    double? tierUpgradeMultiplier,
+    double? globalUpgradeCost,
+    double? globalUpgradeMultiplier,
+    double? qualityUpgradeCost,
+    double? qualityUpgradeMultiplier,
   }) =>
       Balance(
         costGrowth: costGrowth ?? this.costGrowth,
         firstWisdomMl: firstWisdomMl ?? this.firstWisdomMl,
+        firstWisdomBonus: firstWisdomBonus ?? this.firstWisdomBonus,
         bonusPerWisdom: bonusPerWisdom ?? this.bonusPerWisdom,
         basePricePerMl: basePricePerMl ?? this.basePricePerMl,
         baseTankMl: baseTankMl ?? this.baseTankMl,
@@ -152,27 +201,43 @@ class Balance {
         tierCostRatio: tierCostRatio ?? this.tierCostRatio,
         firstGeneratorOutput: firstGeneratorOutput ?? this.firstGeneratorOutput,
         tierOutputRatio: tierOutputRatio ?? this.tierOutputRatio,
+        tierUpgradeCosts: tierUpgradeCosts ?? this.tierUpgradeCosts,
+        tierUpgradeMultiplier: tierUpgradeMultiplier ?? this.tierUpgradeMultiplier,
+        globalUpgradeCost: globalUpgradeCost ?? this.globalUpgradeCost,
+        globalUpgradeMultiplier: globalUpgradeMultiplier ?? this.globalUpgradeMultiplier,
+        qualityUpgradeCost: qualityUpgradeCost ?? this.qualityUpgradeCost,
+        qualityUpgradeMultiplier: qualityUpgradeMultiplier ?? this.qualityUpgradeMultiplier,
       );
 }
 
 /// Действующие числа.
 ///
-/// Найдены перебором (`dart run tools/balance_sweep.dart`), а не подобраны на
-/// глаз. Проверяются тестом `test/balance_test.dart` — если правка выведет
-/// игру за цели из [BalanceTargets], тест упадёт.
+/// Найдены прогоном, а не подобраны на глаз. Лестница — вариант C из
+/// docs/PLAN-1.0.md (ступень ×28, выход ×6, штука ×1.15); цены улучшений —
+/// перебором вокруг него (`tools/balance_sweep.dart`); порог первой мудрости
+/// снят с кривой (`firstWisdomFromCurve`). Проверяются тестом
+/// `test/balance_test.dart` — если правка выведет игру за цели из
+/// [BalanceTargets], тест упадёт.
 const Balance kBalance = Balance(
-  costGrowth: 1.26,
-  firstWisdomMl: 2.5e8,
-  bonusPerWisdom: 0.08,
+  costGrowth: 1.15,
+  firstWisdomMl: 8.4e13,
+  firstWisdomBonus: 1.0,
+  bonusPerWisdom: 0.5,
   basePricePerMl: 0.1,
   baseTankMl: 2000,
   baseBufferSeconds: 120,
   maxBufferSeconds: 1800,
-  milestones: [10, 25, 50, 100],
+  milestones: [10, 25, 50, 100, 150, 200, 250, 300, 400, 500],
   firstGeneratorCost: 15,
-  tierCostRatio: 30.0,
+  tierCostRatio: 28.0,
   firstGeneratorOutput: 1,
-  tierOutputRatio: 6.05,
+  tierOutputRatio: 6.0,
+  tierUpgradeCosts: [30, 1e3, 1e5],
+  tierUpgradeMultiplier: 2,
+  globalUpgradeCost: 500,
+  globalUpgradeMultiplier: 2,
+  qualityUpgradeCost: 5e4,
+  qualityUpgradeMultiplier: 1.3,
 );
 
 /// Прогнать код на другом балансе и вернуть всё как было.

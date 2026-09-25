@@ -6,9 +6,9 @@
 /// Ни одно число отсюда не зашито в виджеты — баланс правится здесь, без
 /// касания кода интерфейса и движка.
 ///
-/// Между тирами примерно ×12 по цене и ×6–7 по выходу. Скорость удорожания
-/// внутри тира — общая для всех и лежит в `Balance.costGrowth`: это главный
-/// тормоз экономики, и место ему одно.
+/// Цены и выходы лестницы и цены улучшений считаются из `Balance`. Скорость
+/// удорожания внутри тира — общая для всех и лежит в `Balance.costGrowth`:
+/// это главный тормоз экономики, и место ему одно.
 library;
 
 import 'dart:math' as math;
@@ -97,16 +97,195 @@ List<Generator> startingGenerators(List<Generator> content) => [
 ///   • ёмкость — бак вмещает больше, реже стоит простой
 ///   • руки    — окно жара шире, держать легче
 ///
-/// Описания сухие, как патчноут: смешно от формулировки, а не оттого, что
-/// шутку объяснили.
-const List<Upgrade> kUpgrades = [
-  // --- Жар: держать окно легче ---
-  //
-  // Раньше эти три улучшения множили силу нажатия. Нажатие больше не даёт
-  // самогон, так что множить стало нечего — но ось осталась нужной: она
-  // улучшает то единственное, ради чего игрок касается экрана.
+/// Объём и цена строятся по формуле вдоль всей лестницы ([kTierUpgrades]),
+/// руки, бак и связки — руками ниже. Описания сухие, как патчноут: смешно от
+/// формулировки, а не оттого, что шутку объяснили.
+///
+/// ## Id — навсегда
+///
+/// Купленное лежит в сейве списком id, поэтому после выпуска id не
+/// переименовываются: переименованное улучшение у игрока молча станет
+/// некупленным. Названия и цены править можно, id — нет.
+///
+/// Схема одна на все: `<ось>_<привязка>`.
+///   • привязка к ступени — id аппарата, те же вечные id, что в сейве:
+///     `gen_banka_1`…`gen_banka_3` (×2 этой ступени, три уровня),
+///     `all_banka` (все аппараты), `price_banka` (цена за литр);
+///   • без ступени — порядковый номер внутри оси: `heat_1`…`heat_3`,
+///     `tank_1`…`tank_4`, `syn_1`, `syn_2`.
+/// Новое улучшение получает следующий свободный номер или новую ступень,
+/// старые номера не переиспользуются.
+List<Upgrade> get kUpgrades {
+  final b = Balance.current;
+  if (identical(_upgradesFor, b)) return _upgrades!;
+  _upgrades = List.unmodifiable([
+    ..._heatUpgrades,
+    ..._tankUpgrades,
+    for (var i = 0; i < kTierUpgrades.length; i++) ..._tierUpgrades(i, b),
+    ..._synergyUpgrades,
+  ]);
+  _upgradesFor = b;
+  return _upgrades!;
+}
+
+/// Как у лестницы: пересобирается только при смене баланса.
+List<Upgrade>? _upgrades;
+Balance? _upgradesFor;
+
+/// Названия улучшений ступени — руками, по одной строке на аппарат.
+///
+/// Порядок строк — порядок [kGeneratorNames]; тест сверяет id, чтобы строка
+/// не уехала на соседний аппарат.
+typedef TierUpgradeNames = ({
+  String generatorId,
+  String short,
+  List<String> boost,
+  String all,
+  String price,
+});
+
+const List<TierUpgradeNames> kTierUpgrades = [
+  (
+    generatorId: 'banka',
+    short: 'Банка',
+    boost: ['Дрожжи бабы Нюры', 'Банка на батарее', 'Марля в три слоя'],
+    all: 'Рецепт прадеда',
+    price: 'Двойная перегонка',
+  ),
+  (
+    generatorId: 'bidon',
+    short: 'Бидон',
+    boost: ['Сахар с оптовой базы', 'Крышка на прищепке', 'Эмаль без сколов'],
+    all: 'Ночная смена',
+    price: 'Угольный фильтр из противогаза',
+  ),
+  (
+    generatorId: 'flyaga',
+    short: 'Фляга',
+    boost: ['Медный бак', 'Фляга в валенке', 'Ремень от портупеи'],
+    all: 'Тетрадка с пропорциями',
+    price: 'Отсекать хвосты',
+  ),
+  (
+    generatorId: 'dedov',
+    short: '«Дедов»',
+    boost: ['Термометр (наконец-то)', 'Сухопарник по чертежу деда', 'Дед одобрил'],
+    all: 'Гараж утеплён',
+    price: 'Настойка на кедровых орешках',
+  ),
+  (
+    generatorId: 'zmeevik',
+    short: 'Змеевик',
+    boost: ['Проточное охлаждение', 'Змеевик длиннее на метр', 'Пайка серебром'],
+    all: 'Второй удлинитель',
+    price: 'Этикетка с принтера',
+  ),
+  (
+    generatorId: 'tseh',
+    short: 'Цех',
+    boost: ['Сменный мастер', 'План на смену', 'Доска почёта'],
+    all: 'Трёхфазное подключение',
+    price: 'Бутылки из-под «Боржоми»',
+  ),
+  (
+    generatorId: 'podval',
+    short: 'Подвал',
+    boost: ['Петрович провёл свет', 'Сырость ушла', 'Второй выход через погреб'],
+    all: 'Работаем без выходных',
+    price: 'Выдержка в дубовой бочке',
+  ),
+  (
+    generatorId: 'tsisterna',
+    short: 'Цистерна',
+    boost: ['Промыли с хлоркой', 'Молоко больше не пахнет', 'Прицеп к «Кировцу»'],
+    all: 'Своя логистика',
+    price: 'Справка с печатью',
+  ),
+  (
+    generatorId: 'druzhba',
+    short: '«Дружба-2»',
+    boost: ['Насосная станция', 'Врезка без шва', 'Давление в норме'],
+    all: 'Поставки в соседний район',
+    price: 'Розлив по ГОСТу',
+  ),
+  (
+    generatorId: 'zavod',
+    short: 'Завод',
+    boost: ['Конвейер', 'ОТК из одного Вити', 'Третья смена'],
+    all: 'Госзаказ',
+    price: 'Бренд «Витя»',
+  ),
+  (
+    generatorId: 'tanker',
+    short: 'Танкер',
+    boost: ['Капитан не пьёт', 'Второй трюм', 'Попутное течение'],
+    all: 'Свой флот',
+    price: 'Беспошлинная зона',
+  ),
+  (
+    generatorId: 'orbita',
+    short: '«Мир-2»',
+    boost: ['Невесомость помогает', 'Солнечные панели', 'Стыковка с «Прогрессом»'],
+    all: 'Спутниковый контроль',
+    price: 'Космическая наценка',
+  ),
+  (
+    generatorId: 'collider',
+    short: 'Коллайдер',
+    boost: ['Сверхпроводимость', 'Бозон брожения', 'Адронная закваска'],
+    all: 'Теория всего',
+    price: 'Нобелевка по химии',
+  ),
+];
+
+/// Пять улучшений одной ступени: три «×2 этой ступени», «все аппараты» и
+/// «цена за литр». Цены — в базовых ценах самой ступени, поэтому вдоль
+/// лестницы множители не кончаются.
+List<Upgrade> _tierUpgrades(int tier, Balance b) {
+  final t = kTierUpgrades[tier];
+  final base = b.firstGeneratorCost * math.pow(b.tierCostRatio, tier);
+  return [
+    for (var level = 0; level < t.boost.length; level++)
+      Upgrade(
+        id: 'gen_${t.generatorId}_${level + 1}',
+        name: t.boost[level],
+        description: '${t.short} ×${_x(b.tierUpgradeMultiplier)}',
+        cost: base * b.tierUpgradeCosts[level],
+        target: UpgradeTarget.generatorOutput,
+        targetGeneratorId: t.generatorId,
+        multiplier: b.tierUpgradeMultiplier,
+      ),
+    Upgrade(
+      id: 'all_${t.generatorId}',
+      name: t.all,
+      description: 'Все аппараты ×${_x(b.globalUpgradeMultiplier)}',
+      cost: base * b.globalUpgradeCost,
+      target: UpgradeTarget.allGenerators,
+      multiplier: b.globalUpgradeMultiplier,
+    ),
+    Upgrade(
+      id: 'price_${t.generatorId}',
+      name: t.price,
+      description: 'Цена за литр ×${_x(b.qualityUpgradeMultiplier)}',
+      cost: base * b.qualityUpgradeCost,
+      target: UpgradeTarget.quality,
+      multiplier: b.qualityUpgradeMultiplier,
+    ),
+  ];
+}
+
+/// 2.0 → «2», 1.3 → «1.3».
+String _x(double m) =>
+    m == m.roundToDouble() ? m.toStringAsFixed(0) : m.toString();
+
+// --- Жар: держать окно легче ---
+//
+// Раньше эти три улучшения множили силу нажатия. Нажатие больше не даёт
+// самогон, так что множить стало нечего — но ось осталась нужной: она
+// улучшает то единственное, ради чего игрок касается экрана.
+const List<Upgrade> _heatUpgrades = [
   Upgrade(
-    id: 'tap_ruka',
+    id: 'heat_1',
     name: 'Крепкая рука',
     description: 'Окно жара шире на четверть',
     cost: 40,
@@ -114,7 +293,7 @@ const List<Upgrade> kUpgrades = [
     multiplier: 1.25,
   ),
   Upgrade(
-    id: 'tap_mozol',
+    id: 'heat_2',
     name: 'Трудовая мозоль',
     description: 'Окно жара шире ещё на четверть',
     cost: 1200,
@@ -122,17 +301,19 @@ const List<Upgrade> kUpgrades = [
     multiplier: 1.25,
   ),
   Upgrade(
-    id: 'tap_hvatka',
+    id: 'heat_3',
     name: 'Дедовская хватка',
     description: 'Окно жара шире ещё на треть',
     cost: 30000,
     target: UpgradeTarget.heatControl,
     multiplier: 1.3,
   ),
+];
 
-  // --- Ёмкость бака ---
+// --- Ёмкость бака ---
+const List<Upgrade> _tankUpgrades = [
   Upgrade(
-    id: 'tank_kanistra',
+    id: 'tank_1',
     name: 'Вторая канистра',
     description: 'Запас бака ×2',
     cost: 200,
@@ -140,7 +321,7 @@ const List<Upgrade> kUpgrades = [
     multiplier: 2,
   ),
   Upgrade(
-    id: 'tank_bidon',
+    id: 'tank_2',
     name: 'Бидон под слив',
     description: 'Запас бака ×3',
     cost: 9000,
@@ -148,7 +329,7 @@ const List<Upgrade> kUpgrades = [
     multiplier: 3,
   ),
   Upgrade(
-    id: 'tank_tsisterna',
+    id: 'tank_3',
     name: 'Списанная цистерна',
     description: 'Запас бака ×4',
     cost: 900000,
@@ -156,125 +337,19 @@ const List<Upgrade> kUpgrades = [
     multiplier: 4,
   ),
   Upgrade(
-    id: 'tank_rezervuar',
+    id: 'tank_4',
     name: 'Подземный резервуар',
     description: 'Запас бака ×5',
     cost: 60000000,
     target: UpgradeTarget.tankCapacity,
     multiplier: 5,
   ),
+];
 
-  // --- Качество: поднимает цену за литр ---
+// --- Синергии: связки, а не плоские множители ---
+const List<Upgrade> _synergyUpgrades = [
   Upgrade(
-    id: 'q_peregonka',
-    name: 'Двойная перегонка',
-    description: 'Цена за литр ×1.4',
-    cost: 3000,
-    target: UpgradeTarget.quality,
-    multiplier: 1.4,
-  ),
-  Upgrade(
-    id: 'q_filtr',
-    name: 'Угольный фильтр из противогаза',
-    description: 'Цена за литр ×1.5',
-    cost: 45000,
-    target: UpgradeTarget.quality,
-    multiplier: 1.5,
-  ),
-  Upgrade(
-    id: 'q_hvosty',
-    name: 'Отсекать хвосты',
-    description: 'Цена за литр ×1.6',
-    cost: 700000,
-    target: UpgradeTarget.quality,
-    multiplier: 1.6,
-  ),
-  Upgrade(
-    id: 'q_kedr',
-    name: 'Настойка на кедровых орешках',
-    description: 'Цена за литр ×1.8',
-    cost: 20000000,
-    target: UpgradeTarget.quality,
-    multiplier: 1.8,
-  ),
-
-  // --- Отдельные аппараты ---
-  Upgrade(
-    id: 'g_drozhzhi',
-    name: 'Дрожжи бабы Нюры',
-    description: 'Банка ×2',
-    cost: 80,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'banka',
-    multiplier: 2,
-  ),
-  Upgrade(
-    id: 'g_sahar',
-    name: 'Сахар с оптовой базы',
-    description: 'Бидон ×2',
-    cost: 600,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'bidon',
-    multiplier: 2,
-  ),
-  Upgrade(
-    id: 'g_bak',
-    name: 'Медный бак',
-    description: 'Фляга ×2',
-    cost: 7000,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'flyaga',
-    multiplier: 2,
-  ),
-  Upgrade(
-    id: 'g_termometr',
-    name: 'Термометр (наконец-то)',
-    description: 'Аппарат «Дедов» ×2',
-    cost: 90000,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'dedov',
-    multiplier: 2,
-  ),
-  Upgrade(
-    id: 'g_ohlazhdenie',
-    name: 'Проточное охлаждение',
-    description: 'Медный змеевик ×2',
-    cost: 1100000,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'zmeevik',
-    multiplier: 2,
-  ),
-  Upgrade(
-    id: 'g_smena',
-    name: 'Сменный мастер',
-    description: 'Гаражный цех ×2',
-    cost: 13000000,
-    target: UpgradeTarget.generatorOutput,
-    targetGeneratorId: 'tseh',
-    multiplier: 2,
-  ),
-
-  // --- Все аппараты сразу ---
-  Upgrade(
-    id: 'all_recept',
-    name: 'Рецепт прадеда',
-    description: 'Все аппараты ×1.5',
-    cost: 40000,
-    target: UpgradeTarget.allGenerators,
-    multiplier: 1.5,
-  ),
-  Upgrade(
-    id: 'all_nochnaya',
-    name: 'Ночная смена',
-    description: 'Все аппараты ×2',
-    cost: 5000000,
-    target: UpgradeTarget.allGenerators,
-    multiplier: 2,
-  ),
-
-  // --- Синергии: связки, а не плоские множители ---
-  Upgrade(
-    id: 'syn_nastavnik',
+    id: 'syn_1',
     name: 'Наставник Петрович',
     description: 'Аппарат «Дедов» +1% за каждую банку',
     cost: 70000,
@@ -282,7 +357,7 @@ const List<Upgrade> kUpgrades = [
     multiplier: 1,
   ),
   Upgrade(
-    id: 'syn_podryad',
+    id: 'syn_2',
     name: 'Семейный подряд',
     description: 'Каждый аппарат от 25 штук: +10% ко всем',
     cost: 300000,
