@@ -22,9 +22,9 @@ import 'support/moments.dart';
 /// Шторка магазина: два положения (docs/DECISIONS.md, «Главный экран»).
 ///
 /// Заведена, потому что на телефоне магазин занимал четверть экрана и была
-/// видна одна строка списка. Цели владельца: в «Гараже» магазин не меньше
-/// половины экрана при 390×844, в «Магазине» — около 90 %; кнопки не меньше
-/// 44 точек; гараж остаётся зоной зажима.
+/// видна одна строка списка. Цели владельца: в «Гараже» шапка около
+/// четверти экрана, стена около 40 %, магазин — остальное; в «Магазине» —
+/// около 90 %; кнопки не меньше 44 точек; гараж остаётся зоной зажима.
 ///
 /// Шрифты — настоящие, как в shelf_layout_test.dart: Ahem рисует каждый знак
 /// квадратом, и доли экрана с ним получаются про другой экран.
@@ -123,7 +123,7 @@ void main() {
   }
 
   group('Положения', () {
-    testWidgets('по умолчанию — «Гараж», магазин не меньше половины экрана',
+    testWidgets('по умолчанию — «Гараж»: шапка, стена и треть на магазин',
         (tester) async {
       const screen = Size(390, 844);
       final scope = await openOn(tester, screen);
@@ -131,10 +131,14 @@ void main() {
 
       expect(scope.read(shelfPositionProvider), ShelfPosition.garage);
       final share = shelfShare(tester, screen);
-      expect(share, greaterThanOrEqualTo(0.5),
+      expect(share, inInclusiveRange(0.33, 0.38),
           reason: 'магазин занимает ${(share * 100).toStringAsFixed(1)} % экрана');
-      // Гараж над ним виден: полэкрана, а не весь.
-      expect(share, lessThan(0.6));
+      final top = rectOf(tester, find.byType(TopPanel)).height / screen.height;
+      expect(top, lessThanOrEqualTo(0.25),
+          reason: 'шапка — ${(top * 100).toStringAsFixed(1)} % экрана');
+      final wall = 1 - share - top;
+      expect(wall, greaterThanOrEqualTo(0.4),
+          reason: 'стене осталось ${(wall * 100).toStringAsFixed(1)} % экрана');
       expect(find.byType(GarageScene).hitTestable(), findsOneWidget);
     });
 
@@ -161,7 +165,7 @@ void main() {
       const screen = Size(390, 740);
       await openOn(tester, screen);
       expect(tester.takeException(), isNull);
-      expect(shelfShare(tester, screen), greaterThanOrEqualTo(0.45));
+      expect(shelfShare(tester, screen), greaterThanOrEqualTo(0.33));
 
       await tester.tap(grabber);
       await settle(tester);
@@ -192,12 +196,12 @@ void main() {
         final before = rectOf(tester, grabber).top;
 
         final gesture = await tester.startGesture(tester.getCenter(grabber), kind: kind);
-        for (var i = 0; i < 12; i++) {
+        for (var i = 0; i < 16; i++) {
           await gesture.moveBy(const Offset(0, -20));
           await tester.pump(const Duration(milliseconds: 100));
         }
         final moved = before - rectOf(tester, grabber).top;
-        expect(moved, closeTo(240, 20), reason: 'шторка отстала от пальца: $moved из 240');
+        expect(moved, closeTo(320, 20), reason: 'шторка отстала от пальца: $moved из 320');
 
         await gesture.up();
         await settle(tester);
@@ -371,15 +375,39 @@ void main() {
   });
 
   group('Место под то, что придёт', () {
-    testWidgets('верх не выше, чем заложено в раскладку', (tester) async {
-      // От этой оценки шторка считает, сколько останется гаражу. Верх
-      // вырастет — гараж молча сожмётся; тест скажет об этом раньше.
-      for (final screen in const [Size(320, 640), Size(390, 844)]) {
-        await openOn(tester, screen);
-        expect(rectOf(tester, find.byType(TopPanel)).height,
-            lessThanOrEqualTo(kTopPanelHeight),
-            reason: 'на ${screen.width.toInt()} точках');
+    testWidgets('шапка не больше четверти экрана и с гостем, и без', (tester) async {
+      // Стена берёт всё, что оставили шапка и магазин. Шапка вырастет —
+      // стена молча сожмётся; тест скажет об этом раньше.
+      for (final screen in const [Size(320, 640), Size(390, 740), Size(390, 844)]) {
+        for (final now in [quietMoment, eventMoment]) {
+          await openOn(tester, screen, now: now);
+          expect(tester.takeException(), isNull);
+          // «Примерно четверть» — на 320×640 шапка выходит 25,4 %.
+          expect(rectOf(tester, find.byType(TopPanel)).height / screen.height,
+              lessThanOrEqualTo(0.27),
+              reason: 'на ${screen.width.toInt()}×${screen.height.toInt()}');
+        }
       }
+    });
+
+    testWidgets('гость пришёл и ушёл — ничего не сдвинулось', (tester) async {
+      // Место гостя стоит всегда: гость приходит каждые десять минут, и
+      // прыгай вёрстка при каждом его приходе, кнопки уезжали бы из-под пальца.
+      await openOn(tester, const Size(390, 740), now: quietMoment);
+      final quiet = rectOf(tester, find.byType(GarageScene));
+      await openOn(tester, const Size(390, 740), now: eventMoment);
+      expect(rectOf(tester, find.byType(GarageScene)), quiet);
+    });
+
+    testWidgets('обе продажи — на одном уровне', (tester) async {
+      await openOn(tester, const Size(390, 844), now: eventMoment);
+      final buttons = find.byType(SellButton).evaluate().map((e) {
+        final box = e.renderObject! as RenderBox;
+        return box.localToGlobal(Offset.zero) & box.size;
+      }).toList();
+      expect(buttons, hasLength(2));
+      expect(buttons[0].top, buttons[1].top);
+      expect(buttons[0].height, buttons[1].height);
     });
 
     testWidgets('крупный системный шрифт не ужимает вкладки, а листает их',

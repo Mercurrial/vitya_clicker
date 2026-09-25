@@ -6,6 +6,7 @@ import '../../content/buyers.dart';
 import '../../content/events.dart';
 import '../../content/sorts.dart';
 import '../../core/formatters.dart';
+import '../../engine/game_engine.dart';
 import '../../engine/market.dart';
 import '../../models/game_state.dart';
 import '../../providers/game_provider.dart';
@@ -287,16 +288,12 @@ class _TicksPainter extends CustomPainter {
   bool shouldRepaint(_TicksPainter oldDelegate) => false;
 }
 
-/// Бак и продажа — вторая строка верха; гость — третьей, пока он в гараже.
+/// Бак во всю ширину, под ним — продажа Петровичу и место гостя рядом.
 ///
-/// Гость появляется сам и уходит по таймеру. Пока сорт не дотягивает, его
-/// кнопка показывает, чего не хватает: это и есть подсказка, ради чего
-/// стоит доводить сорт.
-///
-/// Гость — своей строкой, а не третьим в строку бака: на 320 точках три
-/// колонки резали и объём бака, и реплику гостя до многоточий. Строка
-/// появляется на несколько минут, и на это время ужимается сцена, а не
-/// магазин.
+/// Место гостя есть всегда: пока гостя нет, в нём отсчёт до следующего, и
+/// вёрстка не прыгает, когда он приходит и уходит, — а приходит он теперь
+/// каждые десять минут. Пока сорт не дотягивает, кнопка гостя показывает,
+/// чего не хватает: это и есть подсказка, ради чего стоит доводить сорт.
 class _SellRow extends ConsumerWidget {
   final GameState state;
   final DateTime now;
@@ -315,55 +312,71 @@ class _SellRow extends ConsumerWidget {
     // жал её вместо того, чтобы зажать гараж.
     final worth = payout >= 1;
 
-    final main = Row(
-      children: [
-        Expanded(flex: 11, child: _TankBar(state: state)),
-        const SizedBox(width: GS.s3),
-        Expanded(
-          flex: 9,
-          child: SellButton(
-            title: guest == null ? 'ПРОДАТЬ ПЕТРОВИЧУ' : 'ПЕТРОВИЧУ',
-            // На 320 точках полное имя резалось в «ПРОДАТЬ ПЕТР…» — обрывок
-            // хуже, чем короче, но целиком.
-            shortTitle: guest == null ? 'ПРОДАТЬ' : null,
-            payout: payout,
-            available: worth && engine.canSellTo(state, petrovich),
-            premium: false,
-            stacked: true,
-            // Звук и вибрация — внутри sellTo: сделка может не состояться.
-            onTap: () => ref.read(gameProvider.notifier).sellTo(petrovich),
-          ),
-        ),
-      ],
+    final sellPetrovich = SellButton(
+      title: 'ПРОДАТЬ ПЕТРОВИЧУ',
+      note: worth ? petrovich.note : 'бак почти пуст',
+      payout: payout,
+      available: worth && engine.canSellTo(state, petrovich),
+      premium: false,
+      stacked: true,
+      // Звук и вибрация — внутри sellTo: сделка может не состояться.
+      onTap: () => ref.read(gameProvider.notifier).sellTo(petrovich),
     );
 
-    if (guest == null) return main;
-
-    final canGuest = engine.canSellTo(state, guest);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        main,
+        _TankBar(state: state),
         const SizedBox(height: GS.s2),
-        SellButton(
-          title: guest.name.toUpperCase(),
-          // Пока не берут — их собственная реплика («не первач же»): она
-          // объясняет отказ лучше таблицы. Когда берут — во сколько раз
-          // дороже Петровича.
-          note: canGuest
-              ? '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active!.remaining)}'
-              : '${guest.lockedNote} · ${Fmt.clock(active!.remaining)}',
-          payout: engine.saleValueFor(state, guest, now),
-          // Пока сорт не дотягивает, вместо суммы — чего не хватает. Это и
-          // есть подсказка, ради чего стоит доводить сорт.
-          lockedAmount: canGuest ? null : _needSort(guest),
-          available: canGuest,
-          premium: true,
-          stacked: false,
-          onTap: () => ref.read(gameProvider.notifier).sellTo(guest),
+        // Обе продажи — на одном уровне, как решил владелец: сразу видно,
+        // кому сдать выгоднее.
+        Row(
+            children: [
+              Expanded(child: sellPetrovich),
+              const SizedBox(width: GS.s2),
+              Expanded(
+                child: guest == null
+                    // Место гостя не пропадает, пока его нет: в нём отсчёт до
+                    // следующего. Гость приходит по часам (docs/DECISIONS.md,
+                    // «Гости»), и отсчёт — повод вернуться к нужной минуте.
+                    // Кто придёт — не пишем: это сюрприз, так решил владелец.
+                    ? SellButton(
+                        title: 'ГОСТЬ',
+                        note: 'кто — неизвестно',
+                        payout: 0,
+                        lockedAmount: 'через ${Fmt.clock(untilNextEvent(now))}',
+                        available: false,
+                        premium: true,
+                        stacked: true,
+                        onTap: () {},
+                      )
+                    : _guestButton(ref, engine, guest, active!),
+              ),
+            ],
         ),
       ],
+    );
+  }
+
+  Widget _guestButton(WidgetRef ref, GameEngine engine, Buyer guest, ActiveEvent active) {
+    final canGuest = engine.canSellTo(state, guest);
+    return SellButton(
+      title: guest.name.toUpperCase(),
+      // Пока не берут — их собственная реплика («не первач же»): она
+      // объясняет отказ лучше таблицы. Когда берут — во сколько раз
+      // дороже Петровича.
+      note: canGuest
+          ? '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active.remaining)}'
+          : '${guest.lockedNote} · ${Fmt.clock(active.remaining)}',
+      payout: engine.saleValueFor(state, guest, now),
+      // Пока сорт не дотягивает, вместо суммы — чего не хватает. Это и
+      // есть подсказка, ради чего стоит доводить сорт.
+      lockedAmount: canGuest ? null : _needSort(guest),
+      available: canGuest,
+      premium: true,
+      stacked: true,
+      onTap: () => ref.read(gameProvider.notifier).sellTo(guest),
     );
   }
 
@@ -380,9 +393,6 @@ class _SellRow extends ConsumerWidget {
 /// «можно нажать и получить». Гость подсвечен ярче: он платит втрое и уходит.
 class SellButton extends StatefulWidget {
   final String title;
-
-  /// Что написать, если [title] не помещается в кнопку целиком.
-  final String? shortTitle;
 
   /// Мелкая строка под именем. `null` — без неё: в узкой кнопке у бака ей
   /// нет места, а «берёт всё, всегда» Петровича выучивается за минуту.
@@ -407,7 +417,6 @@ class SellButton extends StatefulWidget {
     required this.premium,
     required this.stacked,
     required this.onTap,
-    this.shortTitle,
     this.note,
     this.lockedAmount,
   });
@@ -421,6 +430,16 @@ class SellButton extends StatefulWidget {
 
 class _SellButtonState extends State<SellButton> {
   bool _down = false;
+
+  /// Строка двухэтажной кнопки: постоянной высоты, текст ужимается.
+  static Widget _slot(double height, Widget child) => SizedBox(
+        height: height,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: child,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -457,27 +476,7 @@ class _SellButtonState extends State<SellButton> {
       color: fg,
       letterSpacing: 0.8,
     );
-    final short = widget.shortTitle;
-    final title = short == null
-        ? Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle)
-        : LayoutBuilder(
-            builder: (context, c) {
-              final painter = TextPainter(
-                text: TextSpan(text: widget.title, style: titleStyle),
-                textDirection: TextDirection.ltr,
-                textScaler: MediaQuery.textScalerOf(context),
-                maxLines: 1,
-              )..layout();
-              final fits = painter.width <= c.maxWidth;
-              painter.dispose();
-              return Text(
-                fits ? widget.title : short,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: titleStyle,
-              );
-            },
-          );
+    final title = Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle);
 
     final note = widget.note == null
         ? null
@@ -534,12 +533,21 @@ class _SellButtonState extends State<SellButton> {
                   ]
                 : null,
           ),
+          // Двухэтажная кнопка — строками постоянной высоты: две такие
+          // кнопки стоят рядом, и у суммы (16 кегль) и подсказки гостя
+          // (11 кегль) высота строки разная — кнопки выходили разной высоты.
+          // Не влезает в строку — ужимается, а не режется: на 320 точках
+          // «ПРОДАТЬ ПЕТРОВИЧУ» в полкнопки не помещалось на пару точек.
           child: widget.stacked
               ? Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [title, amount, if (note != null) note],
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _slot(13, Text(widget.title, maxLines: 1, style: titleStyle)),
+                    _slot(21, amount is FittedBox ? amount.child! : amount),
+                    if (note != null) _slot(13, note),
+                  ],
                 )
               : Row(
                   children: [
