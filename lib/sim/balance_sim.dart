@@ -31,10 +31,12 @@ import 'dart:math' as math;
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
+import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../engine/game_engine.dart';
 import '../engine/market.dart';
 import '../engine/production.dart';
+import '../models/achievement.dart';
 import '../models/game_state.dart';
 import '../models/upgrade.dart';
 
@@ -50,6 +52,69 @@ enum BuyRule {
   /// Берёт только самый старший доступный аппарат. Частая ошибка новичка:
   /// «дорогое значит лучшее».
   newest,
+}
+
+/// Когда игрок ложится спать.
+sealed class PrestigeRule {
+  const PrestigeRule();
+
+  /// Лечь прямо сейчас? [runSeconds] — сколько игрок отыграл в этом заходе,
+  /// [rate] — сколько он сейчас нагоняет в секунду.
+  bool shouldPrestige(GameState state, {required double runSeconds, required double rate});
+}
+
+/// Старое правило: лечь, когда мудрость вырастет на [growth] от накопленной.
+///
+/// Оставлено только для сверки с прежними числами. Как правило оно плохое:
+/// на большой мудрости само рождает стены. От 17 до 26 мудрости при +50 % —
+/// девять удвоений нагнанного, и симулятор честно ждёт их все, хотя живой
+/// игрок давно бы лёг.
+class WisdomGrowthRule extends PrestigeRule {
+  final double growth;
+
+  const WisdomGrowthRule(this.growth);
+
+  @override
+  bool shouldPrestige(GameState state, {required double runSeconds, required double rate}) {
+    final p = state.prestige;
+    if (!p.canPrestige) return false;
+    return p.pendingWisdom >= math.max(1.0, p.wisdom * growth);
+  }
+}
+
+/// Лечь, когда прибавка множителя окупает заход.
+///
+/// Мудрость множит всё производство, а общий множитель сокращает следующий
+/// заход почти пропорционально: с множителем ×r до той же точки доходишь за
+/// 1/r времени. Значит, заход длиной T с прибавкой ×r стоит ln(r)/T — столько
+/// «порядков» ускорения он приносит за час игры. Игрок ложится, когда ждать
+/// следующую мудрость невыгодно: её прибавка, растянутая на заход вместе с
+/// ожиданием, даёт меньше, чем уже есть сейчас.
+///
+/// Ожидание следующей мудрости считается по нынешнему потоку, как его видит
+/// игрок по полосе. Поток по дороге растёт, так что правило ложится чуть
+/// раньше идеала — как и живой игрок, который не знает будущего.
+///
+/// Множитель берётся из самого [PrestigeState], а не своей формулой: иначе
+/// правка веса мудрости не дошла бы до правила.
+class PaybackRule extends PrestigeRule {
+  const PaybackRule();
+
+  @override
+  bool shouldPrestige(GameState state, {required double runSeconds, required double rate}) {
+    final p = state.prestige;
+    if (!p.canPrestige || runSeconds <= 0) return false;
+
+    final base = p.globalMultiplier;
+    final now = p.claimAll().globalMultiplier / base;
+    // Чуть выше порога: иначе округление log2 внизу отдаёт ту же мудрость.
+    final nextAt = p.nextWisdomAtMl * (1 + 1e-9);
+    final next = p.copyWith(claimedMl: nextAt).globalMultiplier / base;
+    if (now <= 1) return false;
+
+    final wait = rate > 0 ? (nextAt - p.totalEverEarned) / rate : double.infinity;
+    return math.log(now) / runSeconds >= math.log(next) / (runSeconds + wait);
+  }
 }
 
 /// Портрет игрока.
@@ -71,10 +136,8 @@ class PlayStyle {
 
   final BuyRule rule;
 
-  /// Когда игрок ложится спать: при каком приросте мудрости относительно
-  /// уже накопленной. 0.5 — «готов сбросить ради +50 % мудрости».
-  /// `null` — не прессижит вовсе.
-  final double? prestigeAt;
+  /// Когда игрок ложится спать. `null` — не ложится вовсе.
+  final PrestigeRule? prestige;
 
   const PlayStyle({
     required this.name,
@@ -82,8 +145,18 @@ class PlayStyle {
     required this.heat,
     required this.attention,
     required this.rule,
-    this.prestigeAt,
+    this.prestige,
   });
+
+  /// Тот же игрок с другим правилом похмелья.
+  PlayStyle withPrestige(PrestigeRule? rule) => PlayStyle(
+        name: name,
+        tapsPerMinute: tapsPerMinute,
+        heat: heat,
+        attention: attention,
+        rule: this.rule,
+        prestige: rule,
+      );
 
   /// Тот, кто сидит в игре и считает.
   static const tryhard = PlayStyle(
@@ -92,7 +165,7 @@ class PlayStyle {
     heat: 2.7,
     attention: 0.9,
     rule: BuyRule.payback,
-    prestigeAt: 0.5,
+    prestige: PaybackRule(),
   );
 
   /// Обычный игрок: заходит, тыкает, покупает что подешевле.
@@ -102,8 +175,17 @@ class PlayStyle {
     heat: 1.8,
     attention: 0.5,
     rule: BuyRule.cheapest,
-    prestigeAt: 1.0,
+    prestige: PaybackRule(),
   );
+
+  /// Тот же игрок на прежнем правиле похмелья: «считает» ложился при +50 %
+  /// мудрости, «обычный» — при +100 %, «фоновый» не ложился. Нужен для
+  /// сверки с числами, снятыми до смены правила.
+  PlayStyle get onLegacyRule => withPrestige(switch (name) {
+        'считает' => const WisdomGrowthRule(0.5),
+        'обычный' => const WisdomGrowthRule(1.0),
+        _ => null,
+      });
 
   /// Тот, кто заглядывает пару раз в день.
   ///
@@ -181,7 +263,13 @@ class SimResult {
   final int sales;
 
   /// Сколько раз игрок лёг спать за партию.
-  final int prestiges;
+  int get prestiges => hangovers.length;
+
+  /// Когда игрок ложился спать — от начала партии, вместе с отсутствием.
+  final List<Duration> hangovers;
+
+  /// Сколько игрок провёл в игре. Без отсутствия совпадает с длиной партии.
+  final Duration played;
 
   final GameState finalState;
 
@@ -195,7 +283,8 @@ class SimResult {
     required this.upgradeBought,
     required this.firstPrestige,
     required this.sales,
-    required this.prestiges,
+    required this.hangovers,
+    required this.played,
     required this.finalState,
     required this.overflowedMl,
   });
@@ -223,6 +312,99 @@ class SimResult {
         for (final u in kUpgrades)
           if (!upgradeBought.containsKey(u.id)) u.id,
       ];
+}
+
+/// Как игрока нет.
+///
+/// Прежний симулятор этого различия не знал: все модельные игроки сидели в
+/// открытой игре 100 % времени, а `creditOffline` не звался ни разу. Поэтому
+/// он и проглядел, что ночь открытой вкладки после 17 минут игры даёт первую
+/// мудрость (docs/PLAN-1.0.md, раздел 2).
+enum Absence {
+  /// Вкладка открыта, в неё не смотрят. Игра идёт сама, с автопродажей.
+  tabOpen,
+
+  /// Игра закрыта или усыплена системой. При возвращении — начисление за
+  /// отсутствие.
+  closed,
+}
+
+/// Партия, которую можно продолжать с любого места.
+///
+/// Изменяемая намеренно: профили режут одну партию на куски игры и
+/// отсутствия, и таскать состояние через каждый кусок руками — значит
+/// потерять по дороге то, что симулятор о партии узнал.
+class SimParty {
+  final PlayStyle style;
+
+  /// Когда партия началась, по часам игры. Рынок и гости живут по этим часам.
+  final DateTime origin;
+
+  GameState state;
+
+  /// Сколько прошло от начала партии, вместе с отсутствием.
+  Duration elapsed = Duration.zero;
+
+  /// Сколько из этого игрок был в игре.
+  Duration played = Duration.zero;
+
+  /// Сколько игрок отыграл в нынешнем заходе — с последнего похмелья.
+  /// Отсутствие сюда не входит: заход игрок меряет своим временем.
+  Duration runPlayed = Duration.zero;
+
+  final List<Checkpoint> timeline = [];
+  final Map<String, Duration> firstBuy = {};
+  final Map<String, Duration> upgradeBought = {};
+  final List<Duration> hangovers = [];
+  Duration? firstPrestige;
+  int sales = 0;
+  double overflowedMl = 0;
+
+  double _tapBudget = 0;
+  Duration _nextSample = Duration.zero;
+
+  SimParty._({required this.style, required this.origin, required this.state});
+
+  DateTime get now => origin.add(elapsed);
+
+  /// Та же партия, но дальше идущая своей дорогой: «а если бы он ушёл
+  /// сейчас». Состояние игры неизменяемо, копируются только журналы.
+  SimParty fork({PlayStyle? style}) => SimParty._(
+        style: style ?? this.style,
+        origin: origin,
+        state: state,
+      )
+        ..elapsed = elapsed
+        ..played = played
+        ..runPlayed = runPlayed
+        ..timeline.addAll(timeline)
+        ..firstBuy.addAll(firstBuy)
+        ..upgradeBought.addAll(upgradeBought)
+        ..hangovers.addAll(hangovers)
+        ..firstPrestige = firstPrestige
+        ..sales = sales
+        ..overflowedMl = overflowedMl
+        .._tapBudget = _tapBudget
+        .._nextSample = _nextSample;
+
+  void _noteFirstPrestige() {
+    if (firstPrestige == null && state.prestige.canPrestige) {
+      firstPrestige = elapsed;
+    }
+  }
+
+  SimResult get result => SimResult(
+        style: style,
+        timeline: List.unmodifiable(timeline),
+        firstBuy: Map.unmodifiable(firstBuy),
+        upgradeBought: Map.unmodifiable(upgradeBought),
+        firstPrestige: firstPrestige,
+        sales: sales,
+        hangovers: List.unmodifiable(hangovers),
+        played: played,
+        finalState: state,
+        overflowedMl: overflowedMl,
+      );
 }
 
 /// Кандидат на покупку: во что обойдётся и что даст.
@@ -269,46 +451,58 @@ class BalanceSim {
   static double _steadyPricePerMl(GameState s) =>
       Market.basePricePerMl * Market.qualityMultiplier(s.upgrades);
 
+  /// Сыграть партию с нуля без отрыва от экрана.
   SimResult run(PlayStyle style, {Duration horizon = const Duration(hours: 2)}) {
-    final start = DateTime.utc(2026, 1, 1);
-    var now = start;
-    var state = newGame(content: kGenerators, upgrades: kUpgrades, now: now);
+    final party = start(style);
+    play(party, horizon);
+    return party.result;
+  }
 
-    final timeline = <Checkpoint>[];
-    final firstBuy = <String, Duration>{};
-    final upgradeBought = <String, Duration>{};
-    Duration? firstPrestige;
-    var sales = 0;
-    var overflowed = 0.0;
-    var nextSample = Duration.zero;
+  /// Новая партия. Дальше её ведут [play] и [away] в любом порядке.
+  SimParty start(PlayStyle style) {
+    final at = DateTime.utc(2026, 1, 1);
+    return SimParty._(
+      style: style,
+      origin: at,
+      state: newGame(content: kGenerators, upgrades: kUpgrades, now: at),
+    );
+  }
 
-    final steps = horizon.inMilliseconds ~/ step.inMilliseconds;
+  /// Игрок сидит в игре [length] (или пока не выполнится [until]).
+  ///
+  /// Продолжает партию с того места, где она стоит: «час, потом ещё час» —
+  /// то же самое, что «два часа подряд». На этом держатся все профили с
+  /// отсутствием: они режут одну партию на куски, а не собирают свою.
+  void play(SimParty p, Duration length, {bool Function(SimParty p)? until}) {
+    final style = p.style;
+    final steps = length.inMilliseconds ~/ step.inMilliseconds;
     final dt = step.inMilliseconds / 1000.0;
 
-    // Нажатия копятся дробями. Первая версия округляла их на каждом шаге, и
-    // игрок с 15 нажатиями в минуту при шаге в секунду не нажимал НИ РАЗУ:
-    // 0.25 округлялось в ноль. Отчёт показывал, что обычный игрок за два часа
-    // не покупает ничего, — и это была неправда про симулятор, а не про игру.
-    var tapBudget = 0.0;
-    var prestiges = 0;
-
     for (var i = 0; i < steps; i++) {
-      final elapsed = Duration(milliseconds: i * step.inMilliseconds);
-      now = start.add(elapsed);
+      if (until != null && until(p)) return;
+      final elapsed = p.elapsed;
+      final now = p.now;
+      var state = p.state;
 
       // --- Производство -------------------------------------------------
       final roomBefore = state.tankCapacity - state.resources.ml;
       final produced = state.mlPerSecond * style.heat * dt;
       state = engine.processTick(state, now, heatMultiplier: style.heat);
-      if (produced > roomBefore) overflowed += produced - roomBefore;
+      if (produced > roomBefore) p.overflowedMl += produced - roomBefore;
 
       // --- Касания ------------------------------------------------------
       // Самогона они не дают: вся польза активной игры уже учтена множителем
       // жара выше. Считаем их только ради достижений на количество касаний.
-      tapBudget += style.tapsPerMinute * style.attention * dt / 60;
-      while (tapBudget >= 1) {
+      //
+      // Нажатия копятся дробями. Первая версия округляла их на каждом шаге, и
+      // игрок с 15 нажатиями в минуту при шаге в секунду не нажимал НИ РАЗУ:
+      // 0.25 округлялось в ноль. Отчёт показывал, что обычный игрок за два
+      // часа не покупает ничего, — и это была неправда про симулятор, а не
+      // про игру.
+      p._tapBudget += style.tapsPerMinute * style.attention * dt / 60;
+      while (p._tapBudget >= 1) {
         state = engine.registerTouch(state, now);
-        tapBudget -= 1;
+        p._tapBudget -= 1;
       }
 
       // --- Сорт ---------------------------------------------------------
@@ -328,7 +522,7 @@ class BalanceSim {
       final wanted = _choose(state, style.rule, ignoreMoney: true);
       if (_shouldSell(state, now, style, wanted)) {
         state = engine.sellTo(state, _bestBuyer(state, now), now);
-        sales++;
+        p.sales++;
       }
 
       // --- Покупки ------------------------------------------------------
@@ -340,47 +534,92 @@ class BalanceSim {
         state = pick.apply(state);
         if (identical(before, state) || before == state) break;
 
-        firstBuy.putIfAbsent(pick.id, () => elapsed);
+        p.firstBuy.putIfAbsent(pick.id, () => elapsed);
         if (kUpgrades.any((u) => u.id == pick.id)) {
-          upgradeBought.putIfAbsent(pick.id, () => elapsed);
+          p.upgradeBought.putIfAbsent(pick.id, () => elapsed);
         }
       }
 
       state = engine.checkAchievements(state).state;
-
-      if (firstPrestige == null && state.prestige.canPrestige) {
-        firstPrestige = elapsed;
-      }
+      p.state = state;
+      p._noteFirstPrestige();
 
       // --- Похмелье -----------------------------------------------------
-      final threshold = style.prestigeAt;
-      if (threshold != null && state.prestige.canPrestige) {
-        final gain = state.prestige.pendingWisdom;
-        final worth = math.max(1.0, state.prestige.wisdom * threshold);
-        if (gain >= worth) {
-          state = engine.prestige(state, kGenerators, kUpgrades, now);
-          prestiges++;
-        }
+      p.runPlayed += step;
+      final rule = style.prestige;
+      if (rule != null &&
+          rule.shouldPrestige(
+            state,
+            runSeconds: p.runPlayed.inMilliseconds / 1000.0,
+            rate: state.mlPerSecond * style.heat,
+          )) {
+        p.state = engine.prestige(state, kGenerators, kUpgrades, now);
+        p.hangovers.add(elapsed);
+        p.runPlayed = Duration.zero;
       }
 
       // --- Показания ----------------------------------------------------
-      if (elapsed >= nextSample) {
-        timeline.add(_snapshot(state, elapsed));
-        nextSample += sampleEvery;
+      // Только пока игрок в игре: окупаемость — это то, что он видит, когда
+      // выбирает покупку, а не то, что стоит на экране, пока его нет.
+      if (elapsed >= p._nextSample) {
+        p.timeline.add(_snapshot(p.state, elapsed));
+        p._nextSample = elapsed + sampleEvery;
       }
-    }
 
-    return SimResult(
-      style: style,
-      timeline: timeline,
-      firstBuy: firstBuy,
-      upgradeBought: upgradeBought,
-      firstPrestige: firstPrestige,
-      sales: sales,
-      prestiges: prestiges,
-      finalState: state,
-      overflowedMl: overflowed,
-    );
+      p.elapsed += step;
+      p.played += step;
+    }
+  }
+
+  /// Игрока нет [length]. Как именно нет — решает [how].
+  ///
+  /// Единственное место, где симулятор знает про отсутствие. Задача 5
+  /// («поток времени») меняет смысл закрытой игры — вместо бака копится
+  /// поток — и подключается здесь, в [_closed], не трогая профили.
+  void away(SimParty p, Duration length, Absence how) {
+    if (length <= Duration.zero) return;
+    switch (how) {
+      case Absence.tabOpen:
+        _tabOpen(p, length);
+      case Absence.closed:
+        _closed(p, length);
+    }
+  }
+
+  /// Вкладка открыта, но в неё не смотрят: гонит на жаре ×1, сорт сползает,
+  /// никто ничего не покупает и не продаёт. Полный бак сдаёт автопродажа,
+  /// если цель её уже открыла, — как `GameNotifier._tick`. Без неё бак
+  /// встаёт полным, и дальше производство идёт мимо.
+  void _tabOpen(SimParty p, Duration length) {
+    final steps = length.inMilliseconds ~/ step.inMilliseconds;
+    final dt = step.inMilliseconds / 1000.0;
+    for (var i = 0; i < steps; i++) {
+      final now = p.now;
+      var state = p.state;
+      final roomBefore = state.tankCapacity - state.resources.ml;
+      final produced = state.mlPerSecond * dt;
+      state = engine.processTick(state, now);
+      if (produced > roomBefore) p.overflowedMl += produced - roomBefore;
+      state = engine.advanceSort(state, -kSortDecayPerSecond * dt);
+      if (state.achievements.hasPerk(AchievementPerk.autoSell) && state.isTankFull) {
+        state = engine.sell(state, now);
+        p.sales++;
+      }
+      p.state = engine.checkAchievements(state).state;
+      p._noteFirstPrestige();
+      p.elapsed += step;
+    }
+  }
+
+  /// Игра закрыта: при возвращении начисляется оффлайн, как в `bootstrap`, —
+  /// тем же [GameEngine.creditOffline] и с тем же потолком.
+  void _closed(SimParty p, Duration length) {
+    p.elapsed += length;
+    final credited = length > GameClock.offlineCap ? GameClock.offlineCap : length;
+    p.state = engine.checkAchievements(
+      engine.creditOffline(p.state, credited, p.now).state,
+    ).state;
+    p._noteFirstPrestige();
   }
 
   Checkpoint _snapshot(GameState state, Duration at) {
@@ -546,6 +785,16 @@ String formatDuration(Duration? d) {
   if (d.inMinutes < 90) return '${d.inMinutes}м';
   final hours = d.inMinutes / 60;
   return '${hours.toStringAsFixed(1)}ч';
+}
+
+/// Время с точностью до секунды: 36:46 или 2:05:00. Для сверки прогонов,
+/// где [formatDuration] теряет разницу.
+String formatClock(Duration? d) {
+  if (d == null) return '—';
+  final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+  if (d.inHours == 0) return '${d.inMinutes}:$s';
+  final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+  return '${d.inHours}:$m:$s';
 }
 
 /// Компактная запись больших чисел для таблиц.
