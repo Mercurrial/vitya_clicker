@@ -10,12 +10,16 @@
 ///            покупки бесплатны, игра идёт вразнос. Растёт — игра встала.
 ///   ТОП%   — какую долю дохода даёт сильнейший аппарат. Под 100% значит, что
 ///            остальные превратились в декорацию.
+///
+/// Вторая половина — профили с отсутствием (lib/sim/sim_profiles.dart). Их
+/// длина не зависит от аргумента: ночь — 8 часов, сутки — сутки.
 library;
 
 import 'dart:io';
 
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/sim/balance_sim.dart';
+import 'package:idle_game/sim/sim_profiles.dart';
 
 void main(List<String> args) {
   final hours = args.isEmpty ? 2 : int.tryParse(args.first) ?? 2;
@@ -34,6 +38,12 @@ void main(List<String> args) {
 
   _printLadder(results);
   _printDeadContent(results);
+
+  const players = [PlayStyle.tryhard, PlayStyle.casual];
+  _printAway(sim, players);
+  _printOvernight(sim, players);
+  _printDaily(sim, players);
+  _printMarathon(sim, players);
 }
 
 void _printRun(SimResult r) {
@@ -120,6 +130,91 @@ void _printDeadContent(List<SimResult> results) {
       final u = kUpgrades.firstWhere((x) => x.id == id);
       stdout.writeln('  ${u.name.padRight(34)} ${formatBig(u.cost).padLeft(10)} ₽');
     }
+  }
+  stdout.writeln('');
+}
+
+void _header(String title) {
+  stdout.writeln('─' * 76);
+  stdout.writeln(title);
+  stdout.writeln('─' * 76);
+}
+
+String _minutes(Duration? d) => d == null ? '> 6 ч' : '${d.inMinutes} мин';
+
+/// Сутки без игрока — в минутах активной игры с того же места.
+void _printAway(BalanceSim sim, List<PlayStyle> players) {
+  _header('СУТКИ ОТСУТСТВИЯ — сколько это минут активной игры');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'откуда'.padRight(24)} ${'закрыто'.padLeft(9)}  ${'вкладка'.padLeft(9)}');
+  for (final style in players) {
+    final spots = <(String, SimParty)>[];
+    for (final m in [10, 30]) {
+      final p = sim.start(style);
+      sim.play(p, Duration(minutes: m));
+      spots.add(('с нуля +$m мин', p));
+    }
+    for (final m in [2, 30]) {
+      final p = sim.start(style);
+      sim.play(p, const Duration(hours: 30), until: (p) => p.hangovers.isNotEmpty);
+      if (p.hangovers.isEmpty) continue;
+      sim.play(p, Duration(minutes: m));
+      spots.add(('1-е похмелье +$m мин', p));
+    }
+    for (final (label, p) in spots) {
+      final closed = activeEquivalent(sim, p, const Duration(days: 1), Absence.closed);
+      final tab = activeEquivalent(sim, p, const Duration(days: 1), Absence.tabOpen);
+      stdout.writeln('  ${style.name.padRight(9)} ${label.padRight(24)} '
+          '${_minutes(closed).padLeft(9)}  ${_minutes(tab).padLeft(9)}');
+    }
+  }
+  stdout.writeln('');
+}
+
+/// Сколько сыграть с нуля, чтобы ночь принесла первую мудрость.
+void _printOvernight(BalanceSim sim, List<PlayStyle> players) {
+  _header('НОЧЬ (8 ч) — сколько сыграть до неё, чтобы утром была мудрость');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'без ночи'.padLeft(9)}  ${'закрыто'.padLeft(9)}  ${'вкладка'.padLeft(9)}');
+  for (final style in players) {
+    final alone = sim.run(style.withPrestige(null), horizon: const Duration(hours: 8));
+    final closed = overnightThreshold(sim, style, Absence.closed);
+    final tab = overnightThreshold(sim, style, Absence.tabOpen);
+    stdout.writeln('  ${style.name.padRight(9)} ${formatClock(alone.firstPrestige).padLeft(9)}  '
+        '${_minutes(closed).padLeft(9)}  ${_minutes(tab).padLeft(9)}');
+  }
+  stdout.writeln('');
+}
+
+/// Заходит раз в день, остальное время игра закрыта.
+void _printDaily(BalanceSim sim, List<PlayStyle> players) {
+  _header('РАЗ В ДЕНЬ, остальное время закрыто — 14 дней');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'в день'.padLeft(7)}  ${'1-я мудрость'.padLeft(13)}  '
+      '${'мудрость к д7 / д14'.padLeft(20)}  похмелий');
+  for (final style in players) {
+    for (final m in [20, 60]) {
+      final r = daily(sim, style, perDay: Duration(minutes: m));
+      final first = r.firstWisdomDay == null ? '> 14 дн' : '${r.firstWisdomDay}-й день';
+      stdout.writeln('  ${style.name.padRight(9)} ${'$m мин'.padLeft(7)}  ${first.padLeft(13)}  '
+          '${'${r.wisdomByDay[6]} / ${r.wisdomByDay[13]}'.padLeft(20)}  ${r.result.prestiges}');
+    }
+  }
+  stdout.writeln('');
+}
+
+/// 30 часов подряд, похмелье — когда прибавка окупает заход.
+void _printMarathon(BalanceSim sim, List<PlayStyle> players) {
+  _header('30 ЧАСОВ С ПОХМЕЛЬЯМИ — ложится, когда прибавка окупает заход');
+  for (final style in players) {
+    final m = marathon(sim, style);
+    final r = m.result;
+    final share = m.rerunShare;
+    stdout.writeln('  ${style.name}: похмелий ${r.prestiges}, '
+        'самый длинный заход ${formatDuration(m.longestRun)}, '
+        'ступеней ${kGeneratorCount - r.unreached.length} из $kGeneratorCount, '
+        '2-й заход до той же точки — ${share == null ? '—' : '${(share * 100).round()} %'} первого');
+    stdout.writeln('    похмелья: ${r.hangovers.map(formatClock).join('  ')}');
+    stdout.writeln('    заходы:   ${m.runs.map(formatDuration).join(' · ')}');
+    stdout.writeln('    мудрость к 6 / 10 / 12 / 30 ч: '
+        '${[6, 10, 12, 30].map((h) => m.wisdomAt(Duration(hours: h))).join(' / ')}');
   }
   stdout.writeln('');
 }

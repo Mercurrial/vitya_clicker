@@ -77,7 +77,11 @@ class Score {
 Score scoreBalance(Balance candidate, {Duration horizon = const Duration(hours: 4)}) {
   return withBalance(candidate, () {
     const sim = BalanceSim(sampleEvery: Duration(minutes: 2));
-    final r = sim.run(PlayStyle.tryhard, horizon: horizon);
+    // Старое правило похмелья — до задачи 4, которая меняет эти цели. На
+    // новом правиле «считает» не ложится каждые полчаса, доживает до стены
+    // v6 после первого часа, и медиана окупаемости уходит к 26 минутам:
+    // цели упали бы раньше, чем переделана экономика.
+    final r = sim.run(PlayStyle.tryhard.onLegacyRule, horizon: horizon);
 
     final paybacks = [
       for (final c in r.timeline)
