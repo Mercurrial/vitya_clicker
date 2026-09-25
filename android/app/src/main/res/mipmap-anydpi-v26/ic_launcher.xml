@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Адаптивная иконка, Android 8+. Без неё система сажала квадратную иконку
+     уменьшенной в белый круг. Слои рисует tools/make_icons.dart: фон —
+     янтарь, передний — Витя, монохромный — для тематических иконок
+     Android 13+. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

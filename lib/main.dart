@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/app_info.dart';
 import 'core/bootstrap.dart';
 import 'core/game_clock.dart';
 import 'core/save_code.dart';
@@ -82,7 +83,7 @@ class VityaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Витя гонит',
+      title: kGameTitle,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
