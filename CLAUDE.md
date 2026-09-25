@@ -95,8 +95,8 @@ dart run tools/balance_report.dart 4              # если трогали эк
 сломана во всех пяти местах сразу.
 
 **Графику и звук не скачиваем.** Пиксель-арт — строками в исходнике, иконки —
-`tools/make_icons.dart`, звуки — `tools/make_sounds.dart`. Правится рецепт,
-а не двоичный файл.
+`tools/make_icons.dart`, баннер — `tools/make_banner.py`, звуки —
+`tools/make_sounds.dart`. Правится рецепт, а не двоичный файл.
 
 ## Стиль
 

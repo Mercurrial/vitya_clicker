@@ -1,23 +1,37 @@
-# ВИТЯ ГОНИТ
+<p align="center">
+  <img src="web/og.png" alt="Витя в деле — от банки до коллайдера" width="100%">
+</p>
 
-Idle-игра: Витя гонит самогон в гараже и постепенно доходит до орбитального
-самогонного коллайдера.
+<h3 align="center">
+  <a href="https://mercurrial.github.io/vitya-v-dele/">▶ Играть в браузере</a>
+</h3>
 
-Flutter · Android, iOS, Web, Windows · версия 1.0.0 ·
-[что менялось](CHANGELOG.md)
+<p align="center">
+  Idle-игра на Flutter: Витя гонит самогон в гараже и доходит до орбитального
+  самогонного коллайдера.<br>
+  Android · iPhone через браузер · Windows · версия 1.0.0 ·
+  <a href="CHANGELOG.md">что менялось</a>
+</p>
 
-**Играть:** https://mercurrial.github.io/vitya-v-dele/
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/garage.png" width="250" alt="Начало: банка в гараже"></td>
+    <td align="center"><img src="docs/screenshots/workshop.png" width="250" alt="Середина: четыре аппарата"></td>
+    <td align="center"><img src="docs/screenshots/plant.png" width="250" alt="Конец: производство и коллайдер"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Банка на кухонном огне</sub></td>
+    <td align="center"><sub>Гараж обрастает аппаратами</sub></td>
+    <td align="center"><sub>Производство с коллайдером</sub></td>
+  </tr>
+</table>
 
----
-
-## Содержание
-
-- [Как поставить](#как-поставить)
-- [Как играть](#как-играть)
-- [Разработка](#разработка)
-- [Устройство проекта](#устройство-проекта)
-- [Публикация](#публикация)
-- [Что дальше](#что-дальше)
+<p align="center">
+  <a href="#как-поставить">Как поставить</a> ·
+  <a href="#как-играть">Как играть</a> ·
+  <a href="#разработка">Разработка</a> ·
+  <a href="#что-дальше">Что дальше</a>
+</p>
 
 ---
 
@@ -90,6 +104,12 @@ flutter test                                   # всё зелёное
 flutter run
 ```
 
+Порядок работы, правила и проверки — в [CLAUDE.md](CLAUDE.md), решения
+владельца — в [docs/DECISIONS.md](docs/DECISIONS.md).
+
+<details>
+<summary><b>Замеры и снимки экрана</b></summary>
+
 Замеры по умолчанию пропускаются:
 
 ```bash
@@ -109,7 +129,10 @@ Workflow закоммитит снимки в ту же ветку. **Перес
 глазами** (в PR, Files changed): снимок, обновлённый не глядя, перестаёт
 что-либо проверять.
 
-### Баланс
+</details>
+
+<details>
+<summary><b>Баланс</b></summary>
 
 ```bash
 dart run tools/balance_report.dart 4   # прогон 4 часов за трёх игроков
@@ -120,17 +143,15 @@ dart run tools/balance_sweep.dart      # перебор чисел под цел
 экономика обязана попадать, — в `lib/sim/balance_targets.dart`; их стережёт
 `test/balance_test.dart`.
 
-### Сборка
+</details>
+
+<details>
+<summary><b>Сборка и отладка в браузере</b></summary>
 
 ```bash
 flutter build apk --release      # build/app/outputs/flutter-apk/
 flutter build web --release      # build/web
-```
-
-### Отладка в браузере
-
-```bash
-python tools/serve.py
+python tools/serve.py            # отдать build/web на localhost:8770
 ```
 
 Свой сервер, а не `python -m http.server`: он запрещает кэширование и
@@ -147,13 +168,23 @@ dart run tools/moments.dart      # когда придут гости
 сдвигаются параметром: `http://localhost:8770/?t=<миллисекунды>`. Так гостя
 можно увидеть сразу, не дожидаясь их по расписанию.
 
-### Графика
+Скриншоты в начале этой страницы сняты так же: сейвы `early`, `mid` и
+`final`, окно 390×844, масштаб 2, жар зажат на 1,2 секунды — ровно в окне.
+Перед загрузкой в сейве `lastSeen` ставится на «сейчас», иначе игра
+покажет «Пока тебя не было».
+
+</details>
+
+<details>
+<summary><b>Графика и звук</b></summary>
 
 ```bash
 python tools/sprite_lab.py --dart       # аппараты → lib/ui/pixel/still_sprites_gen.dart
 python tools/goal_icons_lab.py --dart   # значки целей → lib/ui/pixel/goal_icons_gen.dart
 python tools/sprite_lab.py --png out.png  # превью всех аппаратов
-dart run tools/make_icons.dart          # иконка приложения
+dart run tools/make_icons.dart          # иконка на все платформы
+python tools/make_banner.py             # баннер: эта страница и превью ссылки
+dart run tools/make_sounds.dart         # звуки
 ```
 
 Пиксель-арт собирается из примитивов с общей светотенью, а не рисуется
@@ -161,9 +192,14 @@ dart run tools/make_icons.dart          # иконка приложения
 стиле не выдержать. Сгенерированные файлы руками не правятся — только
 функции в лаборатории.
 
----
+Иконка — Витя строками в `tools/make_icons.dart`. Поле 48×48: обычная
+иконка — его середина, запас нужен адаптивной иконке Android и маскируемой
+веба. Баннер берёт Витю оттуда же, а аппараты — из `sprite_lab.py`.
 
-## Устройство проекта
+</details>
+
+<details>
+<summary><b>Устройство проекта</b></summary>
 
 ```
 lib/
@@ -202,9 +238,10 @@ lib/
 [docs/ROADMAP.md](docs/ROADMAP.md) — состояние работ,
 [docs/RELEASE.md](docs/RELEASE.md) — порядок выпуска.
 
----
+</details>
 
-## Публикация
+<details>
+<summary><b>Публикация</b></summary>
 
 Один раз в настройках репозитория: **Settings → Pages → Source: GitHub
 Actions**.
@@ -212,10 +249,13 @@ Actions**.
 Сайт обновляется **только выпуском версии** — тегом `vX.Y.Z` на `main`
 ([.github/workflows/deploy-web.yml](.github/workflows/deploy-web.yml)).
 Влитие PR в `main` сайт не трогает. Сборка занимает около двух минут.
+Адрес сайта — имя репозитория, выкладка берёт его сама.
 
 Каждый PR до влития проверяется анализом, тестами и снимками экрана
 ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Замеры — руками
 перед выпуском; полный порядок в [docs/RELEASE.md](docs/RELEASE.md).
+
+</details>
 
 ---
 
