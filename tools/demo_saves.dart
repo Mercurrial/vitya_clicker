@@ -87,6 +87,21 @@ void main() {
       hangovers: 9,
       claimed: 1e23,
     ),
+    // Вся лестница, с коллайдером. В 'late' его нет намеренно — там полка
+    // смотрится, когда до конца ещё есть куда расти; а коллайдер на полу
+    // без этой стадии не видел никто.
+    'final': build(
+      stills: {
+        for (final g in kGeneratorNames) g.id: 160 - 10 * kGeneratorNames.indexOf(g),
+      },
+      upgrades: kUpgrades.length,
+      money: 4.1e27,
+      ml: 2.2e25,
+      sort: 4.9,
+      lifetime: 9.9e30,
+      hangovers: 14,
+      claimed: 5e29,
+    ),
   };
 
   stages.forEach((name, s) {
