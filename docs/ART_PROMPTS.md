@@ -125,5 +125,4 @@ alpha channel, cutout sticker` и вырежи фон любым удалято�
 ## Что ещё понадобится позже (не сейчас)
 
 - `assets/images/buyers/petrovich.png` — сосед-скупщик
-- `assets/images/buyers/uchastkovyi.png` — участковый Николай Петрович
 - `assets/images/ui/garage_bg.png` — фон гаража, если захотим детальнее кирпича

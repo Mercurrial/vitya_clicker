@@ -65,12 +65,6 @@ class Production {
     return Duration(seconds: seconds.round());
   }
 
-  /// Сколько секунд производства стоит одно нажатие.
-  ///
-  /// Именно доля от текущего потока, а не константа: константу экспоненциальный
-  /// рост генераторов обесценивает за считанные минуты, а доля живёт всегда.
-  static double get tapSeconds => Balance.current.tapSeconds;
-
   /// Количества, на которых доход аппарата удваивается.
   static List<int> get milestones => Balance.current.milestones;
 

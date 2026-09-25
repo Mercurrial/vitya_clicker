@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../content/raid.dart';
 import '../../core/sfx.dart';
 import '../../models/game_state.dart';
 import '../../providers/feedback_provider.dart';
@@ -13,7 +12,6 @@ import '../game/vitya_portrait.dart';
 import '../pixel/garage_scene.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
-import '../widgets/raid_banner.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/vitya_toast.dart';
 import 'shelf.dart';
@@ -131,10 +129,8 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   /// Что с Витей происходит прямо сейчас.
   ///
   /// Порядок важен: сначала то, что требует действия, потом то, что просто
-  /// приятно. Участковый во дворе перевешивает и перегрев, и полный бак —
-  /// только он грозит отобрать нажитое.
+  /// приятно.
   VityaMood _moodFor(GameState state) {
-    if (raidAt(ref.read(timeProvider)()) != null) return VityaMood.hiding;
     if (_heat.status == HeatStatus.overheated) return VityaMood.burnt;
     if (state.isTankFull) return VityaMood.stuck;
     if (_heat.status == HeatStatus.inWindow) return VityaMood.inWork;
@@ -209,16 +205,9 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                           ),
                         ),
                       ),
-                      // Плашка ШУХЕРА — между сценой и шкалой жара, ровно там,
-                      // куда смотрят, когда держат палец. Своей высоты не
-                      // занимает, пока участкового нет.
-                      RaidBanner(heat: _heat),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(GS.s3, GS.s2, GS.s3, GS.s2),
-                        child: HeatPanel(
-                          controller: _heat,
-                          raid: raidAt(ref.read(timeProvider)()) != null,
-                        ),
+                        child: HeatPanel(controller: _heat),
                       ),
                       Expanded(
                         child: Shelf(

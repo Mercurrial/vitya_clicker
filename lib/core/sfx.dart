@@ -40,9 +40,6 @@ enum Sfx {
 
   /// Лёг проспаться.
   hangover,
-
-  /// Участковый у ворот.
-  raid,
 }
 
 extension SfxAsset on Sfx {

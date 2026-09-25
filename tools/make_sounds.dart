@@ -35,7 +35,6 @@ void main() {
     'buy': _buy(),
     'sell': _sell(),
     'hangover': _hangover(),
-    'raid': _raid(),
   };
 
   var total = 0;
@@ -108,20 +107,6 @@ List<double> _hangover() {
   _tone(buf, freq: 196, to: 65, amp: 0.30, decay: 3.2, wave: _Wave.triangle);
   _tone(buf, freq: 98, to: 33, amp: 0.22, decay: 2.8);
   _noise(buf, amp: 0.05, decay: 4, seed: 4);
-  return buf;
-}
-
-/// ШУХЕР: две ноты туда-сюда. Не настоящая сирена — намёк на неё.
-List<double> _raid() {
-  final buf = _buffer(0.9);
-  for (var i = 0; i < 4; i++) {
-    _tone(buf,
-        freq: i.isEven ? 740 : 560,
-        amp: 0.22,
-        decay: 13,
-        delay: i * 0.2,
-        wave: _Wave.square);
-  }
   return buf;
 }
 
