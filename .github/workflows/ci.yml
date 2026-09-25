@@ -1,15 +1,19 @@
 name: Проверка PR
 
-# Анализ и тесты — на каждый PR, до влития в main.
+# Анализ, тесты и снимки экрана — на каждый PR, до влития в main.
 #
 # Раньше тесты гонялись только внутри выкладки, то есть уже ПОСЛЕ влития:
 # сломанное успевало попасть в main и на сайт. Теперь выкладка идёт по тегу
 # (deploy-web.yml), а здесь — только проверка. Выкладок и записей в
 # Deployments этот workflow не создаёт.
 #
-# Снимки экрана и замеры здесь не гоняются намеренно: снимки на Linux
-# рисуются другими шрифтами и падали бы всегда, замеры на общих машинах
-# GitHub шумят. Их место — у владельца перед выпуском (docs/RELEASE.md).
+# Снимки сверяются здесь, потому что эталон снимков — именно эта платформа:
+# ubuntu-latest с Flutter 3.24.3. Раньше их снимали на разных машинах, и не
+# было ни одной, где проходили бы все: шрифты на Windows и на Linux рисуются
+# по-разному. Переснимает их только goldens.yml, на этой же платформе.
+#
+# Замеры (тег perf) здесь не гоняются намеренно: на общих машинах GitHub
+# они шумят. Их место — у владельца перед выпуском (docs/RELEASE.md).
 on:
   pull_request:
     branches: [main]
@@ -24,6 +28,7 @@ concurrency:
 
 jobs:
   test:
+    name: Анализ и тесты
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,3 +43,34 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  goldens:
+    name: Снимки экрана
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Сменить версию — значит переснять все снимки: движок рисует иначе.
+          flutter-version: 3.24.3
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      # По умолчанию снимки пропускаются (dart_test.yaml), и явный --tags
+      # этого не отменяет — нужен --run-skipped.
+      - run: flutter test --tags golden --run-skipped
+
+      # Без картинок красная проверка говорит только «не совпало». В
+      # архиве на каждый упавший снимок четыре файла: эталон
+      # (_masterImage), новый кадр (_testImage) и разница — отдельно
+      # (_isolatedDiff) и поверх кадра (_maskedDiff).
+      - name: Выложить разницу снимков
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: goldens-failures
+          path: test/failures/
+          if-no-files-found: ignore
+          retention-days: 14

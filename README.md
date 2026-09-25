@@ -87,15 +87,24 @@ flutter test                                   # 275 тестов
 flutter run
 ```
 
-Отдельные наборы (по умолчанию пропускаются):
+Замеры по умолчанию пропускаются:
 
 ```bash
-flutter test --tags golden --run-skipped       # снимки экрана
-flutter test --tags perf  --run-skipped        # замеры, на спокойной машине
+flutter test --tags perf --run-skipped         # замеры, на спокойной машине
 ```
 
-Снимки пересобираются флагом `--update-goldens`. **Пересобрав — посмотреть
-глазами**: снимок, обновлённый не глядя, перестаёт что-либо проверять.
+**Снимки экрана** (`test/goldens/`) сверяет CI на каждом PR. Эталон снят
+на ubuntu в GitHub Actions: на Windows шрифты рисуются иначе, и локально
+снимки с текстом не совпадут — это ожидаемо. Переснять: Actions →
+«Переснять снимки» → Run workflow → ветка, или
+
+```bash
+gh workflow run goldens.yml --ref <ветка>
+```
+
+Workflow закоммитит снимки в ту же ветку. **Пересняв — посмотреть
+глазами** (в PR, Files changed): снимок, обновлённый не глядя, перестаёт
+что-либо проверять.
 
 ### Баланс
 
@@ -199,10 +208,9 @@ Actions**.
 ([.github/workflows/deploy-web.yml](.github/workflows/deploy-web.yml)).
 Влитие PR в `main` сайт не трогает. Сборка занимает около двух минут.
 
-Каждый PR до влития проверяется анализом и тестами
-([.github/workflows/ci.yml](.github/workflows/ci.yml)). Снимки экрана и
-замеры — руками перед выпуском; полный порядок в
-[docs/RELEASE.md](docs/RELEASE.md).
+Каждый PR до влития проверяется анализом, тестами и снимками экрана
+([.github/workflows/ci.yml](.github/workflows/ci.yml)). Замеры — руками
+перед выпуском; полный порядок в [docs/RELEASE.md](docs/RELEASE.md).
 
 ---
 
