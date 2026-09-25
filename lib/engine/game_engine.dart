@@ -32,10 +32,12 @@ class GameEngine {
   /// Теперь касание влияет на производство единственным путём — через жар
   /// (см. [processTick] и его множитель). Жар держат зажимом, поэтому долбить
   /// по экрану бессмысленно физически.
+  ///
+  /// [currentTime] касанию не нужен: метку времени оно не двигает — почему,
+  /// см. [processTick].
   GameState registerTouch(GameState state, DateTime currentTime) {
     return state.copyWith(
       clicker: state.clicker.copyWith(totalTaps: state.clicker.totalTaps + 1),
-      lastUpdateTime: currentTime,
     );
   }
 
@@ -60,6 +62,27 @@ class GameEngine {
   /// Излишек сверх ёмкости бака теряется. Если бак полон и не налилось ни
   /// капли, поток не списывается: сжечь его на стоящих аппаратах — не
   /// ускорение, а потеря.
+  ///
+  /// Метка [GameState.lastUpdateTime] — «до какого момента производство уже
+  /// посчитано». Двигают её только тик и начисление AFK (`GameNotifier._tick`,
+  /// загрузка сейва) — и похмелье, которое начинает заход заново. Касание,
+  /// продажа и покупки её не трогают. Раньше трогали: каждое действие
+  /// переставляло метку на «сейчас», и производство с прошлого тика
+  /// пропадало. Тик идёт раз в 200 мс, касание приходит на каждое нажатие —
+  /// при 30 нажатиях в минуту терялось около 5 % производства. Симулятор
+  /// делает действия в тот же момент, что и тик, и потери не видел: игра
+  /// шла медленнее целей баланса. А после сна приложения действие, пришедшее
+  /// раньше первого тика, прятало от тика разрыв — и поток за отсутствие не
+  /// начислялся вовсе.
+  ///
+  /// Цена этого — покупка задним числом. Купленный между тиками аппарат или
+  /// улучшение считается следующим тиком с самого прошлого тика, то есть
+  /// работает до 0,2 с «до покупки»; проданный бак так же задним числом
+  /// освобождает место. Посчитать честно движок не может: для этого надо
+  /// закрыть отрезок до покупки с тем жаром и ускорением, что были, а их
+  /// знает только `GameNotifier`. Выигрыш — не больше тика того, что
+  /// добавила покупка, и только при покупке или продаже; потеря была — тик
+  /// всего производства на каждом нажатии.
   GameState processTick(
     GameState state,
     DateTime currentTime, {
@@ -246,7 +269,7 @@ class GameEngine {
       ),
       sort: buyer.consumesSort ? state.sort.dropOneStep() : state.sort,
       stats: state.stats.addSale(volume, revenue, guest: guest),
-      lastUpdateTime: currentTime,
+      // Метку времени не трогаем — её двигает только тик, см. processTick.
     );
   }
 
@@ -268,7 +291,8 @@ class GameEngine {
   /// сойдутся сами.
   ///
   /// Сейчас цена от времени не зависит: единственная такая поправка —
-  /// подорожание сахара — вырезана в балансе v7. Время всё равно оставлено
+  /// подорожание сахара — вырезана вместе с житейскими неприятностями
+  /// (docs/DECISIONS.md, «Состав релиза»). Время всё равно оставлено
   /// обязательным, а не необязательным с «обычной ценой» по умолчанию: когда
   /// поправка появится снова, первое же место, которое про него забудет,
   /// покажет игроку одну цену, а спишет другую.
@@ -298,7 +322,7 @@ class GameEngine {
       resources: state.resources.copyWith(money: state.resources.money - cost),
       generators: state.generators.copyWith(items: items),
       stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + 1),
-      lastUpdateTime: currentTime,
+      // Метку времени не трогаем — её двигает только тик, см. processTick.
     );
   }
 
@@ -345,7 +369,7 @@ class GameEngine {
       resources: state.resources.copyWith(money: state.resources.money - cost),
       generators: state.generators.copyWith(items: items),
       stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + take),
-      lastUpdateTime: currentTime,
+      // Метку времени не трогаем — её двигает только тик, см. processTick.
     );
   }
 
@@ -366,7 +390,7 @@ class GameEngine {
       resources: state.resources.copyWith(money: state.resources.money - cost),
       upgrades: state.upgrades.copyWith(items: items),
       stats: state.stats.copyWith(upgradesBought: state.stats.upgradesBought + 1),
-      lastUpdateTime: currentTime,
+      // Метку времени не трогаем — её двигает только тик, см. processTick.
     );
   }
 

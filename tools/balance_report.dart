@@ -29,7 +29,7 @@ void main(List<String> args) {
   final horizon = Duration(hours: hours);
   const sim = BalanceSim();
 
-  stdout.writeln('ВИТЯ ГОНИТ — отчёт по балансу, $hours ч игрового времени\n');
+  stdout.writeln('ВИТЯ В ДЕЛЕ — отчёт по балансу, $hours ч игрового времени\n');
 
   final results = [
     for (final style in PlayStyle.all) sim.run(style, horizon: horizon),
