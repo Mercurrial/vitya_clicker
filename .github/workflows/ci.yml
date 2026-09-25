@@ -1,0 +1,40 @@
+name: Проверка PR
+
+# Анализ и тесты — на каждый PR, до влития в main.
+#
+# Раньше тесты гонялись только внутри выкладки, то есть уже ПОСЛЕ влития:
+# сломанное успевало попасть в main и на сайт. Теперь выкладка идёт по тегу
+# (deploy-web.yml), а здесь — только проверка. Выкладок и записей в
+# Deployments этот workflow не создаёт.
+#
+# Снимки экрана и замеры здесь не гоняются намеренно: снимки на Linux
+# рисуются другими шрифтами и падали бы всегда, замеры на общих машинах
+# GitHub шумят. Их место — у владельца перед выпуском (docs/RELEASE.md).
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Новый push в тот же PR отменяет недоделанную проверку старого.
+concurrency:
+  group: ci-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Та же версия, что в выкладке и у разработчика. См. deploy-web.yml.
+          flutter-version: 3.24.3
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
