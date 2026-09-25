@@ -153,6 +153,15 @@ void main() {
           b.globalUpgradeMultiplier,
           b.qualityUpgradeCost,
           b.qualityUpgradeMultiplier,
+          b.fluxMinutesPerHour,
+          b.fluxMaxMinutesPerHour,
+          b.fluxBankHours,
+          b.fluxMaxBankHours,
+          b.fluxRateCostBase,
+          b.fluxRateCostStep,
+          b.fluxBankCostBase,
+          b.fluxBankCostStep,
+          b.fluxMaxSpeed,
         ].join('|');
 
     // Отпечаток записан при чистом старте и до выпуска не сверяется:

@@ -141,6 +141,45 @@ class Balance {
   /// невыгоднее предыдущей, а значит — сколько её придётся зарабатывать.
   final double tierOutputRatio;
 
+  /// Сколько минут потока времени даёт час AFK на старте.
+  ///
+  /// AFK — время, когда игра не шла: закрыта или усыплена системой. За него
+  /// не самогон, а поток, который потом тратится ускорением
+  /// (docs/DECISIONS.md, «AFK и поток времени»). При 10 мин/ч и копилке на
+  /// час закрыть игру примерно так же выгодно, как оставить вкладку на
+  /// сутки; при 5 мин/ч вкладка вдвое выгоднее, и потоком никто не
+  /// пользуется.
+  final double fluxMinutesPerHour;
+
+  /// Больше часа потока за час нельзя: иначе закрытая игра шла бы быстрее
+  /// открытой.
+  final double fluxMaxMinutesPerHour;
+
+  /// Копилка потока на старте, ч. Наполняется за 6 ч AFK.
+  final double fluxBankHours;
+
+  /// Предел копилки, ч: на сутки.
+  final double fluxMaxBankHours;
+
+  /// Цена уровня «Крепкого сна» (+1 мин/ч): база + шаг · уровень, в минутах
+  /// потока. Линейно, а не геометрически: до «копилки на сутки, которая
+  /// наполняется за 2–2,5 дня», окупается за дни, дальше — за недели.
+  final double fluxRateCostBase;
+  final double fluxRateCostStep;
+
+  /// Цена уровня «Долгого сна» (+1 ч копилки), в минутах потока.
+  ///
+  /// Обе цены держатся ниже полной копилки: платить можно только из неё.
+  /// Первая версия ставила цену вровень с копилкой — и игрок, который хоть
+  /// часть потока тратил на ускорение, застревал на 10 мин/ч навсегда.
+  final double fluxBankCostBase;
+  final double fluxBankCostStep;
+
+  /// Самое сильное ускорение. Итог от скорости не зависит — час потока
+  /// остаётся часом лишнего производства, — скорость решает только, за
+  /// сколько настоящих минут он проживается.
+  final double fluxMaxSpeed;
+
   const Balance({
     required this.costGrowth,
     required this.firstWisdomMl,
@@ -161,6 +200,15 @@ class Balance {
     required this.globalUpgradeMultiplier,
     required this.qualityUpgradeCost,
     required this.qualityUpgradeMultiplier,
+    required this.fluxMinutesPerHour,
+    required this.fluxMaxMinutesPerHour,
+    required this.fluxBankHours,
+    required this.fluxMaxBankHours,
+    required this.fluxRateCostBase,
+    required this.fluxRateCostStep,
+    required this.fluxBankCostBase,
+    required this.fluxBankCostStep,
+    required this.fluxMaxSpeed,
   });
 
   /// Действующий баланс.
@@ -186,6 +234,15 @@ class Balance {
     double? globalUpgradeMultiplier,
     double? qualityUpgradeCost,
     double? qualityUpgradeMultiplier,
+    double? fluxMinutesPerHour,
+    double? fluxMaxMinutesPerHour,
+    double? fluxBankHours,
+    double? fluxMaxBankHours,
+    double? fluxRateCostBase,
+    double? fluxRateCostStep,
+    double? fluxBankCostBase,
+    double? fluxBankCostStep,
+    double? fluxMaxSpeed,
   }) =>
       Balance(
         costGrowth: costGrowth ?? this.costGrowth,
@@ -207,6 +264,15 @@ class Balance {
         globalUpgradeMultiplier: globalUpgradeMultiplier ?? this.globalUpgradeMultiplier,
         qualityUpgradeCost: qualityUpgradeCost ?? this.qualityUpgradeCost,
         qualityUpgradeMultiplier: qualityUpgradeMultiplier ?? this.qualityUpgradeMultiplier,
+        fluxMinutesPerHour: fluxMinutesPerHour ?? this.fluxMinutesPerHour,
+        fluxMaxMinutesPerHour: fluxMaxMinutesPerHour ?? this.fluxMaxMinutesPerHour,
+        fluxBankHours: fluxBankHours ?? this.fluxBankHours,
+        fluxMaxBankHours: fluxMaxBankHours ?? this.fluxMaxBankHours,
+        fluxRateCostBase: fluxRateCostBase ?? this.fluxRateCostBase,
+        fluxRateCostStep: fluxRateCostStep ?? this.fluxRateCostStep,
+        fluxBankCostBase: fluxBankCostBase ?? this.fluxBankCostBase,
+        fluxBankCostStep: fluxBankCostStep ?? this.fluxBankCostStep,
+        fluxMaxSpeed: fluxMaxSpeed ?? this.fluxMaxSpeed,
       );
 }
 
@@ -238,6 +304,15 @@ const Balance kBalance = Balance(
   globalUpgradeMultiplier: 2,
   qualityUpgradeCost: 5e4,
   qualityUpgradeMultiplier: 1.3,
+  fluxMinutesPerHour: 10,
+  fluxMaxMinutesPerHour: 60,
+  fluxBankHours: 1,
+  fluxMaxBankHours: 24,
+  fluxRateCostBase: 45,
+  fluxRateCostStep: 20,
+  fluxBankCostBase: 30,
+  fluxBankCostStep: 15,
+  fluxMaxSpeed: 10,
 );
 
 /// Прогнать код на другом балансе и вернуть всё как было.

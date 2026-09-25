@@ -47,16 +47,24 @@ class GameEngine {
   /// Пассивная генерация за прошедшее время.
   ///
   /// [heatMultiplier] — вот ради чего игрок тапает: жар множит весь поток.
-  /// Пока игра закрыта, множитель равен 1: отсутствие не наказывается, просто
-  /// активная игра идёт быстрее.
   ///
-  /// Та же функция обслуживает оффлайн-доход — разница только в величине
-  /// [currentTime] минус метка состояния. Излишек сверх ёмкости бака теряется:
-  /// вернувшись, игрок находит полный бак, а не бесконечную выручку.
+  /// [speed] — ускорение потоком времени: ×2 проживает за секунду две
+  /// секунды производства, лишняя списывается из потока. Кончился поток —
+  /// ускорение кончилось вместе с ним, посреди тика тоже. Поэтому итог один
+  /// на любой скорости: час потока — это час лишнего производства, на ×2 он
+  /// проживается за час, на ×10 — за шесть минут.
+  ///
+  /// Время в игре и заходы ускорение не трогает: они считаются по настоящим
+  /// часам, а не по производству.
+  ///
+  /// Излишек сверх ёмкости бака теряется. Если бак полон и не налилось ни
+  /// капли, поток не списывается: сжечь его на стоящих аппаратах — не
+  /// ускорение, а потеря.
   GameState processTick(
     GameState state,
     DateTime currentTime, {
     double heatMultiplier = 1.0,
+    double speed = 1.0,
   }) {
     final rate = state.mlPerSecond * heatMultiplier;
     if (rate <= 0) return state.copyWith(lastUpdateTime: currentTime);
@@ -65,9 +73,12 @@ class GameEngine {
         currentTime.difference(state.lastUpdateTime).inMilliseconds / 1000.0;
     if (deltaSeconds <= 0) return state.copyWith(lastUpdateTime: currentTime);
 
+    final wanted = speed > 1 ? (speed - 1) * deltaSeconds : 0.0;
+    final extra = wanted < state.flux.seconds ? wanted : state.flux.seconds;
+
     final produced = _clampToRoom(
       state,
-      formulas.calculatePassiveGeneration(rate, deltaSeconds),
+      formulas.calculatePassiveGeneration(rate, deltaSeconds + extra),
     );
     if (produced <= 0) return state.copyWith(lastUpdateTime: currentTime);
 
@@ -76,6 +87,9 @@ class GameEngine {
       prestige: state.prestige.copyWith(
         totalEverEarned: state.prestige.totalEverEarned + produced,
       ),
+      flux: extra > 0
+          ? state.flux.copyWith(seconds: state.flux.seconds - extra)
+          : null,
       lastUpdateTime: currentTime,
     );
   }
@@ -101,23 +115,58 @@ class GameEngine {
     );
   }
 
-  /// Начислить за время отсутствия и сказать, сколько накапало.
+  /// Начислить поток за AFK — время, когда игра не шла, — и сказать,
+  /// сколько прибавилось.
   ///
-  /// Единственная точка, где считается оффлайн: и запуск игры, и возврат из
-  /// фона зовут именно её. Раньше запуск считал по своей копии формулы,
-  /// которая не знала про ёмкость бака, — и после перезагрузки в двухлитровый
-  /// бак наливались десятки тысяч литров.
-  ({GameState state, double gained}) creditOffline(
-    GameState state,
-    Duration credited,
-    DateTime now,
-  ) {
-    if (credited <= Duration.zero) return (state: state, gained: 0.0);
+  /// Производства за это время нет: закрытая игра не гонит. Раньше гнала —
+  /// бак наливался за отсутствие, — и вместе с открытой вкладкой, которая
+  /// гонит и так, отсутствие двигало игру мимо игрока. Теперь вместо
+  /// самогона копится поток, и потратить его можно только играя.
+  ///
+  /// Единственная точка, где считается AFK: и запуск игры, и усыплённое
+  /// системой приложение зовут именно её. Что игра «не шла», решают
+  /// `bootstrap` и `GameNotifier`, а не движок.
+  ///
+  /// Полная копилка не переливается. Если в ней уже больше, чем влезает, —
+  /// не отнимаем: копилку игрок не уменьшал.
+  ({GameState state, double gained}) creditAfk(GameState state, Duration away) {
+    if (away <= Duration.zero) return (state: state, gained: 0.0);
 
-    final before = state.resources.ml;
-    var next = state.copyWith(lastUpdateTime: now.subtract(credited));
-    next = processTick(next, now);
-    return (state: next, gained: next.resources.ml - before);
+    final flux = state.flux;
+    final room = flux.bankSeconds - flux.seconds;
+    if (room <= 0) return (state: state, gained: 0.0);
+
+    final earned = flux.earnedFor(away.inMilliseconds / 1000.0);
+    final gained = earned < room ? earned : room;
+    return (
+      state: state.copyWith(flux: flux.copyWith(seconds: flux.seconds + gained)),
+      gained: gained,
+    );
+  }
+
+  /// Купить уровень «Крепкого сна»: +1 минута потока за час AFK. Платится
+  /// самим потоком — выбор «ускориться сейчас или вложиться».
+  GameState buyFluxRate(GameState state) {
+    final flux = state.flux;
+    if (!flux.canBuyRate) return state;
+    return state.copyWith(
+      flux: flux.copyWith(
+        seconds: flux.seconds - flux.rateCostSeconds,
+        rateLevel: flux.rateLevel + 1,
+      ),
+    );
+  }
+
+  /// Купить уровень «Долгого сна»: +1 час копилки.
+  GameState buyFluxBank(GameState state) {
+    final flux = state.flux;
+    if (!flux.canBuyBank) return state;
+    return state.copyWith(
+      flux: flux.copyWith(
+        seconds: flux.seconds - flux.bankCostSeconds,
+        bankLevel: flux.bankLevel + 1,
+      ),
+    );
   }
 
   /// Засчитать [seconds] секунд игры на экране.
@@ -126,8 +175,9 @@ class GameEngine {
   /// приходит тиком игры, зажим — от пальца. Движок только складывает, как и
   /// с сортом, поэтому остаётся чистым и проверяется без экрана.
   ///
-  /// Оффлайн сюда не попадает: [creditOffline] эту функцию не зовёт, и
-  /// время с закрытой игрой в «время в игре» не складывается.
+  /// AFK сюда не попадает: [creditAfk] эту функцию не зовёт, и время с
+  /// закрытой игрой в «время в игре» не складывается. Ускорение — тоже:
+  /// [seconds] — настоящие секунды, а не прожитые производством.
   GameState recordPlay(
     GameState state,
     double seconds, {
@@ -339,6 +389,9 @@ class GameEngine {
       // Статистика — за всю игру, а не за заход; похмелье только закрывает
       // заход и засекает следующий.
       stats: state.stats.finishRun(currentTime),
+      // Поток — время игрока, а не имущество гаража: его улучшения куплены
+      // за ожидание, и отнимать их похмельем значило бы наказать за сон.
+      flux: state.flux,
       lastUpdateTime: currentTime,
     );
   }

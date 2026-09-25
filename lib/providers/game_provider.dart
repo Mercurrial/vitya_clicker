@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../content/achievements.dart';
+import '../content/balance.dart';
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
@@ -73,6 +74,27 @@ class FramePulse {
 
 final framePulseProvider = Provider<FramePulse>((ref) => FramePulse());
 
+/// Действующее ускорение потоком времени. 1 — выключено.
+///
+/// Живёт вне сейва: вернувшись, игрок застаёт ускорение выключенным, а не
+/// тихо съевшим копилку, пока он смотрел экран возвращения.
+final fluxSpeedProvider = StateProvider<double>((ref) => 1.0);
+
+/// Игра вернулась после сна, в который её уложила система, — что показать
+/// на экране возвращения. Ставит тик, забирает экран.
+///
+/// Запуск игры сюда не пишет: у него своя дорога через `Bootstrap`.
+class AfkReturn {
+  final OfflineResult away;
+
+  /// Сколько потока прибавилось, секунд.
+  final double gained;
+
+  const AfkReturn({required this.away, required this.gained});
+}
+
+final afkReturnProvider = StateProvider<AfkReturn?>((ref) => null);
+
 final formulasProvider = Provider<Formulas>((ref) => const Formulas());
 
 final gameEngineProvider = Provider<GameEngine>(
@@ -93,6 +115,14 @@ class GameNotifier extends Notifier<GameState> {
   /// Шаг симуляции. 200 мс достаточно для плавности (счётчик в интерфейсе
   /// сглаживается отдельно) и заметно бережнее к батарее, чем 16 мс.
   static const _tickInterval = Duration(milliseconds: 200);
+
+  /// Разрыв между тиками, после которого считается, что игра не шла.
+  ///
+  /// Тик идёт раз в 200 мс. Скрытую вкладку браузер прореживает — до раза в
+  /// минуту после пяти минут в фоне, — но она гонит и сдаёт бак сама, и это
+  /// игра. Замороженную вкладку и уснувшее приложение не будит ничто: их
+  /// разрыв — часы. Две минуты — с запасом над прореживанием.
+  static const afkGap = Duration(minutes: 2);
 
   /// Периодичность автосейва. Чаще писать в хранилище незачем: при сворачивании
   /// и выходе мы сохраняемся отдельно, а тут страховка от «убили процесс».
@@ -138,17 +168,43 @@ class GameNotifier extends Notifier<GameState> {
     final engine = ref.read(gameEngineProvider);
     final now = ref.read(timeProvider)();
 
+    // Система усыпила игру — свёрнутый телефон, замороженная вкладка. Это
+    // AFK: за него поток, а не производство. Раньше разрыв считался как
+    // обычный тик, и уснувшее приложение просыпалось с полным баком — а
+    // `main` при возврате начислял то же время ещё раз, оффлайном.
+    var current = state;
+    final gap = now.difference(current.lastUpdateTime);
+    if (gap > afkGap) {
+      final credited = engine.creditAfk(current, gap);
+      current = credited.state.copyWith(lastUpdateTime: now);
+      stopBoost();
+      ref.read(afkReturnProvider.notifier).state = AfkReturn(
+        away: OfflineResult(elapsed: gap),
+        gained: credited.gained,
+      );
+    }
+
+    // Скрыли игру с включённым ускорением — выключаем, иначе поток сгорит
+    // на жаре ×1, пока игрок не смотрит.
+    if (!ref.read(onScreenProvider)) stopBoost();
+
     final heat = ref.read(heatStatusProvider);
     // Магазин развёрнут — у Вити заняты руки, производство идёт по базе.
     // Множитель на паузе и так единица (HeatController.multiplier), но
     // решать, что пауза не множит, должен тот, кто считает производство:
     // иначе запоздавший на кадр множитель посчитался бы без пальца.
+    //
+    // Ускорение на паузе не выключается: оно множит базовое производство, и
+    // тратить поток в магазине — выбор игрока (docs/PLAN-1.0.md, раздел 9).
     final paused = heat == HeatStatus.paused;
     var next = engine.processTick(
-      state,
+      current,
       now,
       heatMultiplier: paused ? 1.0 : _heatMultiplier,
+      speed: ref.read(fluxSpeedProvider),
     );
+    // Поток кончился — ускорение тоже.
+    if (next.flux.seconds <= 0) stopBoost();
 
     // Сорт двигается тем же тиком: держишь жар в окне — растёт, перегрел —
     // горит, отвлёкся — медленно сползает. На паузе стоит: он двигается от
@@ -329,6 +385,7 @@ class GameNotifier extends Notifier<GameState> {
     final loaded = const SaveCodec().decode(parsed.save);
     if (loaded.isEmpty || loaded.wasCorrupt) return SaveCodeError.damaged;
 
+    stopBoost();
     state = ref.read(serializerProvider).fromJson(
           loaded.data!,
           content: ref.read(generatorsContentProvider),
@@ -345,6 +402,7 @@ class GameNotifier extends Notifier<GameState> {
   /// который хочет пройти заново без похмелья.
   Future<void> hardReset() async {
     await ref.read(saveServiceProvider)?.wipe();
+    stopBoost();
     state = newGame(
       content: ref.read(generatorsContentProvider),
       upgrades: ref.read(upgradesContentProvider),
@@ -353,13 +411,33 @@ class GameNotifier extends Notifier<GameState> {
     await saveNow();
   }
 
-  /// Начисление за отсутствие игрока. Считается тем же тиком — доход обязан
-  /// быть чистой функцией состояния и времени.
-  void applyOffline(Duration credited) {
-    final engine = ref.read(gameEngineProvider);
-    state = engine
-        .creditOffline(state, credited, ref.read(timeProvider)())
-        .state;
+  /// Включить ускорение потоком: [speed] от ×1 до предела баланса. Без
+  /// потока не включается — кнопка, которая ничего не делает, хуже
+  /// погашенной.
+  void startBoost(double speed) {
+    final max = Balance.current.fluxMaxSpeed;
+    final clamped = speed < 1 ? 1.0 : (speed > max ? max : speed);
+    if (state.flux.seconds <= 0) return;
+    ref.read(fluxSpeedProvider.notifier).state = clamped;
+  }
+
+  void stopBoost() {
+    final speed = ref.read(fluxSpeedProvider.notifier);
+    if (speed.state != 1.0) speed.state = 1.0;
+  }
+
+  /// Купить уровень «Крепкого сна» — +1 минута потока за час AFK.
+  void buyFluxRate() {
+    final before = state;
+    state = ref.read(gameEngineProvider).buyFluxRate(state);
+    if (state != before) _feedback.hit(Sfx.buy, Buzz.select);
+  }
+
+  /// Купить уровень «Долгого сна» — +1 час копилки.
+  void buyFluxBank() {
+    final before = state;
+    state = ref.read(gameEngineProvider).buyFluxBank(state);
+    if (state != before) _feedback.hit(Sfx.buy, Buzz.select);
   }
 }
 

@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bootstrap.dart';
+import 'core/game_clock.dart';
 import 'core/sfx_player.dart';
-import 'models/achievement.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
 import 'ui/game/vitya_portrait.dart';
@@ -83,8 +83,8 @@ class VityaApp extends StatelessWidget {
   }
 }
 
-/// Следит за жизненным циклом: при сворачивании пишет прогресс, при возврате
-/// начисляет за отсутствие. Без этого «idle» не работает как idle.
+/// Следит за жизненным циклом: при сворачивании пишет прогресс и гасит
+/// ускорение, после сна показывает, сколько накопилось потока.
 class _Root extends ConsumerStatefulWidget {
   final Bootstrap boot;
   const _Root({required this.boot});
@@ -128,12 +128,17 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
       await ref.read(gameProvider.notifier).saveNow();
     }
     if (!mounted || !widget.boot.shouldGreet) return;
+    _greet(widget.boot.offline, widget.boot.fluxGained);
+  }
+
+  void _greet(OfflineResult away, double gained) {
+    final s = ref.read(gameProvider);
     showWelcomeBack(
       context,
-      offline: widget.boot.offline,
-      gained: widget.boot.offlineGain,
-      tankFull: _tankStuck(),
-      era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
+      away: away,
+      gained: gained,
+      flux: s.flux,
+      era: vityaEraFor(s.prestige.totalEverEarned),
     );
   }
 
@@ -143,46 +148,40 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// Возврат во вкладку ничего не начисляет: пока вкладка была скрыта, тики
+  /// шли и гнали — это игра. Раньше здесь начислялся ещё и оффлайн от
+  /// момента ухода, и отлучка короче бака засчитывалась дважды. Уснувшее
+  /// приложение ловит тик — по разрыву во времени (`GameNotifier.afkGap`).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final notifier = ref.read(gameProvider.notifier);
     switch (state) {
       case AppLifecycleState.inactive:
+        // Окно без фокуса — игра на соседнем мониторе, её видно.
+        notifier.saveNow();
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // Игру убрали с глаз — ускорение гаснет, иначе поток сгорит, пока
+        // игрок не смотрит.
+        notifier.stopBoost();
         notifier.saveNow();
       case AppLifecycleState.resumed:
-        final away = ref.read(clockProvider).since(_leftAt);
-        final before = ref.read(gameProvider).resources.ml;
-        notifier.applyOffline(away.credited);
-        final gained = ref.read(gameProvider).resources.ml - before;
-        if (away.isMeaningful && gained > 0 && mounted) {
-          showWelcomeBack(
-            context,
-            offline: away,
-            gained: gained,
-            tankFull: _tankStuck(),
-            era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
-          );
-        }
+        break;
     }
-    if (state != AppLifecycleState.resumed) {
-      _leftAt = ref.read(clockProvider).nowMillis();
-    }
-  }
-
-  int? _leftAt;
-
-  /// Стоит ли производство из-за полного бака. С автопродажей не стоит: она
-  /// сдаст бак на первом же тике, и писать «аппараты стоят» было бы неправдой.
-  bool _tankStuck() {
-    final s = ref.read(gameProvider);
-    return s.isTankFull && !s.achievements.hasPerk(AchievementPerk.autoSell);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Система усыпляла игру — тик заметил разрыв и начислил поток.
+    ref.listen<AfkReturn?>(afkReturnProvider, (_, back) {
+      if (back == null) return;
+      ref.read(afkReturnProvider.notifier).state = null;
+      final full = ref.read(gameProvider).flux.isBankFull;
+      if (mounted && back.away.isMeaningful && (back.gained > 0 || full)) {
+        _greet(back.away, back.gained);
+      }
+    });
     return const Scaffold(
       backgroundColor: GColors.bg,
       body: GarageScreen(),

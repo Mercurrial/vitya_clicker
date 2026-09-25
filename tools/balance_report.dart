@@ -45,6 +45,7 @@ void main(List<String> args) {
   _printAway(sim, players);
   _printOvernight(sim, players);
   _printDaily(sim, players);
+  _printFlux();
   final marathons = _printMarathon(sim, players);
 
   // Мёртвый контент — после партии на 30 часов: улучшения идут вдоль всей
@@ -151,9 +152,12 @@ void _header(String title) {
 String _minutes(Duration? d) => d == null ? '> 6 ч' : '${d.inMinutes} мин';
 
 /// Сутки без игрока — в минутах активной игры с того же места.
+///
+/// Закрытая игра не гонит — она копит поток, и минута потока — минута
+/// производства, когда его потратят. Поэтому для неё показан поток.
 void _printAway(BalanceSim sim, List<PlayStyle> players) {
   _header('СУТКИ ОТСУТСТВИЯ — сколько это минут активной игры');
-  stdout.writeln('  ${'игрок'.padRight(9)} ${'откуда'.padRight(24)} ${'закрыто'.padLeft(9)}  ${'вкладка'.padLeft(9)}');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'откуда'.padRight(24)} ${'закрыто, поток'.padLeft(15)}  ${'вкладка'.padLeft(9)}');
   for (final style in players) {
     final spots = <(String, SimParty)>[];
     for (final m in [10, 30]) {
@@ -169,10 +173,12 @@ void _printAway(BalanceSim sim, List<PlayStyle> players) {
       spots.add(('1-е похмелье +$m мин', p));
     }
     for (final (label, p) in spots) {
-      final closed = activeEquivalent(sim, p, const Duration(days: 1), Absence.closed);
+      final gone = p.fork();
+      sim.away(gone, const Duration(days: 1), Absence.closed);
+      final flux = Duration(seconds: (gone.state.flux.seconds - p.state.flux.seconds).round());
       final tab = activeEquivalent(sim, p, const Duration(days: 1), Absence.tabOpen);
       stdout.writeln('  ${style.name.padRight(9)} ${label.padRight(24)} '
-          '${_minutes(closed).padLeft(9)}  ${_minutes(tab).padLeft(9)}');
+          '${_minutes(flux).padLeft(15)}  ${_minutes(tab).padLeft(9)}');
     }
   }
   stdout.writeln('');
@@ -180,29 +186,48 @@ void _printAway(BalanceSim sim, List<PlayStyle> players) {
 
 /// Сколько сыграть с нуля, чтобы ночь принесла первую мудрость.
 void _printOvernight(BalanceSim sim, List<PlayStyle> players) {
-  _header('НОЧЬ (8 ч) — сколько сыграть до неё, чтобы утром была мудрость');
-  stdout.writeln('  ${'игрок'.padRight(9)} ${'без ночи'.padLeft(9)}  ${'закрыто'.padLeft(9)}  ${'вкладка'.padLeft(9)}');
+  // Ночь закрытой игры мудрости не приносит: она копит поток, а не самогон.
+  _header('НОЧЬ (8 ч) ОТКРЫТОЙ ВКЛАДКИ — сколько сыграть до неё, чтобы утром была мудрость');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'без ночи'.padLeft(9)}  ${'вкладка'.padLeft(9)}');
   for (final style in players) {
     final alone = sim.run(style.withPrestige(null), horizon: const Duration(hours: 8));
-    final closed = overnightThreshold(sim, style, Absence.closed);
     final tab = overnightThreshold(sim, style, Absence.tabOpen);
     stdout.writeln('  ${style.name.padRight(9)} ${formatClock(alone.firstPrestige).padLeft(9)}  '
-        '${_minutes(closed).padLeft(9)}  ${_minutes(tab).padLeft(9)}');
+        '${_minutes(tab).padLeft(9)}');
   }
   stdout.writeln('');
 }
 
-/// Заходит раз в день, остальное время игра закрыта.
+/// Заходит раз в день, остальное время игра закрыта. Поток либо не
+/// тратит, либо тратит весь на пределе скорости — итог от скорости не
+/// зависит, лишь бы копилка успевала опустеть за заход.
 void _printDaily(BalanceSim sim, List<PlayStyle> players) {
   _header('РАЗ В ДЕНЬ, остальное время закрыто — 14 дней');
-  stdout.writeln('  ${'игрок'.padRight(9)} ${'в день'.padLeft(7)}  ${'1-я мудрость'.padLeft(13)}  '
-      '${'мудрость к д7 / д14'.padLeft(20)}  похмелий');
+  stdout.writeln('  ${'игрок'.padRight(9)} ${'в день'.padLeft(7)}  ${'поток'.padRight(11)} '
+      '${'1-я мудрость'.padLeft(13)}  ${'мудрость к д7 / д14'.padLeft(20)}  похмелий');
+  final speed = kBalance.fluxMaxSpeed;
   for (final style in players) {
-    for (final m in [20, 60]) {
-      final r = daily(sim, style, perDay: Duration(minutes: m));
+    for (final (m, boost) in [(20, 1.0), (20, speed), (60, speed)]) {
+      final r = daily(sim, style, perDay: Duration(minutes: m), boost: boost);
       final first = r.firstWisdomDay == null ? '> 14 дн' : '${r.firstWisdomDay}-й день';
-      stdout.writeln('  ${style.name.padRight(9)} ${'$m мин'.padLeft(7)}  ${first.padLeft(13)}  '
-          '${'${r.wisdomByDay[6]} / ${r.wisdomByDay[13]}'.padLeft(20)}  ${r.result.prestiges}');
+      final how = boost > 1 ? 'тратит ×${boost.round()}' : 'не тратит';
+      stdout.writeln('  ${style.name.padRight(9)} ${'$m мин'.padLeft(7)}  ${how.padRight(11)} '
+          '${first.padLeft(13)}  ${'${r.wisdomByDay[6]} / ${r.wisdomByDay[13]}'.padLeft(20)}  '
+          '${r.result.prestiges}');
+    }
+  }
+  stdout.writeln('');
+}
+
+/// Улучшения потока: кто вкладывает, к какому дню до чего доходит.
+void _printFlux() {
+  _header('УЛУЧШЕНИЯ ПОТОКА — на какой день: 24 мин/ч · копилка 24 ч · 60 мин/ч');
+  for (final (label, every) in [('раз в сутки', const Duration(days: 1)), ('раз в 2,5 дня', const Duration(hours: 60))]) {
+    for (final (share, how) in [(1.0, 'весь поток'), (0.5, 'половину')]) {
+      final r = fluxInvestor(every: every, share: share);
+      String d(int? day) => day == null ? '—' : 'д$day';
+      stdout.writeln('  ${label.padRight(14)} ${how.padRight(11)} '
+          '${d(r.rate24Day).padLeft(5)}  ${d(r.bankMaxDay).padLeft(5)}  ${d(r.rateMaxDay).padLeft(5)}');
     }
   }
   stdout.writeln('');
@@ -265,6 +290,10 @@ void _printTargets() {
       '12-я ступень, «считает»: ${formatDuration(s.tier12At)}');
   stdout.writeln('${mark(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin)}'
       'ночь открытой вкладки даёт мудрость после ${s.overnightTab?.inMinutes} мин игры');
+  final d20 = s.dailyFirstWisdomDay, d20c = s.dailyFirstWisdomDayCasual;
+  stdout.writeln('${mark(d20 != null && d20 >= BalanceTargets.dailyFirstWisdomDayMin && d20 <= BalanceTargets.dailyFirstWisdomDayMax && d20c != null && d20c <= BalanceTargets.dailyFirstWisdomDayCasualMax)}'
+      '${BalanceTargets.dailySession.inMinutes} мин в день, весь поток: 1-я мудрость — '
+      '«считает» ${d20 == null ? '—' : '$d20-й день'}, «обычный» ${d20c == null ? '—' : '$d20c-й день'}');
   stdout.writeln('${mark(s.maxTankBuffer <= BalanceTargets.tankMax)}'
       'запас бака, наибольший: ${formatDuration(s.maxTankBuffer)}');
   stdout.writeln('  штраф: ${s.penalty.toStringAsFixed(2)} (ноль — всё в целях)');
