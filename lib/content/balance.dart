@@ -286,7 +286,7 @@ class Balance {
 /// [BalanceTargets], тест упадёт.
 const Balance kBalance = Balance(
   costGrowth: 1.15,
-  firstWisdomMl: 8.4e13,
+  firstWisdomMl: 2.85e14,
   firstWisdomBonus: 1.0,
   bonusPerWisdom: 0.5,
   basePricePerMl: 0.1,
