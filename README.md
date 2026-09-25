@@ -196,12 +196,13 @@ lib/
 Один раз в настройках репозитория: **Settings → Pages → Source: GitHub
 Actions**.
 
-Дальше каждый push в `main` пересобирает и выкладывает веб-версию —
-[.github/workflows/deploy-web.yml](.github/workflows/deploy-web.yml). Сборка
-занимает около двух минут.
+Сайт обновляется **только выпуском версии** — тегом `vX.Y.Z` на `main`
+([.github/workflows/deploy-web.yml](.github/workflows/deploy-web.yml)).
+Влитие PR в `main` сайт не трогает. Сборка занимает около двух минут.
 
-Workflow **не прогоняет тесты**, только собирает. Поэтому перед вливанием в
-`main` — `flutter analyze` и `flutter test` руками; полный порядок в
+Каждый PR до влития проверяется анализом и тестами
+([.github/workflows/ci.yml](.github/workflows/ci.yml)). Снимки экрана и
+замеры — руками перед выпуском; полный порядок в
 [docs/RELEASE.md](docs/RELEASE.md).
 
 ---
