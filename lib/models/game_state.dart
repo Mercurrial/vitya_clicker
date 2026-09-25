@@ -8,6 +8,7 @@ import 'generators_state.dart';
 import 'prestige_state.dart';
 import 'resources_state.dart';
 import 'sort_state.dart';
+import 'stats_state.dart';
 import 'upgrade.dart';
 import 'upgrades_state.dart';
 
@@ -23,6 +24,9 @@ class GameState extends Equatable {
   /// Сорт того, что сейчас в баке. Поднимается жаром, горит от перегрева.
   final SortState sort;
 
+  /// Статистика игрока — переживает похмелье, в производство не входит.
+  final StatsState stats;
+
   final DateTime lastUpdateTime;
 
   /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
@@ -37,6 +41,7 @@ class GameState extends Equatable {
     required this.prestige,
     required this.achievements,
     required this.sort,
+    required this.stats,
     required this.lastUpdateTime,
     required this.mlPerSecond,
   });
@@ -46,8 +51,10 @@ class GameState extends Equatable {
     List<Upgrade>? initialUpgrades,
     PrestigeState prestige = const PrestigeState(),
     AchievementsState achievements = const AchievementsState(),
+    StatsState? stats,
     DateTime? lastUpdateTime,
   }) {
+    final at = lastUpdateTime ?? DateTime.now();
     final gens = GeneratorsState(items: List.unmodifiable(initialGenerators));
     final ups = UpgradesState(
       items: initialUpgrades != null ? List.unmodifiable(initialUpgrades) : const [],
@@ -60,7 +67,8 @@ class GameState extends Equatable {
       prestige: prestige,
       achievements: achievements,
       sort: const SortState(),
-      lastUpdateTime: lastUpdateTime ?? DateTime.now(),
+      stats: stats ?? StatsState.startedAt(at),
+      lastUpdateTime: at,
       mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
   }
@@ -73,6 +81,7 @@ class GameState extends Equatable {
     PrestigeState? prestige,
     AchievementsState? achievements,
     SortState? sort,
+    StatsState? stats,
     DateTime? lastUpdateTime,
   }) {
     final nextGens = generators ?? this.generators;
@@ -96,6 +105,7 @@ class GameState extends Equatable {
       prestige: nextPrestige,
       achievements: nextAch,
       sort: sort ?? this.sort,
+      stats: stats ?? this.stats,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       mlPerSecond: nextRate,
     );
@@ -124,6 +134,7 @@ class GameState extends Equatable {
         prestige,
         achievements,
         sort,
+        stats,
         lastUpdateTime,
         mlPerSecond,
       ];

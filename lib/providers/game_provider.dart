@@ -45,6 +45,34 @@ final heatMultiplierProvider = StateProvider<double>((ref) => 1.0);
 /// Состояние жара относительно окна — от него зависит, растёт сорт или горит.
 final heatStatusProvider = StateProvider<HeatStatus>((ref) => HeatStatus.off);
 
+/// Держат ли зажим прямо сейчас — для «времени зажима» в статистике.
+final heatHoldingProvider = StateProvider<bool>((ref) => false);
+
+/// Видна ли игра по жизненному циклу приложения. Ставит экран.
+///
+/// Нужен, потому что «тикает таймер — значит, играют» неверно: браузер не
+/// останавливает таймеры свёрнутой вкладки, а только прореживает их.
+final onScreenProvider = StateProvider<bool>((ref) => true);
+
+/// Пульс экрана: сколько раз гараж перерисовался.
+///
+/// Жизненного цикла мало — проверка в браузере это показала. Страница,
+/// открытая сразу в фоне, событий цикла не присылает вовсе, пока её не
+/// покажут; встроенный браузер отвечает «видна» про вкладку, которую не
+/// показывает. Таймеры у таких страниц идут без замедления, и время в игре
+/// набегало без игрока.
+///
+/// Кадры не врут: всё, что не на экране, браузер не рисует. Шкала жара
+/// движется непрерывно, поэтому, пока гараж виден, кадр приходит каждые
+/// 16 мс, а тик — раз в 200. Нет кадра между тиками — игры на экране нет.
+class FramePulse {
+  int _beats = 0;
+  int get beats => _beats;
+  void beat() => _beats++;
+}
+
+final framePulseProvider = Provider<FramePulse>((ref) => FramePulse());
+
 final formulasProvider = Provider<Formulas>((ref) => const Formulas());
 
 final gameEngineProvider = Provider<GameEngine>(
@@ -58,6 +86,9 @@ final upgradesContentProvider = Provider<List<Upgrade>>((ref) => kUpgrades);
 class GameNotifier extends Notifier<GameState> {
   Timer? _timer;
   Timer? _saveTimer;
+
+  /// Пульс экрана на прошлом тике — см. [FramePulse].
+  int _seenBeats = 0;
 
   /// Шаг симуляции. 200 мс достаточно для плавности (счётчик в интерфейсе
   /// сглаживается отдельно) и заметно бережнее к батарее, чем 16 мс.
@@ -112,11 +143,28 @@ class GameNotifier extends Notifier<GameState> {
     // Сорт двигается тем же тиком: держишь жар в окне — растёт, перегрел —
     // горит, отвлёкся — медленно сползает.
     final dt = _tickInterval.inMilliseconds / 1000.0;
-    next = engine.advanceSort(next, switch (ref.read(heatStatusProvider)) {
+    final heat = ref.read(heatStatusProvider);
+    next = engine.advanceSort(next, switch (heat) {
       HeatStatus.inWindow => kSortGainPerSecond * dt,
       HeatStatus.overheated => -kSortBurnPerSecond * dt,
       HeatStatus.off => -kSortDecayPerSecond * dt,
     });
+
+    // Время в игре — тоже тиком и тем же шагом, а не разницей часов.
+    // Timer.periodic обещает не больше n срабатываний за n шагов, поэтому
+    // насчитать больше, чем прошло, так нельзя в принципе: замерший на минуту
+    // браузер даст одну пятую секунды, а не минуту.
+    final beats = ref.read(framePulseProvider).beats;
+    final drawn = beats != _seenBeats;
+    _seenBeats = beats;
+    if (drawn && ref.read(onScreenProvider)) {
+      next = engine.recordPlay(
+        next,
+        dt,
+        holding: ref.read(heatHoldingProvider),
+        inWindow: heat == HeatStatus.inWindow,
+      );
+    }
 
     // Автопродажа: открывается достижением, а не выдаётся сразу. Именно так
     // неудобство превращается в цель, из которой игрок выкупается.

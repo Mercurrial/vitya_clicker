@@ -67,9 +67,16 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   /// вкладки, свёрнутое окно. Событие «отпустил» при этом не приходит вовсе, и
   /// жар остаётся включённым навсегда — вернувшись, игрок застаёт вечный
   /// перегрев и никак не может его снять.
+  ///
+  /// Здесь же останавливаются часы «времени в игре». Считается, пока игра
+  /// ВИДНА: окно без фокуса (inactive) — это игра на соседнем мониторе, и
+  /// idle-игру так и держат. Свёрнутая вкладка, свёрнутое приложение,
+  /// погасший экран — уже нет.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) _stopStoking();
+    ref.read(onScreenProvider.notifier).state =
+        state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
   }
 
   /// Пробел и Enter — тот же зажим, что и палец.
@@ -93,6 +100,12 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   void _pushHeat() {
     ref.read(heatStatusProvider.notifier).state = _heat.status;
     ref.read(heatMultiplierProvider.notifier).state = _heat.multiplier;
+    ref.read(heatHoldingProvider.notifier).state = _heat.isStoking;
+    // Контроллер жара уведомляет на каждом кадре — это и есть пульс «игра на
+    // экране» для времени в игре. Если тикер жара когда-нибудь станут
+    // останавливать ради батареи, пульс надо брать в другом месте, иначе
+    // время в игре встанет вместе с ним.
+    ref.read(framePulseProvider).beat();
   }
 
   @override

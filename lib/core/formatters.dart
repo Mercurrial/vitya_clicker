@@ -159,6 +159,38 @@ class Fmt {
     return m == 0 ? '$h ч' : '$h ч $m мин';
   }
 
+  /// Длительность для статистики, где счёт идёт на дни: «3 дн 4 ч».
+  ///
+  /// Отдельно от [duration]: тот нужен экрану возвращения, где отсутствие
+  /// упирается в потолок в восемь часов, а сотня часов игры в виде «127 ч
+  /// 12 мин» не читается.
+  static String playTime(Duration d) {
+    if (d.inHours < 24) return duration(d);
+    final h = d.inHours.remainder(24);
+    return h == 0 ? '${d.inDays} дн' : '${d.inDays} дн $h ч';
+  }
+
+  /// Дата по-нашему: «25.09.2026». В местном времени — день игрок считает
+  /// по своим часам, а не по Гринвичу.
+  static String date(DateTime t) {
+    final l = t.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(l.day)}.${two(l.month)}.${l.year}';
+  }
+
+  /// Число со склонённым словом: «3 ванны», «12 ванн», «2.5К ванн».
+  ///
+  /// Дробь до тысячи отбрасывается: «1.9 бассейна» звучит как отчёт, а
+  /// «1 бассейн» — как хвастовство. После тысячи идёт сокращение, и слово
+  /// всегда во множественном: «2.5К» читается «две с половиной тысячи ванн».
+  static String counted(double n, String one, String few, String many) {
+    if (n < 1000) {
+      final whole = n.floor();
+      return '$whole ${plural(whole, one, few, many)}';
+    }
+    return '${short(n)} $many';
+  }
+
   /// Русское склонение по числу: plural(2, 'литр', 'литра', 'литров').
   static String plural(int n, String one, String few, String many) {
     final mod100 = n.abs() % 100;
