@@ -12,12 +12,13 @@ import '../game/vitya_portrait.dart';
 import '../pixel/garage_scene.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
+import '../widgets/boost_button.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/vitya_toast.dart';
 import 'shelf.dart';
 import 'shelf_sheet.dart';
 
-export 'shelf.dart' show buyAmountProvider, kBuyMax, kBuyModes;
+export 'shelf.dart' show ShelfTab, buyAmountProvider, kBuyMax, kBuyModes;
 export 'shelf_sheet.dart' show ShelfPosition, shelfPositionProvider;
 
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
@@ -34,7 +35,7 @@ class GarageScreen extends ConsumerStatefulWidget {
 class _GarageScreenState extends ConsumerState<GarageScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   late final HeatController _heat;
-  int _tab = 0;
+  ShelfTab _tab = ShelfTab.stills;
 
   /// Прошлое состояние жара — чтобы не звенеть «в окне» при выходе из
   /// паузы: жар в окне и был, нового попадания игрок не сделал.
@@ -248,47 +249,78 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   /// шкалу. Снизу — поле под ручку шторки: она выступает над своим краем
   /// (см. kShelfGrabOverhang) и заходит на нижнее поле пульта, где ни
   /// надписей, ни шкалы.
+  ///
+  /// Кнопка ускорения стоит рядом с пультом, но вне зоны зажима: иначе её
+  /// нажатие подкидывало бы дров, а это другое действие.
   Widget _garage(VityaEra era, VityaMood mood) {
+    final boost = ref.watch(gameProvider.select((s) => s.flux.seconds > 0)) ||
+        ref.watch(fluxSpeedProvider) > 1;
     return Padding(
       padding: const EdgeInsets.fromLTRB(GS.s3, 0, GS.s3, kShelfGrabOverhang - 6),
-      // Зажимать можно ВЕЗДЕ по гаражу: гараж — это и есть кнопка.
-      // Listener, а не GestureDetector: арена жестов откладывает решение, и
-      // зажим не начинался вовсе. MouseRegion — ради браузера: курсор
-      // говорит, что гараж нажимается, а onExit снимает жар, если мышь
-      // увели с гаража с зажатой кнопкой.
+      // MouseRegion — ради браузера: курсор говорит, что гараж нажимается, а
+      // onExit снимает жар, если мышь увели с гаража с зажатой кнопкой. Один
+      // на весь гараж: переход со сцены на пульт — не уход с гаража.
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onExit: (_) => _stopStoking(),
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (_) => _startStoking(),
-          onPointerUp: (_) => _stopStoking(),
-          onPointerCancel: (_) => _stopStoking(),
-          child: Column(
-            children: [
-              // Портрет висит на стене, аппараты стоят на полу и на полках:
-              // империю видно.
-              Expanded(
-                child: GarageScene(
-                  heat: _heat,
-                  portrait: (size) => VityaPortrait(
-                    era: era,
-                    mood: mood,
-                    pressed: _heat.isStoking,
-                    size: size,
-                    style: PixelPortraitStyle.pixel,
-                    radius: 0,
+        child: Column(
+          children: [
+            // Портрет висит на стене, аппараты стоят на полу и на полках:
+            // империю видно.
+            Expanded(
+              child: _pressable(
+                Padding(
+                  padding: const EdgeInsets.only(bottom: GS.s2),
+                  child: GarageScene(
+                    heat: _heat,
+                    portrait: (size) => VityaPortrait(
+                      era: era,
+                      mood: mood,
+                      pressed: _heat.isStoking,
+                      size: size,
+                      style: PixelPortraitStyle.pixel,
+                      radius: 0,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: GS.s2),
-              HeatPanel(controller: _heat),
-            ],
-          ),
+            ),
+            // Кнопка — по высоте пульта: Stack меряется по пульту, а кнопка
+            // растягивается между его краями. IntrinsicHeight здесь нельзя:
+            // в пульте LayoutBuilder, а он собственных размеров не сообщает.
+            Stack(
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(right: boost ? kBoostButtonWidth + GS.s2 : 0),
+                  child: _pressable(HeatPanel(controller: _heat)),
+                ),
+                if (boost)
+                  const Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: 0,
+                    child: BoostButton(),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
+
+  /// Зона зажима.
+  ///
+  /// Зажимать можно ВЕЗДЕ по гаражу: гараж — это и есть кнопка. Listener, а
+  /// не GestureDetector: арена жестов откладывает решение, и зажим не
+  /// начинался вовсе.
+  Widget _pressable(Widget child) => Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) => _startStoking(),
+        onPointerUp: (_) => _stopStoking(),
+        onPointerCancel: (_) => _stopStoking(),
+        child: child,
+      );
 }
 
 /// Тёплый свет лампы под потолком гаража.

@@ -93,7 +93,7 @@ Future<void> showWelcomeBack(
                 ),
               ),
               Text(
-                'потока времени за ${Fmt.playTime(away.elapsed)}',
+                'накопилось потока за ${Fmt.playTime(away.elapsed)}',
                 style: GType.num(size: 12, color: GColors.textMid),
               ),
               const SizedBox(height: GS.s3),

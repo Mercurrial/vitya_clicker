@@ -114,6 +114,9 @@ class _HeatHeader extends StatelessWidget {
             ),
           ),
         ),
+        // Зазор: рядом с кнопкой ускорения подсказка обрывается многоточием,
+        // и без него «зажм…» слипалось с «СЕРИЕЙ».
+        const SizedBox(width: GS.s2),
         // СЕРИЯ — то, ради чего вообще держат палец. Её обязано быть видно
         // рядом со шкалой: без неё зажим выглядит бессмысленным.
         AnimatedBuilder(
@@ -176,115 +179,128 @@ class _SortRow extends ConsumerWidget {
     final noteStyle = GType.ui(size: 10, color: GColors.textLo);
     final mult = Fmt.mult(sort.multiplier);
 
-    return Row(
-      children: [
-        Text('СОРТ', style: GType.label()),
-        const SizedBox(width: GS.s2),
-        // Пипки пройденных ступеней: лесенка вверх, как уровень сигнала.
-        for (var i = 0; i < kSorts.length; i++)
-          Container(
-            width: 4,
-            height: 5.0 + i * 2.5,
-            margin: const EdgeInsets.only(right: 2),
-            decoration: BoxDecoration(
-              color: i <= index ? kSorts[i].toColor : const Color(0x21FFFFFF),
-              borderRadius: BorderRadius.circular(1),
+    final scaler = MediaQuery.textScalerOf(context);
+    double widthOf(String text, TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = painter.width;
+      painter.dispose();
+      return w;
+    }
+
+    return LayoutBuilder(
+      builder: (context, outer) {
+        // Подпись «СОРТ» и лесенка уступают место названию. Рядом с пультом
+        // встаёт кнопка ускорения, и на 320 точках без этого «Двойной
+        // перегон» резался до «Двой…», а лесенка — только повтор того же
+        // сорта цветом.
+        final lead = widthOf('СОРТ', GType.label()) + GS.s2 + kSorts.length * 6 + GS.s2;
+        final need = widthOf(sort.name, nameStyle) + 6 + widthOf(mult, multStyle) + GS.s2 + _minTail;
+        final showLead = outer.maxWidth - lead >= need;
+        return Row(
+          children: [
+            if (showLead) ...[
+              Text('СОРТ', style: GType.label()),
+              const SizedBox(width: GS.s2),
+              // Пипки пройденных ступеней: лесенка вверх, как уровень сигнала.
+              for (var i = 0; i < kSorts.length; i++)
+                Container(
+                  width: 4,
+                  height: 5.0 + i * 2.5,
+                  margin: const EdgeInsets.only(right: 2),
+                  decoration: BoxDecoration(
+                    color: i <= index ? kSorts[i].toColor : const Color(0x21FFFFFF),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              const SizedBox(width: GS.s2),
+            ],
+            // Название сорта важнее полоски, полоска важнее слов «к цене».
+            //
+            // Раньше название и полоска делили остаток строки поровну, и
+            // «Двойной перегон» выходил «Двойной п…» даже на 390 точках — а это
+            // уже не сорт, а загадка. «Лучше не бывает» на 320 точках ломалось
+            // в две строки и раздувало весь пульт.
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final nameW = widthOf(sort.name, nameStyle);
+                  final full = '$mult к цене';
+                  final label =
+                      nameW + 6 + widthOf(full, multStyle) + GS.s2 + _minTail <= c.maxWidth
+                          ? full
+                          : mult;
+                  final labelW = widthOf(label, multStyle);
+                  final nameMax = math.max(0.0, c.maxWidth - 6 - labelW - GS.s2 - _minTail);
+                  final tailW = c.maxWidth - math.min(nameW, nameMax) - 6 - labelW - GS.s2;
+
+                  return Row(
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: nameMax),
+                        child: Text(
+                          sort.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: nameStyle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(label, maxLines: 1, style: multStyle),
+                      const SizedBox(width: GS.s2),
+                      Expanded(
+                        child: sort.isTop
+                            // Не влезает целиком — не пишем вовсе: пипки и так
+                            // все горят, а обрывок фразы хуже её отсутствия.
+                            ? (tailW >= widthOf(_topNote, noteStyle)
+                                ? Text(
+                                    _topNote,
+                                    textAlign: TextAlign.right,
+                                    maxLines: 1,
+                                    style: noteStyle,
+                                  )
+                                : const SizedBox.shrink())
+                            : ValueListenableBuilder<HeatStatus>(
+                                valueListenable: controller.statusNotifier,
+                                builder: (context, status, _) => Row(
+                                  children: [
+                                    Expanded(
+                                      child: FillBar(
+                                        value: sort.progress,
+                                        height: 4,
+                                        color: color,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    // Куда сорт движется прямо сейчас — стрелкой,
+                                    // а не словами: читается боковым зрением,
+                                    // пока держишь жар.
+                                    TrendArrow(
+                                      up: status == HeatStatus.inWindow,
+                                      count: status == HeatStatus.overheated ? 2 : 1,
+                                      size: 8,
+                                      color: switch (status) {
+                                        HeatStatus.inWindow => GColors.green,
+                                        HeatStatus.overheated => GColors.hot,
+                                        HeatStatus.off || HeatStatus.paused => GColors.textLo,
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-        const SizedBox(width: GS.s2),
-        // Название сорта важнее полоски, полоска важнее слов «к цене».
-        //
-        // Раньше название и полоска делили остаток строки поровну, и
-        // «Двойной перегон» выходил «Двойной п…» даже на 390 точках — а это
-        // уже не сорт, а загадка. «Лучше не бывает» на 320 точках ломалось
-        // в две строки и раздувало весь пульт.
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final scaler = MediaQuery.textScalerOf(context);
-              double widthOf(String text, TextStyle style) {
-                final painter = TextPainter(
-                  text: TextSpan(text: text, style: style),
-                  textDirection: TextDirection.ltr,
-                  textScaler: scaler,
-                  maxLines: 1,
-                )..layout();
-                final w = painter.width;
-                painter.dispose();
-                return w;
-              }
-
-              final nameW = widthOf(sort.name, nameStyle);
-              final full = '$mult к цене';
-              final label =
-                  nameW + 6 + widthOf(full, multStyle) + GS.s2 + _minTail <= c.maxWidth
-                      ? full
-                      : mult;
-              final labelW = widthOf(label, multStyle);
-              final nameMax = math.max(0.0, c.maxWidth - 6 - labelW - GS.s2 - _minTail);
-              final tailW = c.maxWidth - math.min(nameW, nameMax) - 6 - labelW - GS.s2;
-
-              return Row(
-                children: [
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: nameMax),
-                    child: Text(
-                      sort.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: nameStyle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(label, maxLines: 1, style: multStyle),
-                  const SizedBox(width: GS.s2),
-                  Expanded(
-                    child: sort.isTop
-                        // Не влезает целиком — не пишем вовсе: пипки и так
-                        // все горят, а обрывок фразы хуже её отсутствия.
-                        ? (tailW >= widthOf(_topNote, noteStyle)
-                            ? Text(
-                                _topNote,
-                                textAlign: TextAlign.right,
-                                maxLines: 1,
-                                style: noteStyle,
-                              )
-                            : const SizedBox.shrink())
-                        : ValueListenableBuilder<HeatStatus>(
-                            valueListenable: controller.statusNotifier,
-                            builder: (context, status, _) => Row(
-                              children: [
-                                Expanded(
-                                  child: FillBar(
-                                    value: sort.progress,
-                                    height: 4,
-                                    color: color,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                // Куда сорт движется прямо сейчас — стрелкой,
-                                // а не словами: читается боковым зрением,
-                                // пока держишь жар.
-                                TrendArrow(
-                                  up: status == HeatStatus.inWindow,
-                                  count: status == HeatStatus.overheated ? 2 : 1,
-                                  size: 8,
-                                  color: switch (status) {
-                                    HeatStatus.inWindow => GColors.green,
-                                    HeatStatus.overheated => GColors.hot,
-                                    HeatStatus.off || HeatStatus.paused => GColors.textLo,
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

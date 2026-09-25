@@ -80,6 +80,11 @@ final framePulseProvider = Provider<FramePulse>((ref) => FramePulse());
 /// тихо съевшим копилку, пока он смотрел экран возвращения.
 final fluxSpeedProvider = StateProvider<double>((ref) => 1.0);
 
+/// Какую скорость игрок выбрал для ускорения: ×2, ×3 или свою до предела.
+/// Выбор помнится, пока игра открыта, — кнопка на главном экране включает
+/// именно её.
+final fluxChoiceProvider = StateProvider<double>((ref) => 2.0);
+
 /// Игра вернулась после сна, в который её уложила система, — что показать
 /// на экране возвращения. Ставит тик, забирает экран.
 ///
@@ -424,6 +429,33 @@ class GameNotifier extends Notifier<GameState> {
   void stopBoost() {
     final speed = ref.read(fluxSpeedProvider.notifier);
     if (speed.state != 1.0) speed.state = 1.0;
+  }
+
+  /// Кнопка ускорения: включить на выбранной скорости или выключить.
+  ///
+  /// Отдача — здесь, а не в кнопке: кнопок ускорения две (главный экран и
+  /// вкладка потока), и каждая иначе обязана была бы помнить про звук.
+  void toggleBoost() {
+    if (ref.read(fluxSpeedProvider) > 1) {
+      stopBoost();
+      _feedback.buzz(Buzz.light);
+      return;
+    }
+    startBoost(ref.read(fluxChoiceProvider));
+    if (ref.read(fluxSpeedProvider) > 1) _feedback.hit(Sfx.stoke, Buzz.medium);
+  }
+
+  /// Выбрать скорость. Ускорение уже идёт — переключается сразу: иначе
+  /// выбранное и действующее разошлись бы, и кнопка показывала бы одно, а
+  /// гнала на другом.
+  void chooseBoostSpeed(double speed) {
+    final max = Balance.current.fluxMaxSpeed;
+    final clamped = speed < 2 ? 2.0 : (speed > max ? max : speed);
+    final choice = ref.read(fluxChoiceProvider.notifier);
+    if (choice.state == clamped) return;
+    choice.state = clamped;
+    if (ref.read(fluxSpeedProvider) > 1) startBoost(clamped);
+    _feedback.buzz(Buzz.select);
   }
 
   /// Купить уровень «Крепкого сна» — +1 минута потока за час AFK.

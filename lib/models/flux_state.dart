@@ -36,6 +36,10 @@ class FluxState extends Equatable {
 
   bool get isBankFull => seconds >= bankSeconds - 1e-6;
 
+  /// Поток уже был: копится или хоть что-то куплено. До этого вкладка
+  /// потока не показывается — пустая копилка новичку ничего не говорит.
+  bool get opened => seconds > 0 || rateLevel > 0 || bankLevel > 0;
+
   /// Скорость дошла до предела — больше часа в час нельзя.
   bool get rateMaxed => minutesPerHour >= _b.fluxMaxMinutesPerHour;
 
