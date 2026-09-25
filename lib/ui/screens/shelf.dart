@@ -91,7 +91,24 @@ class _Tabs extends ConsumerWidget {
         .where((u) => !u.purchased && money >= engine.upgradeCost(u, now))
         .length;
     final canSleep = state.prestige.pendingWisdom > 0;
+    final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
 
+    return Row(
+      children: [
+        Expanded(child: _tabs(ref, affordableStills, affordableUpgrades, canSleep)),
+        // Количество — в строке вкладок, а не отдельным рядом под ними: ряд
+        // съедал высоту у списка ради выбора, который делают раз в десять
+        // минут. Кнопка стоит на всех вкладках: исчезай она вне «АППАРАТОВ»,
+        // вкладки меняли бы ширину и уезжали из-под пальца.
+        if (bulk) ...[
+          const SizedBox(width: GS.s2),
+          const _BuyAmountButton(),
+        ],
+      ],
+    );
+  }
+
+  Widget _tabs(WidgetRef ref, int affordableStills, int affordableUpgrades, bool canSleep) {
     return Container(
       height: 42,
       padding: const EdgeInsets.all(3),
@@ -103,9 +120,13 @@ class _Tabs extends ConsumerWidget {
         children: [
           for (var i = 0; i < _labels.length; i++)
             Expanded(
-              // «УЛУЧШЕНИЯ» — самое длинное слово; ему чуть больше места,
-              // иначе на узком экране оно уходило в многоточие.
-              flex: i == 1 ? 13 : (i == 2 ? 8 : 10),
+              // Место — по длине подписи: у заглавных Rubik знаки почти
+              // одной ширины, и число букв и есть ширина слова. Веса,
+              // подобранные на глаз, давали ВИТЕ лишнее, а «АППАРАТЫ» на
+              // 320 точках ужимались до двух третей — рядом с кнопкой
+              // количества места на такие потери нет. Единица сверху —
+              // отступы по краям подписи.
+              flex: _labels[i].length + 1,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -120,7 +141,7 @@ class _Tabs extends ConsumerWidget {
                         duration: const Duration(milliseconds: 180),
                         curve: gEase,
                         alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         decoration: BoxDecoration(
                           color: i == index ? GColors.copper : null,
                           borderRadius: BorderRadius.circular(GR.pill),
@@ -186,65 +207,54 @@ class _Dot extends StatelessWidget {
   }
 }
 
-/// Переключатель «сколько брать за раз».
+/// Кнопка количества — одна, по кругу: ×1 → ×10 → ×100 → МАКС.
 ///
-/// Четыре кнопки в ряд, а не одна «по кругу»: по кругу надо было нажать до
-/// трёх раз, чтобы попасть в нужный режим, и каждый раз гадать, какой будет
-/// следующим. Появляется только после достижения, которое открывает покупку
-/// пачками: автоматизация в жанре зарабатывается, а не выдаётся.
-class _BuyModeBar extends ConsumerWidget {
-  const _BuyModeBar();
+/// Решение владельца (docs/DECISIONS.md, «Интерфейс»), а не деталь вёрстки.
+/// 24.09 её уже меняли на ряд «БРАТЬ ПО» из четырёх кнопок под вкладками:
+/// по кругу до нужного режима бывает три нажатия. Ряд же забирал у списка
+/// 38 точек, и на 320×640 от первой строки аппарата оставалась половина.
+///
+/// Ширина постоянная: у «×1» и «×100» разная длина, и подстраивайся кнопка
+/// под подпись, вкладки дёргались бы на каждом нажатии. И узкая: первая
+/// такая кнопка, шириной в 56, резала «УЛУЧШЕНИЯ» на узком экране. Уже 44
+/// в неё трудно попасть пальцем, а «МАКС» влезает и в 40.
+///
+/// Появляется только после достижения, которое открывает покупку пачками:
+/// автоматизация в жанре зарабатывается, а не выдаётся.
+class _BuyAmountButton extends ConsumerWidget {
+  const _BuyAmountButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(buyAmountProvider);
-    return Row(
-      children: [
-        Text('БРАТЬ ПО', style: GType.label()),
-        const SizedBox(width: GS.s2),
-        Expanded(
-          child: Container(
-            height: 30,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: const Color(0x40000000),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                for (final (value, label) in kBuyModes)
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        if (value == mode) return;
-                        ref.read(feedbackProvider).buzz(Buzz.select);
-                        ref.read(buyAmountProvider.notifier).state = value;
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: value == mode ? GColors.surface3 : null,
-                          borderRadius: BorderRadius.circular(8),
-                          border: value == mode ? Border.all(color: GColors.copper) : null,
-                        ),
-                        child: Text(
-                          label,
-                          style: GType.num(
-                            size: 11,
-                            weight: FontWeight.w700,
-                            color: value == mode ? GColors.textHi : GColors.textMid,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+    final i = kBuyModes.indexWhere((m) => m.$1 == mode);
+    final label = i < 0 ? kBuyModes.first.$2 : kBuyModes[i].$2;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        ref.read(feedbackProvider).buzz(Buzz.select);
+        ref.read(buyAmountProvider.notifier).state = kBuyModes[(i + 1) % kBuyModes.length].$1;
+      },
+      child: Container(
+        width: 44,
+        height: 42,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          color: GColors.surface3,
+          borderRadius: BorderRadius.circular(GR.pill),
+          border: Border.all(color: GColors.copper),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: GType.num(size: 12, weight: FontWeight.w700, color: GColors.textHi),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -273,15 +283,13 @@ class _StillsTab extends ConsumerWidget {
 
     final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
     final mode = ref.watch(buyAmountProvider);
-    final header = bulk ? 1 : 0;
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(GS.s3, GS.s1, GS.s3, GS.s6),
-      itemCount: visible.length + header,
+      itemCount: visible.length,
       separatorBuilder: (_, __) => const SizedBox(height: GS.s2),
       itemBuilder: (context, k) {
-        if (k < header) return const _BuyModeBar();
-        final i = visible[k - header];
+        final i = visible[k];
         final g = gens[i];
         final open = unlocked(i);
 
