@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/formatters.dart';
 import '../../models/prestige_state.dart';
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
 import '../widgets/fill_bar.dart';
 import '../widgets/panel.dart';
 import '../widgets/settings_panel.dart';
+import '../widgets/stats_panel.dart';
 import '../widgets/transfer_progress.dart';
 
-/// Вкладка «Витя»: похмелье, итоги и сброс.
+/// Вкладка «Витя»: похмелье, статистика и сброс.
 ///
 /// Похмелье объясняется ЗАРАНЕЕ, ещё до того как станет доступным. Это не
 /// вежливость: игры теряют игроков ровно перед кнопкой престижа, потому что
@@ -50,16 +50,6 @@ class VityaTab extends ConsumerWidget {
         const SizedBox(height: GS.s3),
         Panel(
           child: Column(
-            children: [
-              StatLine('Нагнано за всё время', Fmt.volume(p.totalEverEarned)),
-              const SizedBox(height: GS.s2),
-              StatLine('Похмелий пережито', '${p.hangovers}'),
-            ],
-          ),
-        ),
-        const SizedBox(height: GS.s3),
-        Panel(
-          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('ПОХМЕЛЬЕ', style: GType.label()),
@@ -93,6 +83,10 @@ class VityaTab extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: GS.s3),
+        // Статистика — под похмельем, а не над ним: на вкладку заходят
+        // проспаться, и кнопка не должна уезжать под двадцать строк цифр.
+        const StatsPanel(),
         const SizedBox(height: GS.s3),
         const SettingsPanel(),
         const SizedBox(height: GS.s3),

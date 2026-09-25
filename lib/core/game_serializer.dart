@@ -22,6 +22,7 @@ import '../models/generator.dart';
 import '../models/generators_state.dart';
 import '../models/prestige_state.dart';
 import '../models/resources_state.dart';
+import '../models/stats_state.dart';
 import '../models/upgrade.dart';
 import '../models/upgrades_state.dart';
 
@@ -52,6 +53,10 @@ class GameSerializer {
       'bonusWisdom': s.prestige.bonusWisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
+      // Статистика — своим блоком, а не россыпью ключей верхнего уровня: так
+      // видно, какие поля к ней относятся, и следующему блоку есть куда лечь
+      // рядом, не перемешиваясь.
+      'stats': _statsToJson(s.stats),
       // Под каким балансом игрок в последний раз видел игру. По этому числу
       // при обновлении показывается список изменений и начисляется
       // компенсация.
@@ -95,6 +100,7 @@ class GameSerializer {
         totalEverEarned: _asDouble(json['lifetime']),
         hangovers: _asInt(json['hangovers']),
       ),
+      stats: _statsFromJson(json['stats'], now),
       lastUpdateTime: now,
     );
 
@@ -108,6 +114,48 @@ class GameSerializer {
         index: _asInt(json['sortIndex']).clamp(0, kSorts.length - 1),
         progress: _asDouble(json['sortProgress']).clamp(0.0, 1.0),
       ),
+    );
+  }
+
+  Map<String, dynamic> _statsToJson(StatsState t) => {
+        'firstLaunch': t.firstLaunch.millisecondsSinceEpoch,
+        'playSec': t.playSeconds,
+        'holdSec': t.holdSeconds,
+        'windowSec': t.windowSeconds,
+        'soldMl': t.soldMl,
+        'earned': t.earned,
+        'sales': t.sales,
+        'bestSale': t.bestSale,
+        'guestSales': t.guestSales,
+        'stillsBought': t.stillsBought,
+        'upgradesBought': t.upgradesBought,
+        'runStart': t.runStart.millisecondsSinceEpoch,
+        if (t.fastestRunSeconds case final f?) 'fastestRunSec': f,
+      };
+
+  /// Статистика из сейва.
+  ///
+  /// В сейвах, записанных до статистики, блока нет — они читаются как новая
+  /// статистика, начатая в момент загрузки. Историю им не досчитываем: до
+  /// первого выпуска игроков нет (docs/DECISIONS.md), а выдуманные числа
+  /// хуже нулей.
+  StatsState _statsFromJson(dynamic v, DateTime now) {
+    final j = v is Map ? v : const {};
+    final fastest = _asDouble(j['fastestRunSec']);
+    return StatsState(
+      firstLaunch: _asMoment(j['firstLaunch']) ?? now,
+      runStart: _asMoment(j['runStart']) ?? now,
+      playSeconds: _asDouble(j['playSec']),
+      holdSeconds: _asDouble(j['holdSec']),
+      windowSeconds: _asDouble(j['windowSec']),
+      soldMl: _asDouble(j['soldMl']),
+      earned: _asDouble(j['earned']),
+      sales: _asInt(j['sales']),
+      bestSale: _asDouble(j['bestSale']),
+      guestSales: _asInt(j['guestSales']),
+      stillsBought: _asInt(j['stillsBought']),
+      upgradesBought: _asInt(j['upgradesBought']),
+      fastestRunSeconds: fastest > 0 ? fastest : null,
     );
   }
 
@@ -140,6 +188,17 @@ class GameSerializer {
     if (v is int) return v >= 0 ? v : 0;
     if (v is num) return v.toInt().clamp(0, 1 << 31);
     return 0;
+  }
+
+  /// Момент времени из миллисекунд UTC. `null` — поля нет или оно битое.
+  ///
+  /// Не через [_asInt]: тот обрезает дробные числа до 2^31, а миллисекунды
+  /// с 1970 года давно больше.
+  static DateTime? _asMoment(dynamic v) {
+    // Больше 8.64e15 DateTime не принимает и бросает исключение, а битое
+    // поле не должно ронять загрузку.
+    if (v is! num || !v.isFinite || v <= 0 || v > 8.64e15) return null;
+    return DateTime.fromMillisecondsSinceEpoch(v.toInt(), isUtc: true);
   }
 
   static Map<String, int> _asIntMap(dynamic v) {

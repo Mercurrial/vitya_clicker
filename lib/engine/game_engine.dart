@@ -121,6 +121,26 @@ class GameEngine {
     return (state: next, gained: next.resources.ml - before);
   }
 
+  /// Засчитать [seconds] секунд игры на экране.
+  ///
+  /// Сколько прошло и держали ли зажим, знает только интерфейс: время
+  /// приходит тиком игры, зажим — от пальца. Движок только складывает, как и
+  /// с сортом, поэтому остаётся чистым и проверяется без экрана.
+  ///
+  /// Оффлайн сюда не попадает: [creditOffline] эту функцию не зовёт, и
+  /// время с закрытой игрой в «время в игре» не складывается.
+  GameState recordPlay(
+    GameState state,
+    double seconds, {
+    required bool holding,
+    required bool inWindow,
+  }) {
+    if (seconds <= 0) return state;
+    return state.copyWith(
+      stats: state.stats.addPlay(seconds, holding: holding, inWindow: inWindow),
+    );
+  }
+
   /// Двинуть сорт: жар в окне поднимает, перегрев жжёт, мимо — медленно сползает.
   ///
   /// Интерфейс присылает уже посчитанную дельту, движок про шкалу не знает и
@@ -165,6 +185,10 @@ class GameEngine {
 
     final volume = buyer.volumeFrom(state.resources.ml);
     final revenue = saleValueFor(state, buyer, currentTime);
+    // Гость — любой, кого нет среди постоянных покупателей: события
+    // превращаются в покупателя на лету (GarageEvent.asBuyer), и отдельного
+    // признака у них нет намеренно — движок про события не знает.
+    final guest = !kBuyers.any((b) => b.id == buyer.id);
 
     return state.copyWith(
       resources: state.resources.copyWith(
@@ -172,6 +196,7 @@ class GameEngine {
         money: state.resources.money + revenue,
       ),
       sort: buyer.consumesSort ? state.sort.dropOneStep() : state.sort,
+      stats: state.stats.addSale(volume, revenue, guest: guest),
       lastUpdateTime: currentTime,
     );
   }
@@ -221,6 +246,7 @@ class GameEngine {
     return state.copyWith(
       resources: state.resources.copyWith(money: state.resources.money - cost),
       generators: state.generators.copyWith(items: items),
+      stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + 1),
       lastUpdateTime: currentTime,
     );
   }
@@ -267,6 +293,7 @@ class GameEngine {
     return state.copyWith(
       resources: state.resources.copyWith(money: state.resources.money - cost),
       generators: state.generators.copyWith(items: items),
+      stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + take),
       lastUpdateTime: currentTime,
     );
   }
@@ -287,6 +314,7 @@ class GameEngine {
     return state.copyWith(
       resources: state.resources.copyWith(money: state.resources.money - cost),
       upgrades: state.upgrades.copyWith(items: items),
+      stats: state.stats.copyWith(upgradesBought: state.stats.upgradesBought + 1),
       lastUpdateTime: currentTime,
     );
   }
@@ -334,6 +362,9 @@ class GameEngine {
       // Достижения — мета-слой: они переживают похмелье вместе с мудростью,
       // иначе открытые ими функции отбирались бы обратно.
       achievements: state.achievements,
+      // Статистика — за всю игру, а не за заход; похмелье только закрывает
+      // заход и засекает следующий.
+      stats: state.stats.finishRun(currentTime),
       lastUpdateTime: currentTime,
     );
   }

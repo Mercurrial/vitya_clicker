@@ -23,6 +23,10 @@ class Panel extends StatelessWidget {
 }
 
 /// Строка «подпись — значение».
+///
+/// Подпись уступает место значению и переносится, а не вылезает за край:
+/// на 320 точках «Нагнано за всё время» рядом с «2.34К л» уже впритык, а
+/// значение, в отличие от подписи, резать нельзя.
 class StatLine extends StatelessWidget {
   final String label;
   final String value;
@@ -31,9 +35,10 @@ class StatLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GType.body()),
+        Expanded(child: Text(label, style: GType.body())),
+        const SizedBox(width: GS.s2),
         Text(
           value,
           style: GType.num(size: 13, weight: FontWeight.w700),
