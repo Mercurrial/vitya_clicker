@@ -19,6 +19,7 @@ import 'package:idle_game/ui/widgets/boost_button.dart';
 import 'package:idle_game/ui/widgets/shop.dart';
 
 import 'support/moments.dart';
+import 'support/shelf_tabs.dart';
 
 /// Поток на экране: кнопка ускорения на главном экране и вкладка «ПОТОК».
 ///
@@ -186,7 +187,8 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.byType(BoostButton), findsOneWidget);
 
-        final list = rectOf(tester, find.byType(ListView).first);
+        final list = rectOf(tester,
+            find.ancestor(of: find.byType(StillRow).first, matching: find.byType(ListView)).first);
         final whole = find.byType(StillRow).evaluate().where((e) {
           final box = e.renderObject! as RenderBox;
           final rect = box.localToGlobal(Offset.zero) & box.size;
@@ -217,8 +219,8 @@ void main() {
           expect(r.height, greaterThanOrEqualTo(44), reason: '$key: ${r.height} в высоту');
           expect(r.width, greaterThanOrEqualTo(44), reason: '$key: ${r.width} в ширину');
         }
-        for (final label in const ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ПОТОК', 'ЦЕЛИ', 'ВИТЯ']) {
-          final t = find.descendant(of: find.byType(Shelf), matching: find.text(label));
+        for (final label in const ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'МУДРОСТЬ', 'ПОТОК', 'ЦЕЛИ', 'ВИТЯ']) {
+          final t = await shelfTab(tester, label);
           await tester.ensureVisible(t);
           await tester.pump();
           final hit = find.ancestor(of: t, matching: find.byType(GestureDetector)).first;

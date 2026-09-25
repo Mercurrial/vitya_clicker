@@ -202,6 +202,7 @@ class _Tabs extends ConsumerWidget {
         );
 
     return Container(
+      key: const Key('shelf-tabs'),
       height: _kTabsHeight,
       decoration: BoxDecoration(
         color: const Color(0x40000000),

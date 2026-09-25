@@ -162,6 +162,10 @@ void main() {
           b.fluxBankCostBase,
           b.fluxBankCostStep,
           b.fluxMaxSpeed,
+          b.colliderCostFactor,
+          // Вехи — числа экономики: правка вехи может отнять у игрока
+          // бонус, а значит, это правка баланса, как и любая другая.
+          b.wisdomMilestones.join(','),
         ].join('|');
 
     // Отпечаток записан при чистом старте и до выпуска не сверяется:
