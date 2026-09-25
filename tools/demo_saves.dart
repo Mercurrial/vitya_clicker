@@ -7,7 +7,7 @@
 ///   dart run tools/demo_saves.dart
 ///
 /// Печатает по строке на стадию: `имя<TAB>сейв`. Сейв кладётся в браузере в
-/// `localStorage['flutter.vitya_save_v1']` как JSON-строка, после чего страницу
+/// `localStorage['flutter.vitya_save']` как JSON-строка, после чего страницу
 /// надо перезагрузить.
 library;
 

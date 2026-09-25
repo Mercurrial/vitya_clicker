@@ -1,8 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/core/game_clock.dart';
-import 'package:idle_game/content/game_content.dart';
-import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/core/save.dart';
 
 void main() {
@@ -173,62 +171,13 @@ void main() {
       expect(codec.decode(future).wasCorrupt, isTrue);
     });
 
-    test('сейв из v1 доходит до текущей версии через всю цепочку', () {
-      // v1 считал в литрах, v2 перешла на миллилитры (×1000), v3 развела
-      // товар и деньги: накопленное считается проданным по базовой цене.
-      const old = '{"version": 1, "litres": 2.5, "lifetime": 10, "wisdom": 3}';
-      final result = codec.decode(old);
-
+    test('до выпуска сейв не мигрирует: версия одна', () {
+      // Цепочка тестовых сборок (v1–v5) удалена при чистом старте. Сейв
+      // текущей версии разбирается как есть.
+      final result = codec.decode('{"version": 1, "ml": 5}');
       expect(result.wasCorrupt, isFalse);
-      expect(result.wasMigrated, isTrue);
-      expect(result.data!['ml'], 0, reason: 'бак отдаём пустым');
-      expect(result.data!['money'], closeTo(250, 1e-9), reason: '2500 мл по 0.1 ₽');
-      expect(result.data!['lifetime'], 10000, reason: 'история в мл');
-      // v4 пересчитала мудрость логарифмом, v5 перевела её в факт: сколько
-      // нагнано на момент похмелья. За 10 000 мл истории не заработано
-      // ничего, каким бы ни было число в старом сейве.
-      expect(result.data!['claimedMl'], 0.0);
-      expect(result.data!.containsKey('wisdom'), isFalse,
-          reason: 'оценка больше не хранится — только факт');
-      expect(result.data!.containsKey('litres'), isFalse);
-      expect(result.data!['version'], kSaveVersion);
-    });
-
-    test('сейв из v2 переводит накопленное в деньги', () {
-      const old = '{"version": 2, "ml": 5000, "wisdom": 1}';
-      final result = codec.decode(old);
-
-      expect(result.wasMigrated, isTrue);
-      expect(result.data!['ml'], 0);
-      expect(result.data!['money'], closeTo(500, 1e-9));
-    });
-
-    test('разогнавшаяся мудрость из старого сейва приводится в норму', () {
-      // Настоящий случай из плейтеста: 119 137 мудрости за полчаса.
-      const old = '{"version": 3, "ml": 0, "money": 0, '
-          '"lifetime": 4.79e20, "wisdom": 119137}';
-      final result = codec.decode(old);
-
-      expect(result.wasMigrated, isTrue);
-
-      // Проверяем не число мудрости, а факт, из которого она считается:
-      // числом мудрость больше не хранится, и это главное, что изменилось.
-      final claimed = result.data!['claimedMl'] as double;
-      expect(claimed, greaterThan(0), reason: 'заслуженное не отнимаем');
-      expect(claimed, lessThanOrEqualTo(4.79e20),
-          reason: 'нельзя забрать больше, чем нагнал');
-
-      // И проверяем, что дальше это даёт обозримую мудрость по ЛЮБОМУ
-      // балансу — тест не должен ломаться от правки чисел.
-      final state = const GameSerializer().fromJson(
-        result.data!,
-        content: kGenerators,
-        upgrades: kUpgrades,
-        now: DateTime.utc(2026),
-      );
-      expect(state.prestige.wisdom, lessThan(80),
-          reason: 'логарифм держит награду в узде');
-      expect(state.prestige.wisdom, greaterThan(0));
+      expect(result.wasMigrated, isFalse);
+      expect(result.data!['ml'], 5);
     });
   });
 
@@ -243,6 +192,28 @@ void main() {
 
       await service.wipe();
       expect((await service.load()).isEmpty, isTrue);
+    });
+
+    test('сейв тестовой сборки не читается, а узнаётся', () async {
+      final service =
+          SaveService(storage: MemorySaveStorage(testSave: true));
+      final loaded = await service.load();
+
+      expect(loaded.isEmpty, isTrue, reason: 'гараж начинается заново');
+      expect(loaded.fromTestVersion, isTrue,
+          reason: 'игроку надо сказать, куда делся гараж');
+      expect(loaded.wasCorrupt, isFalse,
+          reason: 'это не порча, а решение: пугать «сейв повреждён» незачем');
+    });
+
+    test('свой сейв важнее тестового, и сообщение не повторяется', () async {
+      final service =
+          SaveService(storage: MemorySaveStorage(testSave: true));
+      await service.save({'ml': 7.0});
+      final loaded = await service.load();
+
+      expect(loaded.fromTestVersion, isFalse);
+      expect(loaded.data!['ml'], 7.0);
     });
   });
 }

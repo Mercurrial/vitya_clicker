@@ -32,6 +32,10 @@ class Bootstrap {
   /// Сейв был испорчен и игра начата заново — об этом честно скажем игроку.
   final bool saveWasLost;
 
+  /// Своего сейва нет, но есть сейв тестовой сборки: гараж новый, и игроку
+  /// надо объяснить почему, до того как он решит, что прогресс пропал.
+  final bool testSaveDropped;
+
   /// Правки баланса, случившиеся с прошлого запуска игрока.
   ///
   /// Пусто у новичка и у того, кто уже видел этот выпуск. Если не пусто —
@@ -46,6 +50,7 @@ class Bootstrap {
     required this.offline,
     required this.offlineGain,
     required this.saveWasLost,
+    this.testSaveDropped = false,
     this.balanceNews = const [],
   });
 
@@ -73,6 +78,7 @@ Future<Bootstrap> bootstrapGame({
       offline: OfflineResult.none,
       offlineGain: 0,
       saveWasLost: loaded.wasCorrupt,
+      testSaveDropped: loaded.fromTestVersion,
     );
   }
 

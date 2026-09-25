@@ -100,6 +100,36 @@ void main() {
     expect(game.read(gameProvider).resources.money, closeTo(777, 1e-6));
   });
 
+  testWidgets('код тестовой сборки объясняется и гараж не трогает',
+      (tester) async {
+    // Код тестовой сборки (до 1.0.0): версия кода 1, сейв v5 внутри.
+    final testCode = encodeSaveCode('{"version": 5, "money": 5e6}')
+        .replaceFirst('$kSaveCodePrefix$kSaveCodeVersion', '${kSaveCodePrefix}1');
+
+    await open(tester);
+    denyClipboard(tester);
+    final notifier = game.read(gameProvider.notifier);
+    notifier.state = notifier.state.copyWith(
+      resources: notifier.state.resources.copyWith(money: 555),
+    );
+
+    await tester.tap(find.text('ВСТАВИТЬ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Заменить'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), testCode);
+    await tester.tap(find.text('Принять'));
+    await tester.pumpAndSettle();
+
+    expect(game.read(gameProvider).resources.money, 555);
+    expect(
+      find.text(
+          const SaveCodeResult.failed(SaveCodeError.fromTestVersion).message),
+      findsOneWidget,
+      reason: 'игрок обязан узнать, почему код не принят',
+    );
+  });
+
   testWidgets('передумал вставлять — гараж не тронут', (tester) async {
     await open(tester);
     denyClipboard(tester);

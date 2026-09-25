@@ -6,6 +6,10 @@
 /// Полученный файл больше не правится никогда: это снимок того, что реально
 /// лежит у игроков. Каждая следующая версия обязана его открыть — см.
 /// test/release_contract_test.dart.
+///
+/// Первый эталон включает строгие правила: с ним версии баланса и сейва
+/// снова поднимаются при каждой правке, а отпечаток чисел сверяется. Вместе
+/// с ним выпуск записывает действующий отпечаток в release_contract_test.
 library;
 
 import 'dart:io';
@@ -41,7 +45,9 @@ void main(List<String> args) {
 
   final json = ser.toJson(s, lastSeenMillis: 1800000000000);
   final path = 'test/fixtures/save_$version.json';
-  File(path).writeAsStringSync(const SaveCodec().encode(json));
+  File(path)
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync(const SaveCodec().encode(json));
   stdout.writeln('записан $path');
   stdout.writeln('ЭТОТ ФАЙЛ БОЛЬШЕ НЕ ПРАВИТСЯ.');
 }

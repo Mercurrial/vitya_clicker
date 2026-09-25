@@ -11,6 +11,7 @@ import 'providers/game_provider.dart';
 import 'ui/game/vitya_portrait.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
+import 'ui/screens/test_save_notice.dart';
 import 'ui/screens/welcome_back.dart';
 import 'providers/settings_provider.dart';
 import 'ui/theme/garage.dart';
@@ -103,13 +104,22 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
     // Порядок важен: сперва «что изменилось», потом «сколько накапало». Если
     // поменялся баланс, игрок должен узнать об этом ДО того, как увидит
     // цифры, — иначе он успеет решить, что игра сломалась.
-    if (widget.boot.hasBalanceNews || widget.boot.shouldGreet) {
+    if (widget.boot.testSaveDropped ||
+        widget.boot.hasBalanceNews ||
+        widget.boot.shouldGreet) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openIntro());
     }
   }
 
   Future<void> _openIntro() async {
     if (!mounted) return;
+    if (widget.boot.testSaveDropped) {
+      await showTestSaveNotice(context);
+      // Сообщение показывается, пока своего сейва нет. Запись сразу — чтобы
+      // закрытое до автосейва приложение не повторило его без нужды.
+      await ref.read(gameProvider.notifier).saveNow();
+      if (!mounted) return;
+    }
     if (widget.boot.hasBalanceNews) {
       await showBalanceNews(context, widget.boot.balanceNews);
       // Отметка о просмотре — это запись сейва с текущей версией баланса.

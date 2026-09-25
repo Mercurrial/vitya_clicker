@@ -86,6 +86,20 @@ void main() {
       expect(decodeSaveCode(fromFuture).error, SaveCodeError.fromFuture);
     });
 
+    test('код тестовой сборки узнаётся и объясняется', () {
+      // До выпуска 1.0.0 коды начинались с VITYA1. Сейв внутри такого кода —
+      // тестового формата, и разобрать его как новый нельзя: номера версий
+      // совпадают, а смысл — нет.
+      final code = encodeSaveCode(save);
+      final testCode = code.replaceFirst(
+        '$kSaveCodePrefix$kSaveCodeVersion',
+        '${kSaveCodePrefix}1',
+      );
+      final result = decodeSaveCode(testCode);
+      expect(result.isOk, isFalse);
+      expect(result.error, SaveCodeError.fromTestVersion);
+    });
+
     test('валидная база64 с мусором внутри не проходит', () {
       // Кто-то собрал код руками: сумма сойдётся, а содержимое не наше.
       final payload = base64Url.encode(utf8.encode('это не json'));
@@ -116,7 +130,7 @@ void main() {
     test('код влезает в одно сообщение', () {
       // Настоящий сейв поздней игры: всё куплено, все достижения открыты.
       final big = jsonEncode({
-        'version': 5,
+        'version': 1,
         'ml': 1.2345e12,
         'money': 9.87e14,
         'taps': 123456,
@@ -126,7 +140,7 @@ void main() {
         'claimedMl': 4.79e18,
         'lifetime': 5.1e18,
         'hangovers': 42,
-        'balanceVersion': 2,
+        'balanceVersion': 1,
         'lastSeen': 1780000000000,
       });
       final code = encodeSaveCode(big);
@@ -209,6 +223,31 @@ void main() {
       }
       expect(container.read(gameProvider).resources.money, 777,
           reason: 'неудачный импорт обязан оставить гараж как был');
+    });
+
+    test('код тестовой сборки не трогает гараж', () async {
+      final container = ProviderContainer(
+        overrides: [
+          saveServiceProvider
+              .overrideWithValue(SaveService(storage: MemorySaveStorage())),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Код тестовой сборки: сейв v5 внутри, версия кода 1. Собран тем же
+      // кодировщиком и переписан на версию 1 — сумма от этого не меняется.
+      final testCode = encodeSaveCode(
+        '{"version": 5, "ml": 0, "money": 5e6, "lifetime": 8.4e9}',
+      ).replaceFirst('$kSaveCodePrefix$kSaveCodeVersion', '${kSaveCodePrefix}1');
+
+      final notifier = container.read(gameProvider.notifier);
+      notifier.state = notifier.state.copyWith(
+        resources: notifier.state.resources.copyWith(money: 777),
+      );
+
+      expect(await notifier.importCode(testCode),
+          SaveCodeError.fromTestVersion);
+      expect(container.read(gameProvider).resources.money, 777);
     });
   });
 }
