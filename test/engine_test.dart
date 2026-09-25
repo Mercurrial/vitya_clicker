@@ -201,38 +201,32 @@ void main() {
     });
   });
 
-  group('Оффлайн', () {
-    // Регрессия: запуск игры считал отсутствие по своей копии формулы, которая
-    // не знала про ёмкость. После перезагрузки в бак на 2 литра наливалось
-    // сорок с лишним тысяч.
-    test('за сутки отсутствия бак не переполняется', () {
+  // Подробно поток проверяет test/flux_test.dart; здесь — что отсутствие
+  // больше не гонит самогон.
+  group('Отсутствие', () {
+    test('за сутки AFK в бак не наливается ни капли', () {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(money: 1e9));
       for (var i = 0; i < 20; i++) {
         s = engine.buyGenerator(s, 'bidon', t0);
       }
 
-      final result = engine.creditOffline(s, const Duration(days: 1), t0);
+      final result = engine.creditAfk(s, const Duration(days: 1));
 
-      expect(result.state.resources.ml, lessThanOrEqualTo(s.tankCapacity + 1e-6));
-      expect(result.gained, lessThanOrEqualTo(s.tankCapacity + 1e-6));
-      expect(result.gained, greaterThan(0));
+      expect(result.state.resources, s.resources);
+      expect(result.state.prestige.totalEverEarned, s.prestige.totalEverEarned);
+      expect(result.gained, greaterThan(0), reason: 'поток не начислился');
     });
 
-    test('начисленное совпадает с приростом бака', () {
-      var s = fresh();
-      s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
-      s = engine.buyGenerator(s, 'banka', t0);
-
-      final before = s.resources.ml;
-      final result = engine.creditOffline(s, const Duration(seconds: 30), t0);
-
-      expect(result.gained, closeTo(result.state.resources.ml - before, 1e-9));
+    test('начисленное совпадает с приростом копилки', () {
+      final s = fresh();
+      final result = engine.creditAfk(s, const Duration(minutes: 30));
+      expect(result.gained, closeTo(result.state.flux.seconds - s.flux.seconds, 1e-9));
     });
 
     test('нулевое отсутствие ничего не меняет', () {
       final s = fresh();
-      final result = engine.creditOffline(s, Duration.zero, t0);
+      final result = engine.creditAfk(s, Duration.zero);
       expect(result.gained, 0);
       expect(result.state, same(s));
     });

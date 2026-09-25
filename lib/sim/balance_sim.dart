@@ -31,7 +31,6 @@ import 'dart:math' as math;
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
-import '../core/game_clock.dart';
 import '../core/game_serializer.dart';
 import '../engine/game_engine.dart';
 import '../engine/market.dart';
@@ -324,8 +323,8 @@ enum Absence {
   /// Вкладка открыта, в неё не смотрят. Игра идёт сама, с автопродажей.
   tabOpen,
 
-  /// Игра закрыта или усыплена системой. При возвращении — начисление за
-  /// отсутствие.
+  /// Игра закрыта или усыплена системой. Производства нет — копится поток
+  /// времени, как в `bootstrap`.
   closed,
 }
 
@@ -352,6 +351,10 @@ class SimParty {
   /// Отсутствие сюда не входит: заход игрок меряет своим временем.
   Duration runPlayed = Duration.zero;
 
+  /// С какой скоростью игрок тратит поток, пока играет. 1 — не тратит.
+  /// Кончился поток — ускорение кончается само, как в игре.
+  double boost = 1.0;
+
   final List<Checkpoint> timeline = [];
   final Map<String, Duration> firstBuy = {};
   final Map<String, Duration> upgradeBought = {};
@@ -377,6 +380,7 @@ class SimParty {
         ..elapsed = elapsed
         ..played = played
         ..runPlayed = runPlayed
+        ..boost = boost
         ..timeline.addAll(timeline)
         ..firstBuy.addAll(firstBuy)
         ..upgradeBought.addAll(upgradeBought)
@@ -486,8 +490,14 @@ class BalanceSim {
 
       // --- Производство -------------------------------------------------
       final roomBefore = state.tankCapacity - state.resources.ml;
-      final produced = state.mlPerSecond * style.heat * dt;
-      state = engine.processTick(state, now, heatMultiplier: style.heat);
+      final extra = math.min((p.boost - 1) * dt, state.flux.seconds);
+      final produced = state.mlPerSecond * style.heat * (dt + extra);
+      state = engine.processTick(
+        state,
+        now,
+        heatMultiplier: style.heat,
+        speed: p.boost,
+      );
       if (produced > roomBefore) p.overflowedMl += produced - roomBefore;
 
       // --- Касания ------------------------------------------------------
@@ -573,9 +583,8 @@ class BalanceSim {
 
   /// Игрока нет [length]. Как именно нет — решает [how].
   ///
-  /// Единственное место, где симулятор знает про отсутствие. Задача 5
-  /// («поток времени») меняет смысл закрытой игры — вместо бака копится
-  /// поток — и подключается здесь, в [_closed], не трогая профили.
+  /// Единственное место, где симулятор знает про отсутствие: закрытая игра
+  /// копит поток ([_closed]), и все профили получают это разом.
   void away(SimParty p, Duration length, Absence how) {
     if (length <= Duration.zero) return;
     switch (how) {
@@ -611,15 +620,15 @@ class BalanceSim {
     }
   }
 
-  /// Игра закрыта: при возвращении начисляется оффлайн, как в `bootstrap`, —
-  /// тем же [GameEngine.creditOffline] и с тем же потолком.
+  /// Игра закрыта: производства нет, копится поток — тем же
+  /// [GameEngine.creditAfk], что и в `bootstrap`. Метка времени подтягивается
+  /// к возвращению, как у загруженного сейва.
   void _closed(SimParty p, Duration length) {
     p.elapsed += length;
-    final credited = length > GameClock.offlineCap ? GameClock.offlineCap : length;
-    p.state = engine.checkAchievements(
-      engine.creditOffline(p.state, credited, p.now).state,
-    ).state;
-    p._noteFirstPrestige();
+    p.state = engine
+        .creditAfk(p.state, length)
+        .state
+        .copyWith(lastUpdateTime: p.now);
   }
 
   Checkpoint _snapshot(GameState state, Duration at) {

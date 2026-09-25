@@ -1,4 +1,5 @@
-/// Запуск игры: поднять сейв, восстановить состояние, начислить за отсутствие.
+/// Запуск игры: поднять сейв, восстановить состояние, начислить поток за
+/// отсутствие.
 ///
 /// Делается ДО первого кадра, чтобы игрок сразу увидел свой гараж, а не пустой
 /// экран, который через мгновение подменится загруженными данными.
@@ -23,11 +24,11 @@ class Bootstrap {
   /// увидит стиль по умолчанию и через мгновение подмену на свой.
   final SettingsStore settings;
 
-  /// Сколько накапало, пока игра была закрыта (для экрана возвращения).
+  /// Сколько игры не было (для экрана возвращения).
   final OfflineResult offline;
 
-  /// Сколько литров принесло отсутствие.
-  final double offlineGain;
+  /// Сколько потока принесло отсутствие, секунд.
+  final double fluxGained;
 
   /// Сейв был испорчен и игра начата заново — об этом честно скажем игроку.
   final bool saveWasLost;
@@ -48,13 +49,16 @@ class Bootstrap {
     required this.saves,
     required this.settings,
     required this.offline,
-    required this.offlineGain,
+    required this.fluxGained,
     required this.saveWasLost,
     this.testSaveDropped = false,
     this.balanceNews = const [],
   });
 
-  bool get shouldGreet => offline.isMeaningful && offlineGain > 0;
+  /// Показать экран возвращения. С полной копилкой — тоже, хотя ничего не
+  /// прибавилось: игрок должен узнать, что поток переливается мимо.
+  bool get shouldGreet =>
+      offline.isMeaningful && (fluxGained > 0 || state.flux.isBankFull);
 
   /// Есть ли что рассказать про обновление.
   bool get hasBalanceNews => balanceNews.isNotEmpty;
@@ -76,7 +80,7 @@ Future<Bootstrap> bootstrapGame({
       saves: saves,
       settings: storages.settings,
       offline: OfflineResult.none,
-      offlineGain: 0,
+      fluxGained: 0,
       saveWasLost: loaded.wasCorrupt,
       testSaveDropped: loaded.fromTestVersion,
     );
@@ -107,20 +111,18 @@ Future<Bootstrap> bootstrapGame({
     );
   }
 
-  // Оффлайн-доход считается тем же способом, что и обычный тик: сдвигаем метку
-  // назад на засчитанное время и прогоняем одну итерацию. Так пассивный доход
-  // остаётся единственной формулой — расходиться нечему.
+  // Закрытая игра не гнала: за отсутствие — поток, а не самогон. Сколько
+  // именно, решает движок; здесь только «сколько игры не было».
   final offline = clock.since(serializer.lastSeenOf(data));
-  final credited = const GameEngine().creditOffline(state, offline.credited, now);
+  final credited = const GameEngine().creditAfk(state, offline.elapsed);
   state = credited.state;
-  final gained = credited.gained;
 
   return Bootstrap(
     state: state,
     saves: saves,
     settings: storages.settings,
     offline: offline,
-    offlineGain: gained,
+    fluxGained: credited.gained,
     saveWasLost: false,
     balanceNews: news,
   );

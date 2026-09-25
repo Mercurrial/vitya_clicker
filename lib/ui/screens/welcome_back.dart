@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/formatters.dart';
-import '../../core/game_clock.dart';
+import '../../core/game_clock.dart' show OfflineResult;
+import '../../models/flux_state.dart';
 import '../game/vitya_portrait.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
@@ -13,21 +14,24 @@ import '../theme/garage.dart';
 /// Момент редкий (раз в сессию), поэтому здесь шутка уместна: по правилу
 /// частоты чем реже игрок видит строку, тем сильнее она может быть. На тапе
 /// шуток нет, а вот тут — можно.
+///
+/// Пока игры не было, аппараты стояли — строки про это, а не про то, как
+/// Витя гнал: за отсутствие теперь копится поток, а не самогон.
 const List<String> _lines = [
-  'Витя не спал. Витя гнал.',
-  'Витя справился. В основном.',
-  'Аппарат работал. Витя — присматривал.',
-  'Витя всё это время был занят делом.',
-  'Простоя не было. Почти.',
+  'Витя выспался. Время копилось.',
+  'Аппараты стояли, зато время шло впрок.',
+  'Витя отдохнул и готов гнать быстрее.',
+  'Выспался — наверстаем.',
+  'Время не пропало. Витя его отложил.',
 ];
 
-/// Показывает итог отсутствия. Ничего не возвращает — начисление уже сделано
-/// при запуске, это только витрина.
+/// Показывает итог отсутствия: сколько накопилось потока времени. Ничего не
+/// возвращает — начисление уже сделано, это только витрина.
 Future<void> showWelcomeBack(
   BuildContext context, {
-  required OfflineResult offline,
+  required OfflineResult away,
   required double gained,
-  required bool tankFull,
+  required FluxState flux,
   required VityaEra era,
 }) {
   final line = _lines[math.Random().nextInt(_lines.length)];
@@ -80,7 +84,7 @@ Future<void> showWelcomeBack(
               ),
               const SizedBox(height: GS.s4),
               Text(
-                '+${Fmt.volume(gained)}',
+                '+${Fmt.duration(Duration(seconds: gained.round()))}',
                 style: GType.num(
                   size: 32,
                   weight: FontWeight.w700,
@@ -89,33 +93,29 @@ Future<void> showWelcomeBack(
                 ),
               ),
               Text(
-                'нагнано за ${Fmt.duration(offline.credited)}',
+                'потока времени за ${Fmt.playTime(away.elapsed)}',
                 style: GType.num(size: 12, color: GColors.textMid),
               ),
-              if (offline.capped || tankFull) ...[
-                const SizedBox(height: GS.s3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: GS.s3, vertical: GS.s2),
-                  decoration: BoxDecoration(
-                    color: const Color(0x33000000),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    [
-                      // Потолок — на ЗАСЧИТАННОЕ время, а не на бак. Прошлая
-                      // подпись говорила «бак переполнился», и игрок искал
-                      // бак побольше там, где помогло бы заходить почаще.
-                      if (offline.capped)
-                        'Засчитано ${Fmt.duration(GameClock.offlineCap)} из '
-                            '${Fmt.duration(offline.elapsed)}: дольше без присмотра '
-                            'аппараты не гонят.',
-                      if (tankFull) 'Бак полон — аппараты стоят, пока не продашь.',
-                    ].join('\n'),
-                    textAlign: TextAlign.center,
-                    style: GType.ui(size: 12, color: GColors.textMid, height: 1.35),
-                  ),
+              const SizedBox(height: GS.s3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: GS.s3, vertical: GS.s2),
+                decoration: BoxDecoration(
+                  color: const Color(0x33000000),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
+                child: Text(
+                  [
+                    'В копилке ${Fmt.duration(Duration(seconds: flux.seconds.round()))} '
+                        'из ${Fmt.duration(Duration(seconds: flux.bankSeconds.round()))}. '
+                        'Поток ускоряет аппараты.',
+                    // Полная копилка — единственное, что игрок теряет, пока
+                    // его нет. Сказать об этом надо здесь, а не молча.
+                    if (flux.isBankFull) 'Копилка полна — сверх неё поток не копится.',
+                  ].join('\n'),
+                  textAlign: TextAlign.center,
+                  style: GType.ui(size: 12, color: GColors.textMid, height: 1.35),
+                ),
+              ),
               const SizedBox(height: GS.s4),
               Text(line, textAlign: TextAlign.center, style: GType.quote()),
               const SizedBox(height: GS.s5),
@@ -139,7 +139,7 @@ Future<void> showWelcomeBack(
                       ],
                     ),
                     child: Text(
-                      tankFull ? 'В ГАРАЖ — ПРОДАВАТЬ' : 'В ГАРАЖ',
+                      'В ГАРАЖ',
                       style: GType.tab().copyWith(color: GColors.onAmber),
                     ),
                   ),

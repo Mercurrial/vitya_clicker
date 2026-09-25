@@ -56,28 +56,40 @@ void main() {
   });
 
   group('Закрытая игра', () {
-    test('наливает не больше бака', () {
+    test('не гонит, а копит поток', () {
       final p = sim.start(PlayStyle.tryhard);
       sim.play(p, const Duration(minutes: 20));
-      final lifetime = p.state.prestige.totalEverEarned;
-      final room = p.state.tankCapacity - p.state.resources.ml;
+      final before = p.state;
 
       sim.away(p, night, Absence.closed);
-      expect(
-        p.state.prestige.totalEverEarned - lifetime,
-        lessThanOrEqualTo(room + 1e-6),
-        reason: 'закрытая игра гонит мимо бака — значит, сломан оффлайн',
-      );
+      expect(p.state.prestige.totalEverEarned, before.prestige.totalEverEarned,
+          reason: 'закрытая игра гонит — вернулся бак на возврате');
+      expect(p.state.resources, before.resources);
+      expect(p.state.flux.seconds, greaterThan(before.flux.seconds));
     });
 
-    test('сутки дают не больше потолка оффлайна', () {
+    test('сутки дают не больше копилки', () {
       final p = sim.start(PlayStyle.tryhard);
       sim.play(p, const Duration(minutes: 20));
       final eight = p.fork(), day = p.fork();
       sim.away(eight, night, Absence.closed);
       sim.away(day, const Duration(days: 1), Absence.closed);
-      expect(day.state.prestige.totalEverEarned,
-          eight.state.prestige.totalEverEarned);
+      expect(day.state.flux.seconds, eight.state.flux.seconds);
+      expect(day.state.flux.isBankFull, isTrue);
+    });
+
+    test('после возвращения метка времени не тянет за собой разрыв', () {
+      // Иначе первый же тик после отсутствия посчитал бы его производством —
+      // тот самый двойной счёт, только в симуляторе.
+      final p = sim.start(PlayStyle.tryhard);
+      sim.play(p, const Duration(minutes: 20));
+      sim.away(p, night, Absence.closed);
+      final lifetime = p.state.prestige.totalEverEarned;
+      final rate = p.state.mlPerSecond * PlayStyle.tryhard.heat;
+
+      sim.play(p, const Duration(seconds: 1));
+      expect(p.state.prestige.totalEverEarned - lifetime,
+          lessThanOrEqualTo(rate * 1.01 + 1e-6));
     });
   });
 
@@ -92,7 +104,7 @@ void main() {
       expect(p.state.isTankFull, isTrue);
     });
 
-    test('с автопродажей гонит всю ночь, а закрытая игра — один бак', () {
+    test('с автопродажей гонит всю ночь, а закрытая игра — нет', () {
       final p = sim.start(PlayStyle.tryhard);
       sim.play(p, const Duration(minutes: 15));
       expect(p.state.achievements.hasPerk(AchievementPerk.autoSell), isTrue);
@@ -112,12 +124,12 @@ void main() {
       // Здесь только порядок; сколько минут допустимо — цель задачи 4.
       final alone = sim.run(PlayStyle.tryhard.withPrestige(null),
           horizon: const Duration(hours: 4));
-      final closed = overnightThreshold(sim, PlayStyle.tryhard, Absence.closed);
       final tab = overnightThreshold(sim, PlayStyle.tryhard, Absence.tabOpen);
 
+      // Ночь закрытой игры мудрости не приносит вовсе: производства нет,
+      // только поток.
       expect(alone.firstPrestige, isNotNull);
-      expect(closed, lessThanOrEqualTo(alone.firstPrestige!));
-      expect(tab, lessThanOrEqualTo(closed));
+      expect(tab, lessThan(alone.firstPrestige!));
 
       final probe = leaveAfter(sim, PlayStyle.tryhard,
           playFor: tab, awayFor: night, how: Absence.tabOpen);

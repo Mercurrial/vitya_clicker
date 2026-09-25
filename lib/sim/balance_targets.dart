@@ -20,6 +20,10 @@
 ///   ощущалось наградой.
 /// * **Ночь открытой вкладки не приносит мудрость тому, кто поиграл пару
 ///   минут.** Было 17 минут игры — и утром мудрость.
+/// * **20 минут в день, остальное закрыто, весь поток тратит** — первая
+///   мудрость у «считает» на 2–3-й день, у «обычного» не позже 4-го. Это
+///   замысел владельца про поток времени. Промахивается — крутятся скорость
+///   и копилка потока, а не экономика.
 library;
 
 import 'dart:math' as math;
@@ -73,6 +77,27 @@ abstract final class BalanceTargets {
   /// мудрость, — не меньше.
   static const overnightTabMin = Duration(minutes: 60);
 
+  /// «Играет 20 минут в день, остальное время закрыто, весь поток тратит»:
+  /// на какой день первая мудрость. Дни считаются с первого.
+  static const dailySession = Duration(minutes: 20);
+  static const dailyFirstWisdomDayMin = 2;
+  static const dailyFirstWisdomDayMax = 3;
+  static const dailyFirstWisdomDayCasualMax = 4;
+
+  /// Копилка потока на старте наполняется за столько AFK — не дольше.
+  static const fluxBankFillMax = Duration(hours: 6);
+
+  /// Улучшения потока (L1): окупаемость +1 мин/ч для того, кто заходит раз
+  /// в сутки, — на старте и у самого предела.
+  static const fluxPaybackFirstDays = 2.0;
+  static const fluxPaybackLastDays = 45.0;
+
+  /// «Раз в сутки» доходит до часа потока за час: вкладывая весь поток — к
+  /// этому дню, половину — к этому, с допуском ±20 %.
+  static const fluxRateMaxDayAll = 49;
+  static const fluxRateMaxDayHalf = 102;
+  static const fluxRateMaxDayTolerance = 0.2;
+
   /// Бак: и «слишком мал» и «слишком велик» одинаково ломают игру.
   static const tankMin = Duration(minutes: 1);
   static const tankMax = Duration(minutes: 45);
@@ -84,6 +109,9 @@ abstract final class BalanceTargets {
   • второй заход до той же точки: ${(rerunMin * 100).round()}–${(rerunMax * 100).round()} % первого
   • 12-я ступень у «считает»: ${tier12Min.inHours}–${tier12Max.inHours} ч
   • ночь открытой вкладки даёт мудрость не раньше ${overnightTabMin.inMinutes} мин игры
+  • ${dailySession.inMinutes} мин в день, остальное закрыто, весь поток тратит: первая мудрость у «считает» на $dailyFirstWisdomDayMin–$dailyFirstWisdomDayMax-й день, у «обычного» не позже $dailyFirstWisdomDayCasualMax-го
+  • копилка потока на старте наполняется не дольше чем за ${fluxBankFillMax.inHours} ч AFK
+  • улучшения потока: окупаемость +1 мин/ч раз в сутки — ${fluxPaybackFirstDays.round()} дн на старте … ${fluxPaybackLastDays.round()} дн у предела; час в час — к дню $fluxRateMaxDayAll (весь поток) и $fluxRateMaxDayHalf (половина), ±${(fluxRateMaxDayTolerance * 100).round()} %
   • запас бака: ${tankMin.inMinutes}–${tankMax.inMinutes} мин производства''';
 
   static String _hm(Duration d) =>
@@ -107,6 +135,19 @@ double firstWisdomFromCurve(Balance candidate) => withBalance(candidate, () {
       );
       return r.finalState.prestige.totalEverEarned;
     });
+
+/// «Играет 20 минут в день, остальное время закрыто, весь поток тратит».
+///
+/// Тратит на пределе скорости: итог от неё не зависит, а на пределе копилка
+/// точно успевает опустеть за заход. Дней — на один больше самой поздней
+/// цели: промах на день виден как промах, а не как «не дождались».
+DailyResult dailyWithFlux(BalanceSim sim, PlayStyle style) => daily(
+      sim,
+      style,
+      perDay: BalanceTargets.dailySession,
+      days: BalanceTargets.dailyFirstWisdomDayCasualMax + 1,
+      boost: Balance.current.fluxMaxSpeed,
+    );
 
 /// Окупаемость одного захода.
 class RunPayback {
@@ -146,6 +187,11 @@ class Score {
 
   final Duration? overnightTab;
 
+  /// «20 минут в день»: день первой мудрости у «считает» и у «обычного».
+  /// `null` — не за проверенные дни (или быстрая оценка).
+  final int? dailyFirstWisdomDay;
+  final int? dailyFirstWisdomDayCasual;
+
   final Duration maxTankBuffer;
 
   /// Ноль — попал во всё. Чем больше, тем хуже.
@@ -159,6 +205,8 @@ class Score {
     required this.rerunShare,
     required this.tier12At,
     required this.overnightTab,
+    this.dailyFirstWisdomDay,
+    this.dailyFirstWisdomDayCasual,
     required this.maxTankBuffer,
     required this.penalty,
   });
@@ -202,6 +250,7 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
     double? rerun;
     Duration? tier12;
     Duration? overnight;
+    int? daily20, daily20Casual;
     if (!quick) {
       final m = marathon(sim, PlayStyle.tryhard, horizon: BalanceTargets.marathonLength);
       runs.addAll(_paybackByRun(m.result));
@@ -211,6 +260,8 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
         if (c.tankBuffer > maxTank) maxTank = c.tankBuffer;
       }
       overnight = overnightThreshold(sim, PlayStyle.tryhard, Absence.tabOpen);
+      daily20 = dailyWithFlux(sim, PlayStyle.tryhard).firstWisdomDay;
+      daily20Casual = dailyWithFlux(sim, PlayStyle.casual).firstWisdomDay;
     }
 
     var penalty = 0.0;
@@ -256,6 +307,16 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
         BalanceTargets.overnightTabMin.inSeconds.toDouble(),
         double.infinity,
       );
+      penalty += _miss(
+        daily20?.toDouble(),
+        BalanceTargets.dailyFirstWisdomDayMin.toDouble(),
+        BalanceTargets.dailyFirstWisdomDayMax.toDouble(),
+      );
+      penalty += _miss(
+        daily20Casual?.toDouble(),
+        1,
+        BalanceTargets.dailyFirstWisdomDayCasualMax.toDouble(),
+      );
     }
 
     return Score(
@@ -266,6 +327,8 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
       rerunShare: rerun,
       tier12At: tier12,
       overnightTab: overnight,
+      dailyFirstWisdomDay: daily20,
+      dailyFirstWisdomDayCasual: daily20Casual,
       maxTankBuffer: maxTank,
       penalty: penalty,
     );

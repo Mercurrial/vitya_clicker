@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import '../engine/production.dart';
 import 'achievements_state.dart';
 import 'clicker_state.dart';
+import 'flux_state.dart';
 import 'generator.dart';
 import 'generators_state.dart';
 import 'prestige_state.dart';
@@ -27,6 +28,9 @@ class GameState extends Equatable {
   /// Статистика игрока — переживает похмелье, в производство не входит.
   final StatsState stats;
 
+  /// Поток времени — копится за AFK, тратится ускорением. Переживает похмелье.
+  final FluxState flux;
+
   final DateTime lastUpdateTime;
 
   /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
@@ -42,6 +46,7 @@ class GameState extends Equatable {
     required this.achievements,
     required this.sort,
     required this.stats,
+    this.flux = const FluxState(),
     required this.lastUpdateTime,
     required this.mlPerSecond,
   });
@@ -52,6 +57,7 @@ class GameState extends Equatable {
     PrestigeState prestige = const PrestigeState(),
     AchievementsState achievements = const AchievementsState(),
     StatsState? stats,
+    FluxState flux = const FluxState(),
     DateTime? lastUpdateTime,
   }) {
     final at = lastUpdateTime ?? DateTime.now();
@@ -68,6 +74,7 @@ class GameState extends Equatable {
       achievements: achievements,
       sort: const SortState(),
       stats: stats ?? StatsState.startedAt(at),
+      flux: flux,
       lastUpdateTime: at,
       mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
@@ -82,6 +89,7 @@ class GameState extends Equatable {
     AchievementsState? achievements,
     SortState? sort,
     StatsState? stats,
+    FluxState? flux,
     DateTime? lastUpdateTime,
   }) {
     final nextGens = generators ?? this.generators;
@@ -106,6 +114,7 @@ class GameState extends Equatable {
       achievements: nextAch,
       sort: sort ?? this.sort,
       stats: stats ?? this.stats,
+      flux: flux ?? this.flux,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       mlPerSecond: nextRate,
     );
@@ -135,6 +144,7 @@ class GameState extends Equatable {
         achievements,
         sort,
         stats,
+        flux,
         lastUpdateTime,
         mlPerSecond,
       ];

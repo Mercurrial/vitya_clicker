@@ -109,31 +109,31 @@ void main() {
 
     test('нет метки — нет начисления', () {
       const clock = GameClock();
-      expect(clock.since(null).credited, Duration.zero);
-      expect(clock.since(0).credited, Duration.zero);
+      expect(clock.since(null).elapsed, Duration.zero);
+      expect(clock.since(0).elapsed, Duration.zero);
     });
 
     test('обычное отсутствие засчитывается полностью', () {
       final clock = GameClock(now: () => at(3600 * 1000));
       final r = clock.since(600 * 1000); // прошло 50 минут
-      expect(r.credited, const Duration(minutes: 50));
-      expect(r.capped, isFalse);
+      expect(r.elapsed, const Duration(minutes: 50));
       expect(r.isMeaningful, isTrue);
     });
 
-    test('длинное отсутствие обрезается потолком', () {
+    // Потолок в 8 часов держал бак на возврате. Бака больше нет — за
+    // отсутствие копится поток, и держит его копилка, а не часы.
+    test('длинное отсутствие не обрезается', () {
       final clock = GameClock(now: () => at(100 * 3600 * 1000));
-      final r = clock.since(0 + 1);
-      expect(r.credited, GameClock.offlineCap);
-      expect(r.capped, isTrue);
-      expect(r.elapsed.inHours, greaterThan(GameClock.offlineCap.inHours));
+      final r = clock.since(1);
+      expect(r.elapsed.inHours, 99);
+      expect(r.rolledBack, isFalse);
     });
 
     test('перевод часов назад не даёт прогресса', () {
       final clock = GameClock(now: () => at(1000));
       final r = clock.since(900000); // метка «из будущего»
       expect(r.rolledBack, isTrue);
-      expect(r.credited, Duration.zero);
+      expect(r.elapsed, Duration.zero);
     });
 
     test('короткая отлучка не показывает экран возвращения', () {

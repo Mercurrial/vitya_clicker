@@ -70,14 +70,14 @@ void main() {
       expect(engine.recordPlay(s, -5, holding: true, inWindow: true), s);
     });
 
-    test('оффлайн не добавляет времени в игре', () {
+    test('AFK не добавляет времени в игре', () {
       var s = fresh();
       s = engine.recordPlay(s, 10, holding: true, inWindow: true);
       final before = s.stats;
 
-      final back = engine.creditOffline(s, const Duration(hours: 8), t0);
+      final back = engine.creditAfk(s, const Duration(hours: 8));
 
-      expect(back.gained, greaterThan(0), reason: 'оффлайн вообще не начислился');
+      expect(back.gained, greaterThan(0), reason: 'поток вообще не начислился');
       expect(back.state.stats.playSeconds, before.playSeconds);
       expect(back.state.stats.holdSeconds, before.holdSeconds);
       expect(back.state.stats.windowSeconds, before.windowSeconds);

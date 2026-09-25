@@ -13,6 +13,9 @@
 /// меняет смысл отсутствия (поток времени, задача 5), меняет их все сразу.
 library;
 
+import '../content/game_content.dart';
+import '../core/game_serializer.dart';
+import '../engine/game_engine.dart';
 import 'balance_sim.dart';
 
 const _day = Duration(days: 1);
@@ -124,14 +127,19 @@ class DailyResult {
 }
 
 /// Заходит раз в день на [perDay], остальные сутки его нет.
+///
+/// [boost] — с какой скоростью он тратит поток, пока играет. Итог от
+/// скорости не зависит, важно только успеть потратить копилку за заход: час
+/// потока за 20 минут — это ×4 и выше.
 DailyResult daily(
   BalanceSim sim,
   PlayStyle style, {
   required Duration perDay,
   int days = 14,
   Absence how = Absence.closed,
+  double boost = 1.0,
 }) {
-  final p = sim.start(style);
+  final p = sim.start(style)..boost = boost;
   final byDay = <int>[];
   for (var d = 0; d < days; d++) {
     sim.play(p, perDay);
@@ -218,4 +226,62 @@ MarathonResult marathon(
   }
 
   return MarathonResult(result: p.result, runs: runs, rerunShare: share);
+}
+
+/// Итог вложений в поток: на какой день чего достиг.
+class FluxInvestResult {
+  /// Скорость дошла до 24 мин/ч — «сладкая точка»: копилка на сутки
+  /// наполняется за 2,5 дня, дальше скорость окупается неделями.
+  final int? rate24Day;
+
+  /// Копилка выросла до предела.
+  final int? bankMaxDay;
+
+  /// Скорость дошла до предела — час потока за час.
+  final int? rateMaxDay;
+
+  const FluxInvestResult({this.rate24Day, this.bankMaxDay, this.rateMaxDay});
+}
+
+/// Заходит раз в [every] и вкладывает в улучшения потока долю [share]
+/// начисленного; остальное тратит на ускорение.
+///
+/// Покупает то, что нужно: копилку — когда поток за отлучку в неё не
+/// влезает или следующая скорость дороже всей копилки; иначе скорость.
+/// Считается только поток, без гаража: улучшения потока покупаются за
+/// поток, и остальная игра на них не влияет.
+FluxInvestResult fluxInvestor({
+  Duration every = _day,
+  double share = 1.0,
+  int maxDays = 400,
+  GameEngine engine = const GameEngine(),
+}) {
+  final at = DateTime.utc(2026, 1, 1);
+  var s = newGame(content: kGenerators, upgrades: kUpgrades, now: at);
+  int? rate24, bankMax, rateMax;
+  final hours = every.inMinutes / 60;
+  for (var visit = 1; visit * hours <= maxDays * 24; visit++) {
+    final credited = engine.creditAfk(s, every);
+    s = credited.state;
+    final burned = credited.gained * (1 - share);
+    s = s.copyWith(flux: s.flux.copyWith(seconds: s.flux.seconds - burned));
+
+    while (true) {
+      final f = s.flux;
+      final wantBank = !f.bankMaxed &&
+          (f.earnedFor(every.inSeconds.toDouble()) >= f.bankSeconds ||
+              f.rateCostSeconds > f.bankSeconds ||
+              f.rateMaxed);
+      final next = wantBank ? engine.buyFluxBank(s) : engine.buyFluxRate(s);
+      if (identical(next, s)) break;
+      s = next;
+    }
+
+    final day = (visit * hours / 24).ceil();
+    if (rate24 == null && s.flux.minutesPerHour >= 24) rate24 = day;
+    if (bankMax == null && s.flux.bankMaxed) bankMax = day;
+    if (rateMax == null && s.flux.rateMaxed) rateMax = day;
+    if (rateMax != null && bankMax != null) break;
+  }
+  return FluxInvestResult(rate24Day: rate24, bankMaxDay: bankMax, rateMaxDay: rateMax);
 }

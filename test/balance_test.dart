@@ -86,6 +86,25 @@ void main() {
           reason: 'хватает ${score.overnightTab!.inMinutes} мин игры и ночи вкладки');
     });
 
+    test('20 минут в день и весь поток — первая мудрость на 2–3-й день', () {
+      // Замысел владельца про поток времени. Не попадает — крутятся скорость
+      // и копилка потока в Balance, а не экономика: 2,5 часа до первой
+      // мудрости — отдельное решение.
+      expect(score.dailyFirstWisdomDay, isNotNull,
+          reason: '«считает» за ${BalanceTargets.dailyFirstWisdomDayCasualMax + 1} дней мудрости не дождался');
+      expect(
+        score.dailyFirstWisdomDay!,
+        inInclusiveRange(BalanceTargets.dailyFirstWisdomDayMin,
+            BalanceTargets.dailyFirstWisdomDayMax),
+        reason: '«считает» получает первую мудрость на ${score.dailyFirstWisdomDay}-й день',
+      );
+      expect(score.dailyFirstWisdomDayCasual, isNotNull,
+          reason: '«обычный» за ${BalanceTargets.dailyFirstWisdomDayCasualMax + 1} дней мудрости не дождался');
+      expect(score.dailyFirstWisdomDayCasual!,
+          lessThanOrEqualTo(BalanceTargets.dailyFirstWisdomDayCasualMax),
+          reason: '«обычный» получает первую мудрость на ${score.dailyFirstWisdomDayCasual}-й день');
+    });
+
     test('бак не разрастается до размеров, при которых продажа не нужна', () {
       expect(
         score.maxTankBuffer,

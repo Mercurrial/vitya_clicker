@@ -17,6 +17,7 @@ import '../content/sorts.dart';
 import '../models/achievements_state.dart';
 import '../models/sort_state.dart';
 import '../models/clicker_state.dart';
+import '../models/flux_state.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
 import '../models/generators_state.dart';
@@ -57,6 +58,12 @@ class GameSerializer {
       // видно, какие поля к ней относятся, и следующему блоку есть куда лечь
       // рядом, не перемешиваясь.
       'stats': _statsToJson(s.stats),
+      // Поток: накопленное — ресурс, как деньги; уровни — покупки. Скорость
+      // начисления, копилка и цены вычисляются из уровней. Ключи добавочные:
+      // в сейве без них читается ноль, и миграция не нужна.
+      'flux': s.flux.seconds,
+      'fluxRate': s.flux.rateLevel,
+      'fluxBank': s.flux.bankLevel,
       // Под каким балансом игрок в последний раз видел игру. По этому числу
       // при обновлении показывается список изменений и начисляется
       // компенсация.
@@ -101,6 +108,11 @@ class GameSerializer {
         hangovers: _asInt(json['hangovers']),
       ),
       stats: _statsFromJson(json['stats'], now),
+      flux: FluxState(
+        seconds: _asDouble(json['flux']),
+        rateLevel: _asInt(json['fluxRate']),
+        bankLevel: _asInt(json['fluxBank']),
+      ),
       lastUpdateTime: now,
     );
 
@@ -168,7 +180,7 @@ class GameSerializer {
     return v is int && v > 0 ? v : 1;
   }
 
-  /// Момент последнего выхода — для расчёта оффлайн-дохода.
+  /// Момент последнего выхода — для начисления потока за отсутствие.
   int? lastSeenOf(Map<String, dynamic> json) {
     final v = json['lastSeen'];
     return v is int ? v : null;
