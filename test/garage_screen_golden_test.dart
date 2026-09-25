@@ -35,7 +35,12 @@ import 'support/moments.dart';
 /// Цели, до которых такой гараж уже дорос, взяты заранее, а сейв записан в
 /// ту же минуту, что и снимок: иначе первый тик наливал бы бак за месяцы
 /// оффлайна, открывал цели пачкой, и на снимок попадала плашка «цель взята».
-GameState _stateWith({required int banki, required double money, required DateTime now}) {
+GameState _stateWith({
+  required int banki,
+  required double money,
+  required DateTime now,
+  double flux = 0,
+}) {
   var state = newGame(
     content: kGenerators,
     upgrades: kUpgrades,
@@ -48,6 +53,7 @@ GameState _stateWith({required int banki, required double money, required DateTi
   state = state.copyWith(
     generators: state.generators.copyWith(items: items),
     resources: state.resources.copyWith(money: money, ml: 640),
+    flux: state.flux.copyWith(seconds: flux),
   );
   return const GameEngine().checkAchievements(state).state;
 }
@@ -74,7 +80,7 @@ void main() {
 
   /// Часы подменяются намеренно: от них зависит и цена на рынке, и то, стоит
   /// ли в гараже гость. См. `test/support/moments.dart`.
-  Future<void> open(WidgetTester tester, DateTime now, Size size) async {
+  Future<void> open(WidgetTester tester, DateTime now, Size size, {double flux = 0}) async {
     tester.view
       ..physicalSize = size
       ..devicePixelRatio = 1.0;
@@ -84,7 +90,7 @@ void main() {
       ProviderScope(
         overrides: [
           initialStateProvider
-              .overrideWithValue(_stateWith(banki: 7, money: 840, now: now)),
+              .overrideWithValue(_stateWith(banki: 7, money: 840, now: now, flux: flux)),
           timeProvider.overrideWithValue(() => now),
         ],
         child: MaterialApp(
@@ -156,6 +162,36 @@ void main() {
       matchesGoldenFile('goldens/screen_garage_event.png'),
     );
 
+    expect(tester.takeException(), isNull);
+  });
+
+  // Поток: кнопка ускорения рядом с пультом и вкладка потока. По этим
+  // снимкам смотрится, что кнопка не отняла у магазина строку.
+  for (final (size, name) in const [
+    (Size(390, 844), '844'),
+    (Size(320, 640), '640'),
+  ]) {
+    testWidgets('кнопка ускорения на ${size.width.toInt()}×$name', (tester) async {
+      await open(tester, quietMoment, size, flux: 42 * 60);
+      await expectLater(
+        find.byType(GarageScreen),
+        matchesGoldenFile('goldens/screen_flux_button_$name.png'),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('вкладка потока на 390×844', (tester) async {
+    await open(tester, quietMoment, const Size(390, 844), flux: 42 * 60);
+    await expand(tester);
+    await tester.tap(find.text('ПОТОК'));
+    // Два кадра: на первом подложка вкладки только трогается с места.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await expectLater(
+      find.byType(GarageScreen),
+      matchesGoldenFile('goldens/screen_flux_tab.png'),
+    );
     expect(tester.takeException(), isNull);
   });
 }

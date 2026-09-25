@@ -11,6 +11,7 @@ import '../../providers/feedback_provider.dart';
 import '../../providers/game_provider.dart';
 import '../theme/garage.dart';
 import '../widgets/shop.dart';
+import 'flux_tab.dart';
 import 'goals_tab.dart';
 import 'vitya_tab.dart';
 
@@ -34,29 +35,55 @@ const List<(int, String)> kBuyModes = [
   (kBuyMax, 'МАКС'),
 ];
 
+/// Вкладки шторки. Своим перечислением, а не номером: вкладка потока
+/// появляется не сразу, и с номерами выбранная вкладка съезжала бы на
+/// соседнюю в тот момент, когда поток приходит.
+enum ShelfTab {
+  stills('АППАРАТЫ'),
+  upgrades('УЛУЧШЕНИЯ'),
+  flux('ПОТОК'),
+  goals('ЦЕЛИ'),
+  vitya('ВИТЯ');
+
+  final String label;
+  const ShelfTab(this.label);
+}
+
 /// Содержимое шторки магазина: вкладки и списки покупок.
 ///
 /// Рамку, ручку и положения рисует ShelfSheet; здесь — только то, что
 /// внутри.
-class Shelf extends StatelessWidget {
-  final int tab;
-  final ValueChanged<int> onTab;
+class Shelf extends ConsumerWidget {
+  final ShelfTab tab;
+  final ValueChanged<ShelfTab> onTab;
   const Shelf({super.key, required this.tab, required this.onTab});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Вкладка потока — с первым потоком, как кнопка ускорения: пустая
+    // копилка новичку ничего не говорит, а на 320 точках пятая вкладка
+    // уводит строку в прокрутку.
+    final flux = ref.watch(gameProvider.select((s) => s.flux.opened)) ||
+        ref.watch(fluxSpeedProvider) > 1;
+    final tabs = [
+      for (final t in ShelfTab.values)
+        if (t != ShelfTab.flux || flux) t,
+    ];
+    final shown = tabs.contains(tab) ? tab : ShelfTab.stills;
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(GS.s3, 0, GS.s3, GS.s2),
-          child: _Tabs(index: tab, onChanged: onTab),
+          child: _Tabs(tabs: tabs, selected: shown, onChanged: onTab),
         ),
         Expanded(
-          child: switch (tab) {
-            0 => const _StillsTab(),
-            1 => const _UpgradesTab(),
-            2 => const GoalsTab(),
-            _ => const VityaTab(),
+          child: switch (shown) {
+            ShelfTab.stills => const _StillsTab(),
+            ShelfTab.upgrades => const _UpgradesTab(),
+            ShelfTab.flux => const FluxTab(),
+            ShelfTab.goals => const GoalsTab(),
+            ShelfTab.vitya => const VityaTab(),
           },
         ),
       ],
@@ -68,11 +95,10 @@ class Shelf extends StatelessWidget {
 const double _kTabsHeight = 44;
 
 class _Tabs extends ConsumerWidget {
-  final int index;
-  final ValueChanged<int> onChanged;
-  const _Tabs({required this.index, required this.onChanged});
-
-  static const _labels = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ЦЕЛИ', 'ВИТЯ'];
+  final List<ShelfTab> tabs;
+  final ShelfTab selected;
+  final ValueChanged<ShelfTab> onChanged;
+  const _Tabs({required this.tabs, required this.selected, required this.onChanged});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -94,11 +120,24 @@ class _Tabs extends ConsumerWidget {
         .where((u) => !u.purchased && money >= engine.upgradeCost(u, now))
         .length;
     final canSleep = state.prestige.pendingWisdom > 0;
+    // Поток: сколько улучшений по карману, а полная копилка — просто точка:
+    // сверх неё поток уже не копится, и его пора тратить.
+    final f = state.flux;
+    final fluxBuys = (f.canBuyRate ? 1 : 0) + (f.canBuyBank ? 1 : 0);
     final bulk = state.achievements.hasPerk(AchievementPerk.bulkBuy);
+
+    int? dot(ShelfTab t) => switch (t) {
+          ShelfTab.stills when affordableStills > 0 => affordableStills,
+          ShelfTab.upgrades when affordableUpgrades > 0 => affordableUpgrades,
+          ShelfTab.flux when fluxBuys > 0 => fluxBuys,
+          ShelfTab.flux when f.isBankFull => 0,
+          ShelfTab.vitya when canSleep => 0,
+          _ => null,
+        };
 
     return Row(
       children: [
-        Expanded(child: _tabs(context, ref, affordableStills, affordableUpgrades, canSleep)),
+        Expanded(child: _tabs(context, ref, dot)),
         // Количество — в строке вкладок, а не отдельным рядом под ними: ряд
         // съедал высоту у списка ради выбора, который делают раз в десять
         // минут. Кнопка стоит на всех вкладках: исчезай она вне «АППАРАТОВ»,
@@ -116,18 +155,13 @@ class _Tabs extends ConsumerWidget {
         color: selected ? GColors.textHi : GColors.textMid,
       );
 
-  Widget _tabs(
-    BuildContext context,
-    WidgetRef ref,
-    int affordableStills,
-    int affordableUpgrades,
-    bool canSleep,
-  ) {
+  Widget _tabs(BuildContext context, WidgetRef ref, int? Function(ShelfTab) dot) {
+    final labels = [for (final t in tabs) t.label];
     Widget tab(int i) => GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
-            if (i != index) ref.read(feedbackProvider).buzz(Buzz.select);
-            onChanged(i);
+            if (tabs[i] != selected) ref.read(feedbackProvider).buzz(Buzz.select);
+            onChanged(tabs[i]);
           },
           child: Stack(
             clipBehavior: Clip.none,
@@ -143,18 +177,18 @@ class _Tabs extends ConsumerWidget {
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: _kTabPad),
                   decoration: BoxDecoration(
-                    color: i == index ? GColors.copper : null,
+                    color: tabs[i] == selected ? GColors.copper : null,
                     borderRadius: BorderRadius.circular(GR.pill),
                   ),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(_labels[i], maxLines: 1, style: _style(i == index)),
+                    child: Text(labels[i], maxLines: 1, style: _style(tabs[i] == selected)),
                   ),
                 ),
               ),
               // Метка «тут есть что взять» — над углом вкладки, а не
               // числом в строке: число отнимало ширину у подписи.
-              if (_dot(i, affordableStills, affordableUpgrades, canSleep) case final n?)
+              if (dot(tabs[i]) case final n?)
                 Positioned(top: -3, right: 3, child: _Dot(count: n)),
             ],
           ),
@@ -184,7 +218,7 @@ class _Tabs extends ConsumerWidget {
             return math.max(w + (_kTabPad + _kTabInset) * 2, 44.0);
           }
 
-          final natural = [for (final label in _labels) widthOf(label)];
+          final natural = [for (final label in labels) widthOf(label)];
           final needed = natural.fold<double>(0, (a, b) => a + b);
 
           // Помещаются — делят строку по замеренной ширине подписей: тогда
@@ -196,7 +230,7 @@ class _Tabs extends ConsumerWidget {
           if (needed <= c.maxWidth) {
             return Row(
               children: [
-                for (var i = 0; i < _labels.length; i++)
+                for (var i = 0; i < labels.length; i++)
                   Expanded(flex: (natural[i] * 10).round(), child: tab(i)),
               ],
             );
@@ -208,7 +242,7 @@ class _Tabs extends ConsumerWidget {
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             children: [
-              for (var i = 0; i < _labels.length; i++)
+              for (var i = 0; i < labels.length; i++)
                 SizedBox(width: natural[i] + GS.s2, child: tab(i)),
             ],
           );
@@ -216,14 +250,6 @@ class _Tabs extends ConsumerWidget {
       ),
     );
   }
-
-/// Что показать в углу вкладки. `null` — ничего.
-  static int? _dot(int tab, int stills, int upgrades, bool sleep) => switch (tab) {
-        0 when stills > 0 => stills,
-        1 when upgrades > 0 => upgrades,
-        3 when sleep => 0,
-        _ => null,
-      };
 }
 
 /// Кружок в углу вкладки. Ноль — просто точка: «загляни сюда».
