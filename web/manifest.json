@@ -1,11 +1,11 @@
 {
-    "name": "Витя гонит",
-    "short_name": "Витя гонит",
+    "name": "Витя в деле",
+    "short_name": "Витя в деле",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#14100C",
     "theme_color": "#14100C",
-    "description": "Витя гонит самогон в гараже.",
+    "description": "Idle-игра про друга: от банки в гараже до самогонного коллайдера.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -138,5 +138,5 @@ if __name__ == "__main__":
     handler = functools.partial(NoCacheHandler, directory=ROOT)
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("127.0.0.1", PORT), handler) as httpd:
-        print(f"Витя гонит: http://localhost:{PORT}  (кэш отключён)")
+        print(f"Витя в деле: http://localhost:{PORT}  (кэш отключён)")
         httpd.serve_forever()

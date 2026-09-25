@@ -5,8 +5,8 @@
 как проверять, какие правила нельзя нарушать и почему. Что в игре есть —
 в [README.md](README.md) и [docs/DESIGN.md](docs/DESIGN.md).
 
-«ВИТЯ ГОНИТ» — idle-игра на Flutter про друга, который гонит самогон в гараже.
-Играют в веб-версию: https://mercurrial.github.io/vitya_clicker/
+«ВИТЯ В ДЕЛЕ» — idle-игра на Flutter про друга, который гонит самогон в гараже.
+Играют в веб-версию: https://mercurrial.github.io/vitya-v-dele/
 
 ## Порядок работы
 

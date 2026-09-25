@@ -6,7 +6,7 @@ Idle-игра: Витя гонит самогон в гараже и посте�
 Flutter · Android, iOS, Web, Windows · версия 1.0.0 ·
 [что менялось](CHANGELOG.md)
 
-**Играть:** https://mercurrial.github.io/vitya_clicker/
+**Играть:** https://mercurrial.github.io/vitya-v-dele/
 
 ---
 
