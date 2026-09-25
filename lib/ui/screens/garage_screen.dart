@@ -15,8 +15,10 @@ import '../theme/garage.dart';
 import '../widgets/top_panel.dart';
 import '../widgets/vitya_toast.dart';
 import 'shelf.dart';
+import 'shelf_sheet.dart';
 
 export 'shelf.dart' show buyAmountProvider, kBuyMax, kBuyModes;
+export 'shelf_sheet.dart' show ShelfPosition, shelfPositionProvider;
 
 /// Ширина «телефона»: на широком экране игра не растягивается, иначе карточки
 /// разъезжаются на пол-экрана и верстка ломается.
@@ -34,6 +36,10 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   late final HeatController _heat;
   int _tab = 0;
 
+  /// Прошлое состояние жара — чтобы не звенеть «в окне» при выходе из
+  /// паузы: жар в окне и был, нового попадания игрок не сделал.
+  HeatStatus _lastStatus = HeatStatus.off;
+
   @override
   void initState() {
     super.initState();
@@ -49,12 +55,16 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   }
 
   void _onHeatStatus() {
+    final was = _lastStatus;
+    _lastStatus = _heat.status;
+    if (was == HeatStatus.paused) return;
     switch (_heat.status) {
       case HeatStatus.inWindow:
         ref.read(feedbackProvider).play(Sfx.window);
       case HeatStatus.overheated:
         ref.read(feedbackProvider).hit(Sfx.overheat, Buzz.medium);
       case HeatStatus.off:
+      case HeatStatus.paused:
         break;
     }
   }
@@ -116,6 +126,9 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   }
 
   void _startStoking() {
+    // Магазин развёрнут — руки заняты. Пробел на компьютере сюда доходит,
+    // хотя гаража не видно.
+    if (_heat.paused) return;
     _heat.startStoking();
     ref.read(gameProvider.notifier).registerTouch();
     setState(() {}); // портрет показывает отдачу
@@ -149,6 +162,16 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
       gameProvider.select((s) => s.upgrades.heatControlMultiplier),
     );
 
+    // Шторка развёрнута — у Вити заняты руки. Пауза ставится там, где
+    // решается положение, а не в кадре анимации: тянуть шторку ещё не
+    // значит уйти в магазин.
+    // В слушателе, а не присваиванием в build: пауза уведомляет
+    // подписчиков жара, а те пишут в провайдеры — посреди сборки нельзя.
+    ref.listen(shelfPositionProvider, (_, to) {
+      _heat.paused = to == ShelfPosition.shop;
+    });
+    final shop = ref.watch(shelfPositionProvider) == ShelfPosition.shop;
+
     return Focus(
       autofocus: true,
       onKeyEvent: _onKey,
@@ -162,68 +185,48 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
                 constraints: const BoxConstraints(maxWidth: _kPhoneWidth),
                 child: SafeArea(
                   child: LayoutBuilder(
-                    builder: (context, c) => Column(
-                    children: [
-                      const TopPanel(),
-                      // Гараж — центр экрана. Портрет висит на стене, аппараты
-                      // стоят на полу и на полках: империю видно.
-                      //
-                      // Высота — половина того, что остаётся после кассы и
-                      // пульта, но в пределах: на низком окне магазин не
-                      // должен сжиматься до одной строки, а на высоком сцена
-                      // не должна растягиваться в пустую кирпичную стену.
-                      SizedBox(
-                        height: ((c.maxHeight - _fixedHeight) * 0.5).clamp(190.0, 380.0),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: GS.s3),
-                          // Зажимать можно ВЕЗДЕ по сцене: гараж — это и есть
-                          // кнопка. Listener, а не GestureDetector: арена жестов
-                          // откладывает решение, и зажим не начинался вовсе.
-                          // MouseRegion — ради браузера: курсор говорит, что
-                          // гараж нажимается, а onExit снимает жар, если мышь
-                          // увели со сцены с зажатой кнопкой.
-                          child: MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            onExit: (_) => _stopStoking(),
-                            child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (_) => _startStoking(),
-                              onPointerUp: (_) => _stopStoking(),
-                              onPointerCancel: (_) => _stopStoking(),
-                              child: GarageScene(
-                                heat: _heat,
-                                portrait: (size) => VityaPortrait(
-                                  era: era,
-                                  mood: mood,
-                                  pressed: _heat.isStoking,
-                                  size: size,
-                                  style: PixelPortraitStyle.pixel,
-                                  radius: 0,
-                                ),
+                    builder: (context, c) => Stack(
+                      children: [
+                        Column(
+                          children: [
+                            const TopPanel(),
+                            Expanded(child: _garage(era, mood)),
+                            // Место под шторку в положении «Гараж»: сама
+                            // шторка лежит поверх, а гараж над ней получает
+                            // всё остальное. Пришёл гость — ужимается сцена,
+                            // а не магазин.
+                            SizedBox(height: shelfGarageHeight(c.maxHeight)),
+                          ],
+                        ),
+                        Positioned.fill(
+                          child: ShelfSheet(
+                            strip: AnimatedBuilder(
+                              animation: _heat,
+                              builder: (context, _) => ShopStrip(
+                                series: _heat.seriesMultiplier,
+                                onTap: () => ref.read(shelfPositionProvider.notifier).state =
+                                    ShelfPosition.garage,
                               ),
+                            ),
+                            child: Shelf(
+                              tab: _tab,
+                              onTab: (i) => setState(() => _tab = i),
                             ),
                           ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(GS.s3, GS.s2, GS.s3, GS.s2),
-                        child: HeatPanel(controller: _heat),
-                      ),
-                      Expanded(
-                        child: Shelf(
-                          tab: _tab,
-                          onTab: (i) => setState(() => _tab = i),
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            // Плашки событий — поверх сцены, но ниже кассы.
+            // Плашки событий — поверх всего. В гараже — под строкой кассы, над
+            // сценой. В развёрнутом магазине — внизу: сверху там вкладки и
+            // первые строки списка, а цели берутся как раз покупками, и
+            // плашка закрывала бы то, что сейчас покупают.
             Positioned(
-              top: MediaQuery.of(context).padding.top + 60,
+              top: shop ? null : MediaQuery.of(context).padding.top + kShopStripHeight,
+              bottom: shop ? MediaQuery.of(context).padding.bottom + GS.s4 : null,
               left: 0,
               right: 0,
               child: Center(
@@ -238,13 +241,55 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
       ),
     );
   }
-}
 
-/// Сколько по высоте занимают касса с продажей и пульт жара — всё, кроме
-/// сцены и магазина. Оценка, а не замер: от неё зависит только то, как
-/// остаток делится между сценой и магазином, и промах на десяток точек
-/// ничего не ломает.
-const double _fixedHeight = 300;
+  /// Гараж: сцена и пульт жара под ней — вся эта область зажимается.
+  ///
+  /// Пульт — в низу сцены, под пальцем: зажимают там же, где смотрят на
+  /// шкалу. Снизу — поле под ручку шторки: она выступает над своим краем
+  /// (см. kShelfGrabOverhang) и заходит на нижнее поле пульта, где ни
+  /// надписей, ни шкалы.
+  Widget _garage(VityaEra era, VityaMood mood) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(GS.s3, 0, GS.s3, kShelfGrabOverhang - 6),
+      // Зажимать можно ВЕЗДЕ по гаражу: гараж — это и есть кнопка.
+      // Listener, а не GestureDetector: арена жестов откладывает решение, и
+      // зажим не начинался вовсе. MouseRegion — ради браузера: курсор
+      // говорит, что гараж нажимается, а onExit снимает жар, если мышь
+      // увели с гаража с зажатой кнопкой.
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onExit: (_) => _stopStoking(),
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) => _startStoking(),
+          onPointerUp: (_) => _stopStoking(),
+          onPointerCancel: (_) => _stopStoking(),
+          child: Column(
+            children: [
+              // Портрет висит на стене, аппараты стоят на полу и на полках:
+              // империю видно.
+              Expanded(
+                child: GarageScene(
+                  heat: _heat,
+                  portrait: (size) => VityaPortrait(
+                    era: era,
+                    mood: mood,
+                    pressed: _heat.isStoking,
+                    size: size,
+                    style: PixelPortraitStyle.pixel,
+                    radius: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: GS.s2),
+              HeatPanel(controller: _heat),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Тёплый свет лампы под потолком гаража.
 class _LampLight extends StatelessWidget {

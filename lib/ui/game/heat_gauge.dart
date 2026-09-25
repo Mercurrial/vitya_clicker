@@ -28,7 +28,9 @@ class HeatPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(GS.s3, GS.s2, GS.s3, GS.s2 + 2),
+      // Поля и зазоры тоньше прежних: пульт стоит между сценой и
+      // магазином, и каждая его точка отнята у одного из них.
+      padding: const EdgeInsets.fromLTRB(GS.s3, 5, GS.s3, 6),
       decoration: BoxDecoration(
         color: GColors.surface1,
         borderRadius: BorderRadius.circular(GR.button),
@@ -47,9 +49,9 @@ class HeatPanel extends StatelessWidget {
               fallback: _HeatHeader(controller: controller),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           SizedBox(
-            height: 20,
+            height: 18,
             child: AnimatedBuilder(
               animation: controller,
               builder: (context, _) => CustomPaint(
@@ -64,7 +66,7 @@ class HeatPanel extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           _SortRow(controller: controller),
         ],
       ),
@@ -117,7 +119,9 @@ class _HeatHeader extends StatelessWidget {
         AnimatedBuilder(
           animation: controller,
           builder: (context, _) {
-            final mult = controller.multiplier;
+            // Набранная серия, а не действующий множитель: на паузе она
+            // не множит, но и не пропадает — это и надо видеть.
+            final mult = controller.seriesMultiplier;
             final live = mult > 1.05;
             return Text.rich(
               TextSpan(children: [
@@ -149,6 +153,7 @@ Color heatAccent(HeatStatus status) => switch (status) {
       HeatStatus.overheated => GColors.hot,
       HeatStatus.inWindow => GColors.green,
       HeatStatus.off => GColors.textHi,
+      HeatStatus.paused => GColors.textLo,
     };
 
 /// Сорт: что сейчас в баке и что с ним делает жар.
@@ -267,7 +272,7 @@ class _SortRow extends ConsumerWidget {
                                   color: switch (status) {
                                     HeatStatus.inWindow => GColors.green,
                                     HeatStatus.overheated => GColors.hot,
-                                    HeatStatus.off => GColors.textLo,
+                                    HeatStatus.off || HeatStatus.paused => GColors.textLo,
                                   },
                                 ),
                               ],
@@ -341,7 +346,7 @@ class _GaugePainter extends CustomPainter {
               switch (status) {
                 HeatStatus.overheated => GColors.hot,
                 HeatStatus.inWindow => GColors.green,
-                HeatStatus.off => GColors.copper,
+                HeatStatus.off || HeatStatus.paused => GColors.copper,
               },
             ],
           ).createShader(Rect.fromLTWH(0, top, fill.clamp(1.0, size.width), trackHeight)),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,6 +13,12 @@ import '../theme/garage.dart';
 import '../widgets/shop.dart';
 import 'goals_tab.dart';
 import 'vitya_tab.dart';
+
+/// Поля по бокам подписи вкладки — внутри подложки.
+const double _kTabPad = 1;
+
+/// Отступ подложки выбранной вкладки от края строки.
+const double _kTabInset = 3;
 
 /// Режим «купить максимум».
 const int kBuyMax = -1;
@@ -26,7 +34,10 @@ const List<(int, String)> kBuyModes = [
   (kBuyMax, 'МАКС'),
 ];
 
-/// Нижняя полка: вкладки и списки покупок.
+/// Содержимое шторки магазина: вкладки и списки покупок.
+///
+/// Рамку, ручку и положения рисует ShelfSheet; здесь — только то, что
+/// внутри.
 class Shelf extends StatelessWidget {
   final int tab;
   final ValueChanged<int> onTab;
@@ -34,32 +45,27 @@ class Shelf extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: GColors.surface1,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(GR.sheet - 6)),
-        boxShadow: GShadow.sheet,
-        border: Border(top: BorderSide(color: GColors.hairline)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(GS.s3, GS.s3, GS.s3, GS.s2),
-            child: _Tabs(index: tab, onChanged: onTab),
-          ),
-          Expanded(
-            child: switch (tab) {
-              0 => const _StillsTab(),
-              1 => const _UpgradesTab(),
-              2 => const GoalsTab(),
-              _ => const VityaTab(),
-            },
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(GS.s3, 0, GS.s3, GS.s2),
+          child: _Tabs(index: tab, onChanged: onTab),
+        ),
+        Expanded(
+          child: switch (tab) {
+            0 => const _StillsTab(),
+            1 => const _UpgradesTab(),
+            2 => const GoalsTab(),
+            _ => const VityaTab(),
+          },
+        ),
+      ],
     );
   }
 }
+
+/// Высота строки вкладок — она же высота кнопки количества. Под палец.
+const double _kTabsHeight = 44;
 
 class _Tabs extends ConsumerWidget {
   final int index;
@@ -92,84 +98,126 @@ class _Tabs extends ConsumerWidget {
 
     return Row(
       children: [
-        Expanded(child: _tabs(ref, affordableStills, affordableUpgrades, canSleep)),
+        Expanded(child: _tabs(context, ref, affordableStills, affordableUpgrades, canSleep)),
         // Количество — в строке вкладок, а не отдельным рядом под ними: ряд
         // съедал высоту у списка ради выбора, который делают раз в десять
         // минут. Кнопка стоит на всех вкладках: исчезай она вне «АППАРАТОВ»,
         // вкладки меняли бы ширину и уезжали из-под пальца.
         if (bulk) ...[
-          const SizedBox(width: GS.s2),
+          const SizedBox(width: GS.s1),
           const _BuyAmountButton(),
         ],
       ],
     );
   }
 
-  Widget _tabs(WidgetRef ref, int affordableStills, int affordableUpgrades, bool canSleep) {
+  TextStyle _style(bool selected) => GType.tab().copyWith(
+        fontSize: 11,
+        color: selected ? GColors.textHi : GColors.textMid,
+      );
+
+  Widget _tabs(
+    BuildContext context,
+    WidgetRef ref,
+    int affordableStills,
+    int affordableUpgrades,
+    bool canSleep,
+  ) {
+    Widget tab(int i) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (i != index) ref.read(feedbackProvider).buzz(Buzz.select);
+            onChanged(i);
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Подложка выбранной вкладки — с отступом от края строки, а
+              // ловит палец вся высота строки: отступ внутри строки отнимал
+              // у кнопки шесть точек из сорока четырёх.
+              Positioned.fill(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: gEase,
+                  margin: const EdgeInsets.all(_kTabInset),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: _kTabPad),
+                  decoration: BoxDecoration(
+                    color: i == index ? GColors.copper : null,
+                    borderRadius: BorderRadius.circular(GR.pill),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(_labels[i], maxLines: 1, style: _style(i == index)),
+                  ),
+                ),
+              ),
+              // Метка «тут есть что взять» — над углом вкладки, а не
+              // числом в строке: число отнимало ширину у подписи.
+              if (_dot(i, affordableStills, affordableUpgrades, canSleep) case final n?)
+                Positioned(top: -3, right: 3, child: _Dot(count: n)),
+            ],
+          ),
+        );
+
     return Container(
-      height: 42,
-      padding: const EdgeInsets.all(3),
+      height: _kTabsHeight,
       decoration: BoxDecoration(
         color: const Color(0x40000000),
         borderRadius: BorderRadius.circular(GR.pill),
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _labels.length; i++)
-            Expanded(
-              // Место — по длине подписи: у заглавных Rubik знаки почти
-              // одной ширины, и число букв и есть ширина слова. Веса,
-              // подобранные на глаз, давали ВИТЕ лишнее, а «АППАРАТЫ» на
-              // 320 точках ужимались до двух третей — рядом с кнопкой
-              // количества места на такие потери нет. Единица сверху —
-              // отступы по краям подписи.
-              flex: _labels[i].length + 1,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (i != index) ref.read(feedbackProvider).buzz(Buzz.select);
-                  onChanged(i);
-                },
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned.fill(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: gEase,
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: i == index ? GColors.copper : null,
-                          borderRadius: BorderRadius.circular(GR.pill),
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _labels[i],
-                            maxLines: 1,
-                            style: GType.tab().copyWith(
-                              fontSize: 11,
-                              color: i == index ? GColors.textHi : GColors.textMid,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Метка «тут есть что взять» — над углом вкладки, а не
-                    // числом в строке: число отнимало ширину у подписи.
-                    if (_dot(i, affordableStills, affordableUpgrades, canSleep) case final n?)
-                      Positioned(top: -6, right: 0, child: _Dot(count: n)),
-                  ],
-                ),
-              ),
-            ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // Сколько каждой подписи нужно, чтобы не ужиматься.
+          final scaler = MediaQuery.textScalerOf(context);
+          double widthOf(String label) {
+            final painter = TextPainter(
+              text: TextSpan(text: label, style: _style(true)),
+              textDirection: TextDirection.ltr,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            final w = painter.width;
+            painter.dispose();
+            // Не уже 44 точек: вкладка — кнопка. «ВИТЯ» по подписи выходила
+            // в 40, и на 320 точках в неё целились, а не попадали.
+            return math.max(w + (_kTabPad + _kTabInset) * 2, 44.0);
+          }
+
+          final natural = [for (final label in _labels) widthOf(label)];
+          final needed = natural.fold<double>(0, (a, b) => a + b);
+
+          // Помещаются — делят строку по замеренной ширине подписей: тогда
+          // ужимаются все поровну, а не одна. Раньше делили по числу букв,
+          // и это было почти то же самое: у заглавных Rubik знаки почти одной
+          // ширины. А веса, подобранные на глаз, давали ВИТЕ лишнее, и
+          // «АППАРАТЫ» на 320 точках ужимались до двух третей.
+          //
+          if (needed <= c.maxWidth) {
+            return Row(
+              children: [
+                for (var i = 0; i < _labels.length; i++)
+                  Expanded(flex: (natural[i] * 10).round(), child: tab(i)),
+              ],
+            );
+          }
+          // Не помещаются — строка листается вбок, а подписи остаются в
+          // свой размер. Вкладок станет больше (поток, мудрость — план
+          // релиза 1.2.0), и ужимать их все до нечитаемого кегля нельзя.
+          return ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              for (var i = 0; i < _labels.length; i++)
+                SizedBox(width: natural[i] + GS.s2, child: tab(i)),
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// Что показать в углу вкладки. `null` — ничего.
+/// Что показать в углу вкладки. `null` — ничего.
   static int? _dot(int tab, int stills, int upgrades, bool sleep) => switch (tab) {
         0 when stills > 0 => stills,
         1 when upgrades > 0 => upgrades,
@@ -235,7 +283,7 @@ class _BuyAmountButton extends ConsumerWidget {
       },
       child: Container(
         width: 44,
-        height: 42,
+        height: _kTabsHeight,
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 3),
         decoration: BoxDecoration(
@@ -419,7 +467,7 @@ class _ToggleBought extends ConsumerWidget {
         ref.read(showBoughtUpgradesProvider.notifier).state = !showing;
       },
       child: Container(
-        height: 40,
+        height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(GR.pill),

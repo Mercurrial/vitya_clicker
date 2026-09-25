@@ -171,8 +171,12 @@ class _SceneLayout extends StatelessWidget {
 
     final floorY = h - kFloorHeight;
 
-    // Портрет — треть высоты, но не мельче, чем его можно узнать.
-    final frame = (h * 0.34).clamp(64.0, 112.0).floorToDouble();
+    // Портрет — чуть больше четверти высоты, но не мельче, чем его можно
+    // узнать. Была треть: пока сцена занимала полэкрана, это не мешало, а
+    // когда магазин вырос до половины экрана (docs/DECISIONS.md, «Главный
+    // экран»), треть высоты на портрет оставляла полу 60 точек, и первая
+    // банка выходила ростом в полтора сантиметра.
+    final frame = (h * 0.28).clamp(56.0, 112.0).floorToDouble();
     final frameH = frame * 1.1;
     const portraitTop = 10.0;
     final plaqueBottom = portraitTop + frameH + 26;
@@ -208,12 +212,26 @@ class _SceneLayout extends StatelessWidget {
     final right = shelved.skip(perShelf).toList();
 
     // --- Пол -------------------------------------------------------------
-    final floorPixel = _fitPixel(
-      floor,
-      width: w - 24,
-      height: floorY + 4 - plaqueBottom - _tagSpace,
-      max: 5,
-      onFloor: true,
+    // Сам аппарат с огнём встаёт под табличку портрета, а пар над ним может
+    // уходить за табличку — пол рисуется раньше портрета. Место под пар
+    // съедало пятую часть роста аппарата ради облачка, которое видно только
+    // при жаре.
+    final floorPixel = math.min(
+      _fitPixel(
+        floor,
+        width: w - 24,
+        height: floorY + 4 - plaqueBottom - _tagSpace,
+        max: 5,
+        onFloor: true,
+      ),
+      _fitPixel(
+        floor,
+        width: w - 24,
+        height: floorY + 4 - portraitTop - _tagSpace,
+        max: 5,
+        onFloor: true,
+        steam: true,
+      ),
     );
 
     // --- Полки -----------------------------------------------------------
@@ -254,12 +272,6 @@ class _SceneLayout extends StatelessWidget {
                 tagBelow: false,
               ),
             ),
-        Positioned(
-          top: portraitTop,
-          left: 0,
-          right: 0,
-          child: Center(child: portrait(frame)),
-        ),
         if (floor.isEmpty)
           Positioned(
             left: 0,
@@ -287,6 +299,13 @@ class _SceneLayout extends StatelessWidget {
               tagBelow: true,
             ),
           ),
+        // Портрет — поверх пола: пар от аппаратов уходит за табличку.
+        Positioned(
+          top: portraitTop,
+          left: 0,
+          right: 0,
+          child: Center(child: portrait(frame)),
+        ),
       ],
     );
   }
@@ -301,20 +320,24 @@ class _SceneLayout extends StatelessWidget {
     required double height,
     required double max,
     bool onFloor = false,
+    bool steam = false,
   }) {
     if (items.isEmpty) return max;
-    final fit = _fit(items, width: width, height: height, onFloor: onFloor);
+    final fit = _fit(items, width: width, height: height, onFloor: onFloor, steam: steam);
     // Шаг в полточки — см. PixelPainter: на телефоне это целые пиксели.
     return (fit * 2).floorToDouble().clamp(2.0, max * 2) / 2;
   }
 
   /// Во сколько раз ряд можно увеличить, чтобы он ещё помещался. Меньше
   /// единицы — не помещается даже в пиксель на клетку.
+  ///
+  /// [onFloor] — считать огонь под аппаратом, [steam] — ещё и пар над ним.
   static double _fit(
     List<_Owned> items, {
     required double width,
     required double height,
     bool onFloor = false,
+    bool steam = false,
   }) {
     if (items.isEmpty) return double.infinity;
     var spriteW = 0.0;
@@ -324,7 +347,9 @@ class _SceneLayout extends StatelessWidget {
       spriteW += s.width + _gap;
       spriteH = math.max(
         spriteH,
-        s.height + (onFloor ? (stillHasFire(it.id) ? _fireRows : 0) + _steamRows : 0),
+        s.height +
+            (onFloor ? (stillHasFire(it.id) ? _fireRows : 0) : 0) +
+            (steam ? _steamRows : 0),
       );
     }
     return math.min(width / spriteW, height / spriteH);

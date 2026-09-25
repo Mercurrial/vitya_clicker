@@ -138,16 +138,28 @@ class GameNotifier extends Notifier<GameState> {
     final engine = ref.read(gameEngineProvider);
     final now = ref.read(timeProvider)();
 
-    var next = engine.processTick(state, now, heatMultiplier: _heatMultiplier);
+    final heat = ref.read(heatStatusProvider);
+    // Магазин развёрнут — у Вити заняты руки, производство идёт по базе.
+    // Множитель на паузе и так единица (HeatController.multiplier), но
+    // решать, что пауза не множит, должен тот, кто считает производство:
+    // иначе запоздавший на кадр множитель посчитался бы без пальца.
+    final paused = heat == HeatStatus.paused;
+    var next = engine.processTick(
+      state,
+      now,
+      heatMultiplier: paused ? 1.0 : _heatMultiplier,
+    );
 
     // Сорт двигается тем же тиком: держишь жар в окне — растёт, перегрел —
-    // горит, отвлёкся — медленно сползает.
+    // горит, отвлёкся — медленно сползает. На паузе стоит: он двигается от
+    // жара, а жар на паузе стоит. Сползай он, минута в магазине стоила бы
+    // ступени сорта.
     final dt = _tickInterval.inMilliseconds / 1000.0;
-    final heat = ref.read(heatStatusProvider);
     next = engine.advanceSort(next, switch (heat) {
       HeatStatus.inWindow => kSortGainPerSecond * dt,
       HeatStatus.overheated => -kSortBurnPerSecond * dt,
       HeatStatus.off => -kSortDecayPerSecond * dt,
+      HeatStatus.paused => 0,
     });
 
     // Время в игре — тоже тиком и тем же шагом, а не разницей часов.
