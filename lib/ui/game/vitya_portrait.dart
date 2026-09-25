@@ -9,7 +9,17 @@ import '../theme/garage.dart';
 /// берётся из контраста «эпическая рама ↔ обычный человек», а не из издёвки.
 enum VityaEra { start, work, boss }
 
-extension _EraAsset on VityaEra {
+/// Эпоха Вити по суммарно нагнанному.
+///
+/// Пороги низкие намеренно: ранг — бесплатный источник ощущения роста, и если
+/// он не меняется за первые полчаса, он не работает вовсе.
+VityaEra vityaEraFor(double lifetime) {
+  if (lifetime < 1e4) return VityaEra.start; // до 10 литров
+  if (lifetime < 1e7) return VityaEra.work; // до 10 тысяч литров
+  return VityaEra.boss;
+}
+
+extension VityaEraLook on VityaEra {
   String get asset => switch (this) {
         VityaEra.start => 'assets/images/vitya/vitya_doc.jpg',
         VityaEra.work => 'assets/images/vitya/vitya_frown.jpg',
@@ -339,10 +349,14 @@ class _Frame extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             softWrap: false,
+            // Буквы всегда тёмные, как гравировка. Настроение уже видно по
+            // раме и её свечению, а подпись должна читаться: крашенная в тон
+            // настроения, она сливалась с латунью — «некуда лить» янтарём по
+            // латуни давало контраст меньше двух к одному.
             style: GType.ui(
               size: 9,
               weight: FontWeight.w700,
-              color: tint != null ? Color.lerp(const Color(0xFF2B1A06), tint, 0.55)! : const Color(0xFF2B1A06),
+              color: const Color(0xFF2B1A06),
               letterSpacing: 0.8,
             ),
           ),

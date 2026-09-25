@@ -131,7 +131,7 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
   @override
   Widget build(BuildContext context) {
     final era = ref.watch(
-      gameProvider.select((s) => _eraFor(s.prestige.totalEverEarned)),
+      gameProvider.select((s) => vityaEraFor(s.prestige.totalEverEarned)),
     );
     final mood = _moodFor(ref.watch(gameProvider));
     // Улучшения «руки» расширяют окно жара. Контроллер живёт в интерфейсе,
@@ -243,16 +243,6 @@ class _GarageScreenState extends ConsumerState<GarageScreen>
 /// остаток делится между сценой и магазином, и промах на десяток точек
 /// ничего не ломает.
 const double _fixedHeight = 300;
-
-/// Эпоха Вити по суммарно нагнанному.
-///
-/// Пороги низкие намеренно: ранг — бесплатный источник ощущения роста, и если
-/// он не меняется за первые полчаса, он не работает вовсе.
-VityaEra _eraFor(double lifetime) {
-  if (lifetime < 1e4) return VityaEra.start; // до 10 литров
-  if (lifetime < 1e7) return VityaEra.work; // до 10 тысяч литров
-  return VityaEra.boss;
-}
 
 /// Тёплый свет лампы под потолком гаража.
 class _LampLight extends StatelessWidget {

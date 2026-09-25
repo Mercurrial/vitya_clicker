@@ -95,7 +95,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
                 with open(os.path.join(ROOT, "index.html"), "rb") as f:
                     html = f.read().decode("utf-8")
             except OSError:
-                self.send_error(404, "index.html not found — сначала flutter build web")
+                self.send_error(404, "Not Found", "index.html не найден — сначала flutter build web")
                 return
 
             html = re.sub(r"serviceWorker\s*:\s*\{[^}]*\}", "serviceWorker: null", html)
@@ -117,8 +117,12 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # Сам файл service worker'а не отдаём вовсе.
+        #
+        # Русский текст — только третьим аргументом, в тело ответа. Второй
+        # уходит в строку статуса, а она бывает только latin-1: с русским там
+        # сервер падал на каждом запросе worker'а и рвал соединение.
         if "flutter_service_worker.js" in self.path:
-            self.send_error(404, "service worker отключён для локальной проверки")
+            self.send_error(404, "Not Found", "service worker отключён для локальной проверки")
             return
 
         super().do_GET()

@@ -124,18 +124,24 @@ class _CashAndMarket extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('КАССА', style: GType.label()),
-              Text(
-                // Касса тикает каждый кадр — нули не срезаем, иначе ширина
-                // числа прыгает туда-сюда.
-                Fmt.money(money, trim: false),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GType.num(
-                  size: 30,
-                  weight: FontWeight.w700,
-                  color: GColors.textHi,
-                  letterSpacing: -0.5,
-                  shadows: const [Shadow(color: GColors.amberGlow, blurRadius: 20)],
+              // Касса ужимается, а не обрезается. На 320 точках «РЫНОК ·
+              // ВЫГОДНО» забирал столько ширины, что главное число игры
+              // выходило «8.75Скс…» — без рублей и без последней цифры.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  // Касса тикает каждый кадр — нули не срезаем, иначе ширина
+                  // числа прыгает туда-сюда.
+                  Fmt.money(money, trim: false),
+                  maxLines: 1,
+                  style: GType.num(
+                    size: 30,
+                    weight: FontWeight.w700,
+                    color: GColors.textHi,
+                    letterSpacing: -0.5,
+                    shadows: const [Shadow(color: GColors.amberGlow, blurRadius: 20)],
+                  ),
                 ),
               ),
             ],
