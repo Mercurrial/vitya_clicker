@@ -3,7 +3,7 @@
 Idle-игра: Витя гонит самогон в гараже и постепенно доходит до орбитального
 самогонного коллайдера.
 
-Flutter · Android, iOS, Web, Windows · версия 1.1.0 ·
+Flutter · Android, iOS, Web, Windows · версия 1.0.0 ·
 [что менялось](CHANGELOG.md)
 
 **Играть:** https://mercurrial.github.io/vitya_clicker/
@@ -131,7 +131,7 @@ dart run tools/demo_saves.dart   # сейвы начала, середины и 
 dart run tools/moments.dart      # когда придут гости
 ```
 
-Сейв кладётся в `localStorage['flutter.vitya_save_v1']`, а часы страницы
+Сейв кладётся в `localStorage['flutter.vitya_save']`, а часы страницы
 сдвигаются параметром: `http://localhost:8770/?t=<миллисекунды>`. Так гостя
 можно увидеть сразу, не дожидаясь их по расписанию.
 

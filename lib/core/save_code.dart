@@ -32,7 +32,15 @@ const String kSaveCodePrefix = 'VITYA';
 
 /// Версия формата кода. Меняется отдельно от версии сейва: сейв внутри кода
 /// хранится как есть и приводится к текущей версии обычными миграциями.
-const int kSaveCodeVersion = 1;
+///
+/// 1 — коды тестовых сборок до выпуска 1.0.0. Выпуск начал нумерацию сейвов
+/// заново, и сейв v1 внутри старого кода по номеру не отличить от нового.
+/// Отличает их только версия кода, поэтому у выпуска она 2, а код версии 1
+/// узнаётся и получает объяснение, а не разбор.
+const int kSaveCodeVersion = 2;
+
+/// Версия кода тестовых сборок: такой код не разбирается.
+const int _testCodeVersion = 1;
 
 /// Чем разделены части. Точка выбрана намеренно: мессенджеры не превращают её
 /// в перенос строки и не делают из кода ссылку.
@@ -53,6 +61,10 @@ enum SaveCodeError {
   /// Код от более новой версии игры.
   fromFuture,
 
+  /// Код от тестовой сборки до выпуска 1.0.0. Не беда и не порча: прогресс
+  /// тех сборок в выпуск не переносится по решению владельца.
+  fromTestVersion,
+
   /// Контрольная сумма не сошлась: скорее всего, скопировали не целиком.
   damaged,
 }
@@ -72,6 +84,8 @@ class SaveCodeResult {
         null => 'Готово',
         SaveCodeError.notACode => 'Это не похоже на код прогресса',
         SaveCodeError.fromFuture => 'Код от более новой версии игры',
+        SaveCodeError.fromTestVersion =>
+          'Код от тестовой версии игры — прогресс начинается заново',
         SaveCodeError.damaged => 'Код скопирован не целиком',
       };
 }
@@ -101,6 +115,9 @@ SaveCodeResult decodeSaveCode(String? code) {
   }
   if (version > kSaveCodeVersion) {
     return const SaveCodeResult.failed(SaveCodeError.fromFuture);
+  }
+  if (version <= _testCodeVersion) {
+    return const SaveCodeResult.failed(SaveCodeError.fromTestVersion);
   }
 
   final payload = parts[1];

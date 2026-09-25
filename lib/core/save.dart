@@ -11,7 +11,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:math' as math;
 
 /// Текущая версия формата сейва. Поднимать при КАЖДОМ несовместимом изменении,
 /// добавляя миграцию в [SaveCodec._migrations].
@@ -20,19 +19,30 @@ import 'dart:math' as math;
 /// своим блоком, как `stats`), а сериализатор читает отсутствующий ключ как
 /// значение по умолчанию. Версия и миграция нужны, только когда меняется
 /// смысл того, что уже лежит у игроков: единицы, формула, переезд поля.
-const int kSaveVersion = 5;
+const int kSaveVersion = 1;
 
 /// Куда физически кладём сейв.
 abstract class SaveStorage {
   Future<String?> read();
   Future<void> write(String data);
   Future<void> clear();
+
+  /// Лежит ли рядом сейв тестовой сборки (до выпуска 1.0.0).
+  ///
+  /// Его не читают: он записан под старым ключом, и его версии 1–5 совпали
+  /// бы по номеру с новыми, хотя значат другое. Спрашиваем только затем,
+  /// чтобы честно сказать игроку, куда делся гараж, а не молча показать
+  /// пустой.
+  Future<bool> hasTestSave();
 }
 
 /// Хранилище в памяти — работает без плагинов (тесты, ранняя разработка).
 /// В релизе подменяется на реализацию поверх `shared_preferences`.
 class MemorySaveStorage implements SaveStorage {
   String? _data;
+  final bool _testSave;
+
+  MemorySaveStorage({bool testSave = false}) : _testSave = testSave;
 
   @override
   Future<String?> read() async => _data;
@@ -42,6 +52,9 @@ class MemorySaveStorage implements SaveStorage {
 
   @override
   Future<void> clear() async => _data = null;
+
+  @override
+  Future<bool> hasTestSave() async => _testSave;
 }
 
 /// Миграция одной версии на следующую.
@@ -53,7 +66,16 @@ class LoadResult {
   final bool wasMigrated;
   final bool wasCorrupt;
 
-  const LoadResult({this.data, this.wasMigrated = false, this.wasCorrupt = false});
+  /// Своего сейва нет, но есть сейв тестовой сборки. Гараж начинается
+  /// заново, и игроку надо сказать почему — это не порча и не потеря.
+  final bool fromTestVersion;
+
+  const LoadResult({
+    this.data,
+    this.wasMigrated = false,
+    this.wasCorrupt = false,
+    this.fromTestVersion = false,
+  });
 
   bool get isEmpty => data == null;
 }
@@ -62,65 +84,14 @@ class SaveCodec {
   const SaveCodec();
 
   /// Миграции по возрастанию: ключ — версия, ИЗ которой мигрируем.
-  static final Map<int, Migration> _migrations = {
-    // v1 считал объём в литрах; v2 перешла на миллилитры, чтобы начало игры
-    // ощущалось как «капает по чуть-чуть». Переводим накопленное и историю.
-    1: (json) {
-      double scale(dynamic v) => v is num ? v.toDouble() * 1000 : 0.0;
-      return {
-        ...json,
-        'ml': scale(json['litres']),
-        'lifetime': scale(json['lifetime']),
-      }..remove('litres');
-    },
-
-    // v2 покупала оборудование за сам самогон. В v3 появились рубли: то, что
-    // было накоплено, честнее считать уже проданным по базовой цене, а бак
-    // отдать игроку пустым.
-    2: (json) {
-      final ml = json['ml'];
-      final money = ml is num ? ml.toDouble() * 0.1 : 0.0;
-      return {...json, 'ml': 0.0, 'money': money};
-    },
-
-    // v3 считала мудрость как корень из нагнанного, и она убегала в сотни
-    // тысяч — игра ломалась за полчаса. v4 считает логарифмом, поэтому
-    // накопленное надо пересчитать: иначе старые сейвы остались бы с
-    // множителем в шестизначные проценты.
-    //
-    // Формула продублирована намеренно: миграции обязаны быть неизменными во
-    // времени, а PrestigeState.wisdomFor будет меняться дальше.
-    3: (json) {
-      final lifetime = json['lifetime'];
-      final ml = lifetime is num ? lifetime.toDouble() : 0.0;
-      final wisdom =
-          ml <= 0 ? 0 : (math.log(1 + ml / 1e6) / math.ln2).floor();
-      return {...json, 'wisdom': wisdom < 0 ? 0 : wisdom};
-    },
-
-    // v4 хранила мудрость числом — то есть ОЦЕНКУ, а не факт. Из-за этого
-    // каждая правка формулы требовала новой миграции и действовала только на
-    // тех, кто обновился.
-    //
-    // v5 хранит факт: сколько было нагнано на момент последнего похмелья.
-    // Мудрость из него вычисляется при каждой загрузке, поэтому следующая
-    // правка формулы применится у всех и сразу.
-    //
-    // Обратный перевод точен: wisdomFor(1e6·(2^w − 1)) == w. Множитель 1e6 —
-    // это firstWisdomMl НА МОМЕНТ v4, и он тут зашит намеренно: миграция
-    // обязана читать то, что реально лежит у игрока, а не то, чему равна
-    // константа сегодня.
-    4: (json) {
-      final w = json['wisdom'];
-      final wisdom = w is num ? w.toInt() : 0;
-      final claimed = wisdom <= 0 ? 0.0 : 1e6 * (math.pow(2, wisdom) - 1);
-      return {
-        ...json,
-        'claimedMl': claimed,
-        'bonusWisdom': 0,
-      }..remove('wisdom');
-    },
-  };
+  ///
+  /// Пусто намеренно. До выпуска 1.0.0 цепочка доросла до v5, но все эти
+  /// сейвы писали сборки для своих, и владелец решил начать выпуск с чистого
+  /// листа (docs/DECISIONS.md, «Чистый старт»). Тестовые сейвы лежат под
+  /// другим ключом хранилища и сюда не попадают вовсе, поэтому переводить
+  /// их нечем и незачем. Первый шаг появится, когда у выпущенного формата
+  /// поменяется смысл, — и с тех пор правила CLAUDE.md про миграции в силе.
+  static final Map<int, Migration> _migrations = {};
 
   /// Упаковка состояния в строку с проставленной версией.
   String encode(Map<String, dynamic> state) {
@@ -171,7 +142,13 @@ class SaveService {
 
   const SaveService({required this.storage, this.codec = const SaveCodec()});
 
-  Future<LoadResult> load() async => codec.decode(await storage.read());
+  Future<LoadResult> load() async {
+    final raw = await storage.read();
+    if ((raw == null || raw.isEmpty) && await storage.hasTestSave()) {
+      return const LoadResult(fromTestVersion: true);
+    }
+    return codec.decode(raw);
+  }
 
   Future<void> save(Map<String, dynamic> state) async =>
       storage.write(codec.encode(state));

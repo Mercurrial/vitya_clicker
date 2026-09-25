@@ -1,7 +1,7 @@
 name: idle_game
 description: "Витя гонит самогон в гараже — idle-игра про друга."
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.5.3

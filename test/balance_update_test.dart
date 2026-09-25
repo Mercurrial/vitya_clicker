@@ -109,15 +109,46 @@ void main() {
     });
   });
 
+  // Журнал из нескольких выпусков. В выпуске 1.0.0 запись одна — v1, и на
+  // ней не проверить ни «пропущенные выпуски», ни сложение компенсаций.
+  // Поэтому поведение проверяется на подставном журнале, а настоящий —
+  // только на то, что обязано быть верным всегда.
+  const log = [
+    BalanceRelease(
+      version: 1,
+      title: 'Точка отсчёта',
+      changes: ['Первая версия баланса, с которой начинают все игроки.'],
+    ),
+    BalanceRelease(
+      version: 2,
+      title: 'Строже',
+      isNerf: true,
+      compensationWisdom: 3,
+      changes: ['Аппараты дорожают быстрее, за это три мудрости сверху.'],
+    ),
+    BalanceRelease(
+      version: 3,
+      title: 'Мягче',
+      changes: ['Бак стал больше, и продавать можно реже, чем раньше.'],
+    ),
+    BalanceRelease(
+      version: 4,
+      title: 'Снова строже',
+      isNerf: true,
+      compensationWisdom: 2,
+      changes: ['До мудрости дальше, за это две мудрости сверху.'],
+    ),
+  ];
+
   group('Игроку рассказывают, что изменилось', () {
     test('новичок не видит новостей о том, чего не застал', () {
       expect(releasesSince(kBalanceVersion), isEmpty);
     });
 
     test('тот, кто играл на прошлом балансе, видит все пропущенные выпуски', () {
-      final news = releasesSince(1);
-      expect(news, isNotEmpty);
-      expect(news.every((r) => r.version > 1), isTrue);
+      expect([for (final r in releasesSince(1, log)) r.version], [2, 3, 4]);
+      expect([for (final r in releasesSince(3, log)) r.version], [4]);
+      expect(releasesSince(4, log), isEmpty);
     });
 
     test('каждый выпуск объясняет изменения человеческим языком', () {
@@ -164,7 +195,9 @@ void main() {
     test('начисляется один раз и суммируется по пропущенным выпускам', () {
       expect(compensationSince(kBalanceVersion), 0,
           reason: 'тот, кто уже всё видел, второй раз не получает');
-      expect(compensationSince(1), greaterThan(0));
+      expect(compensationSince(4, log), 0);
+      expect(compensationSince(2, log), 2);
+      expect(compensationSince(1, log), 5);
     });
 
     test('компенсация прибавляется к мудрости, а не подменяет заработанное', () {
@@ -208,7 +241,7 @@ void main() {
         ),
       }..remove('balanceVersion'); // сейв с той поры, когда пометки не было
 
-      final gift = compensationSince(ser.balanceVersionOf(oldSave));
+      final gift = compensationSince(ser.balanceVersionOf(oldSave), log);
       expect(gift, greaterThan(0));
 
       PrestigeState afterLaunch() =>
@@ -255,20 +288,10 @@ void main() {
   });
 
   group('Цепочка миграций доживает до сегодня', () {
-    test('сейв времён первой версии открывается и не теряет историю', () {
-      const ancient = '{"version": 1, "litres": 2.5, "lifetime": 10, "wisdom": 3}';
-      final result = codec.decode(ancient);
-
-      expect(result.wasCorrupt, isFalse);
-      expect(result.data!['version'], kSaveVersion);
-
-      final state = load(result.data!);
-      expect(state.prestige.totalEverEarned, 10000);
-      expect(() => state.mlPerSecond, returnsNormally);
-    });
-
     test('каждая версия от первой до текущей имеет миграцию', () {
       // Дыра в цепочке означает, что чей-то сейв не доедет до сегодня.
+      // До выпуска версия одна и проверять нечего; тест начнёт работать с
+      // первой миграцией.
       for (var v = 1; v < kSaveVersion; v++) {
         final json = '{"version": $v}';
         expect(

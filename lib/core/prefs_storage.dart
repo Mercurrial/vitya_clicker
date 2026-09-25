@@ -11,7 +11,16 @@ import 'save.dart';
 import 'settings.dart';
 
 class PrefsSaveStorage implements SaveStorage {
-  static const String _key = 'vitya_save_v1';
+  /// Ключ выпуска. До 1.0.0 сейв лежал под `vitya_save_v1` и писался
+  /// тестовыми сборками; выпуск начинает с чистого листа, и новый ключ
+  /// гарантирует, что тестовый сейв не разберут как свой: номера версий
+  /// в нём (1–5) совпали бы с новыми, а смысл у них другой.
+  static const String _key = 'vitya_save';
+
+  /// Ключ тестовых сборок. Только проверяется на наличие и не стирается:
+  /// стереть — необратимо, а лежать ему ничего не стоит. Сообщение об этом
+  /// сейве показывается, пока нет своего, то есть один раз.
+  static const String _testKey = 'vitya_save_v1';
 
   final SharedPreferences _prefs;
 
@@ -32,6 +41,9 @@ class PrefsSaveStorage implements SaveStorage {
 
   @override
   Future<void> clear() async => _prefs.remove(_key);
+
+  @override
+  Future<bool> hasTestSave() async => _prefs.containsKey(_testKey);
 }
 
 /// Настройки поверх того же `shared_preferences`.

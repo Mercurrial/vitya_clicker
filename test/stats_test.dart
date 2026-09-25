@@ -264,22 +264,32 @@ void main() {
       expect(s.stats, StatsState.startedAt(now));
     });
 
-    final fixtures = Directory('test/fixtures')
-        .listSync()
+    // До выпуска эталонов нет — цикл просто пуст.
+    final dir = Directory('test/fixtures');
+    final fixtures = (dir.existsSync() ? dir.listSync() : <FileSystemEntity>[])
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'));
     for (final file in fixtures) {
       final name = file.uri.pathSegments.last;
-      test('эталон $name читается, статистика — с момента загрузки', () {
+      test('эталон $name читается, статистика не теряется', () {
         final now = t0.add(const Duration(days: 200));
         final loaded = const SaveCodec().decode(file.readAsStringSync());
         expect(loaded.wasCorrupt, isFalse);
 
         final s = load(loaded.data!, now);
-        expect(s.stats, StatsState.startedAt(now));
+        final original = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+
+        // Эталоны тестовых сборок были старше статистики, и тест проверял
+        // только «начинается с загрузки». Первый же эталон выпуска несёт
+        // статистику — её обязаны прочитать как есть, а не начать заново.
+        if (original['stats'] == null) {
+          expect(s.stats, StatsState.startedAt(now));
+        } else {
+          expect(ser.toJson(s, lastSeenMillis: 1)['stats'], original['stats'],
+              reason: 'статистика эталона потеряна при загрузке');
+        }
 
         // А то, что в эталоне было, — на месте.
-        final original = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
         expect(s.clicker.totalTaps, original['taps']);
         expect(s.prestige.hangovers, original['hangovers']);
       });
