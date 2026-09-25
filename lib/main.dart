@@ -8,6 +8,7 @@ import 'core/sfx_player.dart';
 import 'models/achievement.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
+import 'ui/game/vitya_portrait.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
 import 'ui/screens/welcome_back.dart';
@@ -122,6 +123,7 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
       offline: widget.boot.offline,
       gained: widget.boot.offlineGain,
       tankFull: _tankStuck(),
+      era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
     );
   }
 
@@ -151,6 +153,7 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
             offline: away,
             gained: gained,
             tankFull: _tankStuck(),
+            era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
           );
         }
     }

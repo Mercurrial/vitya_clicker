@@ -160,7 +160,7 @@ class _SceneLayout extends StatelessWidget {
   /// Сколько новейших аппаратов стоит на полу.
   static const int _onFloor = 3;
 
-  /// Сколько помещается на одну полку.
+  /// Сколько ставится на одну полку, если помещаются.
   static const int _perShelf = 3;
 
   @override
@@ -179,12 +179,33 @@ class _SceneLayout extends StatelessWidget {
 
     final floor = owned.length > _onFloor ? owned.sublist(owned.length - _onFloor) : owned;
     final older = owned.length > _onFloor ? owned.sublist(0, owned.length - _onFloor) : <_Owned>[];
-    // На полках — самые свежие из старших, по три с каждой стороны.
-    final shelved = older.length > _perShelf * 2
-        ? older.sublist(older.length - _perShelf * 2)
-        : older;
-    final left = shelved.take(_perShelf).toList();
-    final right = shelved.skip(_perShelf).toList();
+
+    final shelfY = (portraitTop + frameH - 2).floorToDouble();
+    final sideW = (w - frame) / 2 - 20;
+    // Над аппаратом на полке висит бирка — оставляем ей место.
+    final shelfH = shelfY - 30;
+
+    // На полках — самые свежие из старших, по три с каждой стороны. Если три
+    // не встают на полку целым пикселем, стоят по два.
+    //
+    // Мельче пикселя спрайт не рисуется, и ряд, который в полку не влез,
+    // просто вылезал за край сцены: в конце игры на 390 точках завод уходил
+    // за раму вместе с биркой, на 320 — наполовину. Лишний аппарат с полки
+    // убрать честнее, чем обрезать: он всё равно есть в магазине.
+    var perShelf = _perShelf;
+    List<_Owned> shelvedFor(int n) =>
+        older.length > n * 2 ? older.sublist(older.length - n * 2) : older;
+    while (perShelf > 1) {
+      final s = shelvedFor(perShelf);
+      if (_fit(s.take(perShelf).toList(), width: sideW, height: shelfH) >= 1 &&
+          _fit(s.skip(perShelf).toList(), width: sideW, height: shelfH) >= 1) {
+        break;
+      }
+      perShelf--;
+    }
+    final shelved = shelvedFor(perShelf);
+    final left = shelved.take(perShelf).toList();
+    final right = shelved.skip(perShelf).toList();
 
     // --- Пол -------------------------------------------------------------
     final floorPixel = _fitPixel(
@@ -196,14 +217,11 @@ class _SceneLayout extends StatelessWidget {
     );
 
     // --- Полки -----------------------------------------------------------
-    final shelfY = (portraitTop + frameH - 2).floorToDouble();
-    final sideW = (w - frame) / 2 - 20;
-    // Над аппаратом на полке висит бирка — оставляем ей место.
     final shelfPixel = math.min(
       floorPixel,
       math.min(
-        _fitPixel(left, width: sideW, height: shelfY - 30, max: 3),
-        _fitPixel(right, width: sideW, height: shelfY - 30, max: 3),
+        _fitPixel(left, width: sideW, height: shelfH, max: 3),
+        _fitPixel(right, width: sideW, height: shelfH, max: 3),
       ),
     );
 
@@ -285,6 +303,20 @@ class _SceneLayout extends StatelessWidget {
     bool onFloor = false,
   }) {
     if (items.isEmpty) return max;
+    final fit = _fit(items, width: width, height: height, onFloor: onFloor);
+    // Шаг в полточки — см. PixelPainter: на телефоне это целые пиксели.
+    return (fit * 2).floorToDouble().clamp(2.0, max * 2) / 2;
+  }
+
+  /// Во сколько раз ряд можно увеличить, чтобы он ещё помещался. Меньше
+  /// единицы — не помещается даже в пиксель на клетку.
+  static double _fit(
+    List<_Owned> items, {
+    required double width,
+    required double height,
+    bool onFloor = false,
+  }) {
+    if (items.isEmpty) return double.infinity;
     var spriteW = 0.0;
     var spriteH = 0.0;
     for (final it in items) {
@@ -295,10 +327,7 @@ class _SceneLayout extends StatelessWidget {
         s.height + (onFloor ? (stillHasFire(it.id) ? _fireRows : 0) + _steamRows : 0),
       );
     }
-    final byW = width / spriteW;
-    final byH = height / spriteH;
-    // Шаг в полточки — см. PixelPainter: на телефоне это целые пиксели.
-    return (math.min(byW, byH) * 2).floorToDouble().clamp(2.0, max * 2) / 2;
+    return math.min(width / spriteW, height / spriteH);
   }
 
   /// Зазор между аппаратами в пикселях спрайта.

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/content/game_content.dart';
+import 'package:idle_game/content/sorts.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/models/game_state.dart';
+import 'package:idle_game/models/sort_state.dart';
 import 'package:idle_game/providers/game_provider.dart';
+import 'package:idle_game/ui/game/heat_gauge.dart';
 import 'package:idle_game/ui/game/vitya_portrait.dart';
+import 'package:idle_game/ui/pixel/garage_scene.dart';
 import 'package:idle_game/ui/pixel/pixel_sprite.dart';
 import 'package:idle_game/ui/screens/garage_screen.dart';
 
@@ -150,6 +155,40 @@ void main() {
           reason: 'переполнение вёрстки при полном гараже');
       expect(find.byType(PixelImage), findsWidgets);
     });
+
+    // Поздние аппараты широкие: три старших на правой полке не вставали в
+    // неё даже по пикселю на клетку, и ряд уезжал за раму сцены. На 390
+    // точках завод терял трубу, на 320 — половину корпуса вместе с биркой.
+    // Снимки этого не ловили: на них семь банок, а не вся лестница.
+    for (final screen in const [Size(320, 640), Size(390, 844)]) {
+      testWidgets(
+          'вся лестница на ${screen.width.toInt()}×${screen.height.toInt()} '
+          'стоит внутри сцены', (tester) async {
+        await openOn(
+          tester,
+          withStills({for (final g in kGeneratorNames) g.id: 1}),
+          screen,
+        );
+
+        expect(tester.takeException(), isNull,
+            reason: 'ряд аппаратов переполнился');
+
+        final scene = rectOf(tester, find.byType(GarageScene));
+        final stills = find.descendant(
+          of: find.byType(GarageScene),
+          matching: find.byType(PixelImage),
+        );
+        expect(stills, findsWidgets);
+        for (final element in stills.evaluate()) {
+          final box = element.renderObject! as RenderBox;
+          final rect = box.localToGlobal(Offset.zero) & box.size;
+          expect(rect.left, greaterThanOrEqualTo(scene.left - 0.5),
+              reason: 'аппарат уехал за левый край сцены: $rect');
+          expect(rect.right, lessThanOrEqualTo(scene.right + 0.5),
+              reason: 'аппарат уехал за правый край сцены: $rect');
+        }
+      });
+    }
   });
 
   group('Экран целиком', () {
@@ -210,6 +249,45 @@ void main() {
       expect(find.textContaining('с оглядкой'), findsOneWidget,
           reason: 'игрок должен видеть, почему Петрович платит меньше');
       expect(find.textContaining('Сахар подорожал'), findsNothing);
+    });
+
+    testWidgets('название сорта получает место раньше полоски', (tester) async {
+      // Название и полоска прогресса делили строку поровну, и «Двойной
+      // перегон» резалось в «Двойной п…» даже на 390 точках.
+      final longest = kSorts.indexed.reduce(
+          (a, b) => a.$2.name.length >= b.$2.name.length ? a : b);
+      final state = withStills({'banka': 5})
+          .copyWith(sort: SortState(index: longest.$1, progress: 0.5));
+
+      // Ahem рисует каждый знак квадратом в кегль — вдвое шире настоящего
+      // шрифта. Поэтому экран — самый широкий, какой игра занимает: здесь
+      // название влезает даже квадратами, и режет его только неравный делёж.
+      await openOn(tester, state, const Size(460, 900));
+
+      final name =
+          tester.renderObject<RenderParagraph>(find.text(longest.$2.name));
+      expect(name.didExceedMaxLines, isFalse,
+          reason: 'название сорта обрезано, хотя место под него есть');
+    });
+
+    testWidgets('высота пульта не зависит от сорта', (tester) async {
+      // У высшего сорта вместо полоски — подпись, и на 320 точках она
+      // переносилась на вторую строку: пульт раздувался и толкал магазин.
+      Future<double> panelAt(int sortIndex) async {
+        await openOn(
+          tester,
+          withStills({'banka': 5})
+              .copyWith(sort: SortState(index: sortIndex, progress: 0.5)),
+          const Size(320, 640),
+        );
+        expect(tester.takeException(), isNull);
+        return rectOf(tester, find.byType(HeatPanel)).height;
+      }
+
+      final low = await panelAt(0);
+      for (var i = 1; i < kSorts.length; i++) {
+        expect(await panelAt(i), low, reason: 'пульт с сортом №$i другой высоты');
+      }
     });
 
     testWidgets('название аппарата в списке не обрезается многоточием',

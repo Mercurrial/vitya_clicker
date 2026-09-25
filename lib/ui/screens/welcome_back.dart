@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/formatters.dart';
 import '../../core/game_clock.dart';
+import '../game/vitya_portrait.dart';
 import '../pixel/pixel_portrait.dart';
 import '../theme/garage.dart';
 
@@ -27,6 +28,7 @@ Future<void> showWelcomeBack(
   required OfflineResult offline,
   required double gained,
   required bool tankFull,
+  required VityaEra era,
 }) {
   final line = _lines[math.Random().nextInt(_lines.length)];
 
@@ -67,9 +69,13 @@ Future<void> showWelcomeBack(
                 ),
                 // Тёмная подложка — на время, пока портрет считается: иначе
                 // первые мгновения в раме горел пустой медный квадрат.
-                child: const ColoredBox(
-                  color: Color(0xFF1A140F),
-                  child: PixelPortrait(asset: 'assets/images/vitya/vitya_frown.jpg'),
+                //
+                // Портрет — тот же, что висит в гараже сейчас. Раньше здесь
+                // навсегда был «хмурый»: директор возвращался в игру и
+                // встречал себя начинающим.
+                child: ColoredBox(
+                  color: const Color(0xFF1A140F),
+                  child: PixelPortrait(asset: era.asset),
                 ),
               ),
               const SizedBox(height: GS.s4),
