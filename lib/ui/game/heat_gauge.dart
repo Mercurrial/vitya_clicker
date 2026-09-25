@@ -23,11 +23,7 @@ import 'heat_controller.dart';
 class HeatPanel extends StatelessWidget {
   final HeatController controller;
 
-  /// Участковый во дворе. Пока он тут, совет «зажми гараж» — вредный: ровно
-  /// за это и отбирают бак. Подпись переворачивается вместе с механикой.
-  final bool raid;
-
-  const HeatPanel({super.key, required this.controller, this.raid = false});
+  const HeatPanel({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -46,12 +42,10 @@ class HeatPanel extends StatelessWidget {
           // первые шаги про жар, и смотрят в этот момент именно сюда.
           SizedBox(
             height: 16,
-            child: raid
-                ? const _RaidHeader()
-                : TutorialHint(
-                    heat: controller,
-                    fallback: _HeatHeader(controller: controller),
-                  ),
+            child: TutorialHint(
+              heat: controller,
+              fallback: _HeatHeader(controller: controller),
+            ),
           ),
           const SizedBox(height: 6),
           SizedBox(
@@ -74,37 +68,6 @@ class HeatPanel extends StatelessWidget {
           _SortRow(controller: controller),
         ],
       ),
-    );
-  }
-}
-
-/// Заголовок на время обхода: не советуем поддувать.
-class _RaidHeader extends StatelessWidget {
-  const _RaidHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text('ЖАР', style: GType.label()),
-        const SizedBox(width: GS.s2),
-        Expanded(
-          child: Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: 'ТИХО',
-                style: GType.ui(size: 11, weight: FontWeight.w700, color: GColors.hot, letterSpacing: 0.6),
-              ),
-              TextSpan(
-                text: ' — отпусти, не выдавай себя',
-                style: GType.ui(size: 11, color: GColors.textMid),
-              ),
-            ]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }

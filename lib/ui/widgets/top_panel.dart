@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../content/buyers.dart';
 import '../../content/events.dart';
-import '../../content/expenses.dart';
 import '../../content/sorts.dart';
 import '../../core/formatters.dart';
 import '../../engine/market.dart';
@@ -288,11 +287,6 @@ class _SellRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final engine = ref.read(gameEngineProvider);
     final active = eventAt(now);
-    // Тёща у Петровича: сбивает цену ему, и только ему.
-    final expense = expenseAt(now);
-    final cut = expense != null && expense.expense.kind == ExpenseKind.neighbor
-        ? expense
-        : null;
     final petrovich = kBuyers.first;
     final guest = active?.event.asBuyer;
     final payout = engine.saleValueFor(state, petrovich, now);
@@ -303,10 +297,7 @@ class _SellRow extends ConsumerWidget {
 
     final main = SellButton(
       title: guest == null ? 'ПРОДАТЬ ПЕТРОВИЧУ' : 'ПЕТРОВИЧУ',
-      note: cut != null
-          ? '${cut.expense.note} · ${Fmt.clock(cut.remaining)}'
-          : (worth ? petrovich.note : 'бак почти пуст — пусть нальётся'),
-      noteAlert: cut != null,
+      note: worth ? petrovich.note : 'бак почти пуст — пусть нальётся',
       payout: payout,
       available: worth && engine.canSellTo(state, petrovich),
       premium: false,
@@ -332,7 +323,6 @@ class _SellRow extends ConsumerWidget {
             note: canGuest
                 ? '${Fmt.mult(guest.multiplier)} · ещё ${Fmt.clock(active!.remaining)}'
                 : '${guest.lockedNote} · ${Fmt.clock(active!.remaining)}',
-            noteAlert: false,
             payout: engine.saleValueFor(state, guest, now),
             // Пока сорт не дотягивает, вместо суммы — чего не хватает. Это и
             // есть подсказка, ради чего стоит доводить сорт.
@@ -361,7 +351,6 @@ class _SellRow extends ConsumerWidget {
 class SellButton extends StatefulWidget {
   final String title;
   final String note;
-  final bool noteAlert;
   final double payout;
   final bool available;
   final bool premium;
@@ -375,7 +364,6 @@ class SellButton extends StatefulWidget {
     super.key,
     required this.title,
     required this.note,
-    required this.noteAlert,
     required this.payout,
     required this.available,
     required this.premium,
@@ -434,10 +422,8 @@ class _SellButtonState extends State<SellButton> {
       overflow: TextOverflow.ellipsis,
       style: GType.ui(
         size: 10,
-        weight: widget.noteAlert ? FontWeight.w700 : FontWeight.w500,
-        color: widget.noteAlert
-            ? (on ? const Color(0xFF7A2410) : GColors.hot)
-            : (on ? const Color(0xB32B1A06) : GColors.textLo),
+        weight: FontWeight.w500,
+        color: on ? const Color(0xB32B1A06) : GColors.textLo,
       ),
     );
 

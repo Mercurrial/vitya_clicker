@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../content/expenses.dart';
 import '../../core/formatters.dart';
 import '../../core/sfx.dart';
 import '../../engine/production.dart';
@@ -48,8 +47,6 @@ class Shelf extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(GS.s3, GS.s3, GS.s3, GS.s2),
             child: _Tabs(index: tab, onChanged: onTab),
           ),
-          // Подорожание видно там, где за него платят: над списками покупок.
-          if (tab < 2) const _SupplyStrip(),
           Expanded(
             child: switch (tab) {
               0 => const _StillsTab(),
@@ -349,8 +346,9 @@ class _UpgradesTab extends ConsumerWidget {
     // улучшения сгруппированы по осям, и доступное оказывалось где-то внизу.
     final visible = state.upgrades.items.where((u) {
       if (u.purchased) return showBought;
-      // По обычной цене, а не по сегодняшней: подорожание сахара не должно
-      // прятать из списка то, что там только что было.
+      // По обычной цене, а не по сегодняшней: поправка на время (см.
+      // GameEngine.upgradeCost) не должна прятать из списка то, что там
+      // только что было.
       return money >= u.cost * 0.35;
     }).toList()
       ..sort((a, b) {
@@ -401,53 +399,6 @@ class _UpgradesTab extends ConsumerWidget {
         }
         return _ToggleBought(count: bought, showing: showBought);
       },
-    );
-  }
-}
-
-/// Полоса «сахар подорожал» над списками покупок.
-///
-/// Только для подорожания: тёща бьёт по продаже и показывается на кнопке
-/// Петровича, там, где продают.
-class _SupplyStrip extends ConsumerWidget {
-  const _SupplyStrip();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Подписка на игру — ради перерисовки каждым тиком: отсчёт должен идти.
-    ref.watch(gameProvider);
-    final active = expenseAt(ref.read(timeProvider)());
-    if (active == null || active.expense.kind != ExpenseKind.supplies) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(GS.s3, 0, GS.s3, GS.s2),
-      padding: const EdgeInsets.symmetric(horizontal: GS.s3, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0x266A8CAF),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x556A8CAF)),
-      ),
-      child: Row(
-        children: [
-          Flexible(
-            child: Text(
-              '${active.expense.title} · ${active.expense.note}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              // Не красный: красный в игре один раз, у участкового. Расход —
-              // неприятность, а не тревога.
-              style: GType.ui(size: 11, weight: FontWeight.w600, color: GColors.cold),
-            ),
-          ),
-          const SizedBox(width: GS.s2),
-          Text(
-            Fmt.clock(active.remaining),
-            style: GType.num(size: 11, weight: FontWeight.w700, color: GColors.cold),
-          ),
-        ],
-      ),
     );
   }
 }

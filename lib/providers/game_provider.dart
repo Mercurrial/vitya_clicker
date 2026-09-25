@@ -230,24 +230,6 @@ class GameNotifier extends Notifier<GameState> {
     _feedback.hit(Sfx.stoke, Buzz.light);
   }
 
-  /// Попался участковому: держал жар, когда тот стоял у ворот.
-  void caughtByPolice() {
-    final engine = ref.read(gameEngineProvider);
-    final before = state;
-    state = engine.seizeByPolice(state, ref.read(timeProvider)());
-    if (state == before) return;
-
-    ref.read(toastProvider.notifier).show(
-          kind: 'ПОПАЛСЯ',
-          title: 'Участковый забрал часть бака',
-          note: 'и сорт пошёл на ступень вниз',
-          event: VityaEvent.overheat,
-        );
-    _feedback.hit(Sfx.overheat, Buzz.medium);
-    // Потеря необратимая — пишем сразу, как и похмелье.
-    saveNow();
-  }
-
   /// Сдать бак конкретному покупателю.
   void sellTo(Buyer buyer) {
     final engine = ref.read(gameEngineProvider);

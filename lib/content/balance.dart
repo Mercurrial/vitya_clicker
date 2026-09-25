@@ -40,7 +40,7 @@ library;
 ///
 /// Это не версия сейва (`kSaveVersion`) — та про формат данных. Формат может
 /// не меняться годами, а баланс править каждую неделю.
-const int kBalanceVersion = 6;
+const int kBalanceVersion = 7;
 
 /// Настраиваемые числа.
 ///
@@ -67,12 +67,6 @@ class Balance {
 
   /// Базовая цена за миллилитр, ₽.
   final double basePricePerMl;
-
-  /// Плоская отдача за нажатие, пока аппаратов нет, мл.
-  final double baseTapMl;
-
-  /// Доля секунды производства, которую стоит одно нажатие потом.
-  final double tapSeconds;
 
   /// Минимальная ёмкость бака, мл.
   final double baseTankMl;
@@ -107,20 +101,11 @@ class Balance {
   /// невыгоднее предыдущей, а значит — сколько её придётся зарабатывать.
   final double tierOutputRatio;
 
-  /// Какую долю бака забирает участковый у попавшегося.
-  ///
-  /// Здесь, а не рядом с самой механикой, потому что это число экономики: оно
-  /// будет правиться по ощущениям от игры, а любая его правка делает игроку
-  /// хуже. Значит, она обязана пройти через версию баланса и объяснение.
-  final double raidSeizure;
-
   const Balance({
     required this.costGrowth,
     required this.firstWisdomMl,
     required this.bonusPerWisdom,
     required this.basePricePerMl,
-    required this.baseTapMl,
-    required this.tapSeconds,
     required this.baseTankMl,
     required this.baseBufferSeconds,
     required this.maxBufferSeconds,
@@ -129,7 +114,6 @@ class Balance {
     required this.tierCostRatio,
     required this.firstGeneratorOutput,
     required this.tierOutputRatio,
-    required this.raidSeizure,
   });
 
   /// Действующий баланс.
@@ -140,8 +124,6 @@ class Balance {
     double? firstWisdomMl,
     double? bonusPerWisdom,
     double? basePricePerMl,
-    double? baseTapMl,
-    double? tapSeconds,
     double? baseTankMl,
     double? baseBufferSeconds,
     double? maxBufferSeconds,
@@ -150,15 +132,12 @@ class Balance {
     double? tierCostRatio,
     double? firstGeneratorOutput,
     double? tierOutputRatio,
-    double? raidSeizure,
   }) =>
       Balance(
         costGrowth: costGrowth ?? this.costGrowth,
         firstWisdomMl: firstWisdomMl ?? this.firstWisdomMl,
         bonusPerWisdom: bonusPerWisdom ?? this.bonusPerWisdom,
         basePricePerMl: basePricePerMl ?? this.basePricePerMl,
-        baseTapMl: baseTapMl ?? this.baseTapMl,
-        tapSeconds: tapSeconds ?? this.tapSeconds,
         baseTankMl: baseTankMl ?? this.baseTankMl,
         baseBufferSeconds: baseBufferSeconds ?? this.baseBufferSeconds,
         maxBufferSeconds: maxBufferSeconds ?? this.maxBufferSeconds,
@@ -167,7 +146,6 @@ class Balance {
         tierCostRatio: tierCostRatio ?? this.tierCostRatio,
         firstGeneratorOutput: firstGeneratorOutput ?? this.firstGeneratorOutput,
         tierOutputRatio: tierOutputRatio ?? this.tierOutputRatio,
-        raidSeizure: raidSeizure ?? this.raidSeizure,
       );
 }
 
@@ -181,8 +159,6 @@ const Balance kBalance = Balance(
   firstWisdomMl: 2.5e8,
   bonusPerWisdom: 0.08,
   basePricePerMl: 0.1,
-  baseTapMl: 5.0,
-  tapSeconds: 0.25,
   baseTankMl: 2000,
   baseBufferSeconds: 120,
   maxBufferSeconds: 1800,
@@ -191,7 +167,6 @@ const Balance kBalance = Balance(
   tierCostRatio: 30.0,
   firstGeneratorOutput: 1,
   tierOutputRatio: 6.05,
-  raidSeizure: 0.4,
 );
 
 /// Прогнать код на другом балансе и вернуть всё как было.
@@ -333,6 +308,19 @@ const List<BalanceRelease> kBalanceLog = [
       'Крепкая рука, Трудовая мозоль и Дедовская хватка наконец работают: '
           'зелёное окно жара у купивших стало шире. Раньше они продавались и '
           'ничего не делали.',
+    ],
+  ),
+  BalanceRelease(
+    version: 7,
+    title: 'Тихо в гараже',
+    // Не ослабление: пропадает единственный способ что-то потерять и
+    // единственная наценка. Ни одно число не стало хуже. Записи v5 и v6 выше
+    // не правятся — журнал задним числом не переписывается, и у игрока с
+    // баланса v4 подряд будут «появился», «появились» и «убрали».
+    changes: [
+      'Участковый ушёл на пенсию: ШУХЕРА больше нет, бак никто не отбирает.',
+      'Сахар больше не дорожает, тёща уехала — Петрович снова платит по '
+          'рынку, а аппараты и улучшения стоят как стоили.',
     ],
   ),
 ];

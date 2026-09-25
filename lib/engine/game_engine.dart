@@ -1,7 +1,6 @@
 import '../content/achievements.dart';
 import '../content/balance.dart';
 import '../content/buyers.dart';
-import '../content/expenses.dart';
 import '../content/game_content.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
@@ -161,18 +160,12 @@ class GameEngine {
   ///
   /// Цена складывается из рыночной за миллилитр, надбавки за **сорт** (чем
   /// лучше нагнали, тем дороже) и коэффициента покупателя.
-  ///
-  /// Постоянному покупателю цену может сбить расход (тёща гостит, см.
-  /// `expenses.dart`). Гостей это не касается: их множитель — их условие.
   double saleValueFor(GameState state, Buyer buyer, DateTime currentTime) {
     final volume = buyer.volumeFrom(state.resources.ml);
-    final neighbor =
-        buyer.id == kBuyers.first.id ? neighborFactorAt(currentTime) : 1.0;
     return volume *
         Market.pricePerMl(currentTime, state.upgrades) *
         state.sort.multiplier *
-        buyer.multiplier *
-        neighbor;
+        buyer.multiplier;
   }
 
   /// Сдать товар покупателю.
@@ -212,24 +205,26 @@ class GameEngine {
   /// Скорость удорожания — одна на всю игру, из баланса.
   double get _growth => Balance.current.costGrowth;
 
-  /// Базовая цена аппарата с поправкой на расход в момент [at].
+  /// Базовая цена аппарата в момент [at].
   ///
-  /// Весь ряд цен линеен по базовой, поэтому подорожание сахара достаточно
+  /// Весь ряд цен линеен по базовой, поэтому поправку на время достаточно
   /// приложить к ней одной — и цена штуки, и цена пачки, и «сколько влезет»
   /// сойдутся сами.
   ///
-  /// Время во всех ценах обязательное, а не необязательное с «обычной ценой»
-  /// по умолчанию. Иначе первое же место, которое про него забудет, покажет
-  /// игроку одну цену, а спишет другую.
-  double _base(Generator g, DateTime at) => g.baseCost * supplyFactorAt(at);
+  /// Сейчас цена от времени не зависит: единственная такая поправка —
+  /// подорожание сахара — вырезана в балансе v7. Время всё равно оставлено
+  /// обязательным, а не необязательным с «обычной ценой» по умолчанию: когда
+  /// поправка появится снова, первое же место, которое про него забудет,
+  /// покажет игроку одну цену, а спишет другую.
+  double _base(Generator g, DateTime at) => g.baseCost;
 
   /// Стоимость следующей штуки аппарата в момент [at], в рублях.
   double generatorCost(Generator g, DateTime at) =>
       formulas.calculateUpgradeCost(_base(g, at), _growth, g.ownedCount);
 
-  /// Стоимость улучшения в момент [at]. Цена в самом [Upgrade] — обычная,
-  /// без поправки на расход; показывать и списывать надо эту.
-  double upgradeCost(Upgrade u, DateTime at) => u.cost * supplyFactorAt(at);
+  /// Стоимость улучшения в момент [at]. Показывать и списывать надо эту, а
+  /// не цену из самого [Upgrade] — по той же причине, что у [_base].
+  double upgradeCost(Upgrade u, DateTime at) => u.cost;
 
   /// Покупка одного аппарата — за деньги, а не за товар.
   GameState buyGenerator(GameState state, String generatorId, DateTime currentTime) {
@@ -315,27 +310,6 @@ class GameEngine {
       resources: state.resources.copyWith(money: state.resources.money - cost),
       upgrades: state.upgrades.copyWith(items: items),
       stats: state.stats.copyWith(upgradesBought: state.stats.upgradesBought + 1),
-      lastUpdateTime: currentTime,
-    );
-  }
-
-  /// ПОПАЛСЯ: участковый застал Витю за работой.
-  ///
-  /// Забирает часть бака и роняет сорт на ступень. Именно часть, а не всё:
-  /// потеря должна быть обидной, но восполнимой за несколько минут — иначе
-  /// механика перестаёт быть напряжением и становится поводом закрыть игру.
-  ///
-  /// Историю ([totalEverEarned]) конфискация НЕ трогает. Нагнанное было
-  /// нагнано, и мудрость за него уже заслужена; отбирать её задним числом
-  /// значило бы наказывать дважды.
-  GameState seizeByPolice(GameState state, DateTime currentTime) {
-    if (state.resources.ml <= 0 && state.sort.index == 0) return state;
-
-    return state.copyWith(
-      resources: state.resources.copyWith(
-        ml: state.resources.ml * (1 - Balance.current.raidSeizure),
-      ),
-      sort: state.sort.dropOneStep(),
       lastUpdateTime: currentTime,
     );
   }
