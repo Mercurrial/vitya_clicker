@@ -217,7 +217,7 @@ class GameNotifier extends Notifier<GameState> {
     // ступени сорта.
     final dt = _tickInterval.inMilliseconds / 1000.0;
     next = engine.advanceSort(next, switch (heat) {
-      HeatStatus.inWindow => kSortGainPerSecond * dt,
+      HeatStatus.inWindow => kSortGainPerSecond * next.prestige.bonuses.sortSpeed * dt,
       HeatStatus.overheated => -kSortBurnPerSecond * dt,
       HeatStatus.off => -kSortDecayPerSecond * dt,
       HeatStatus.paused => 0,
@@ -346,16 +346,27 @@ class GameNotifier extends Notifier<GameState> {
   /// Уйти в похмелье: сброс гаража ради мудрости.
   void sleepItOff() {
     final engine = ref.read(gameEngineProvider);
+    final before = state.prestige.wisdom;
     state = engine.prestige(
       state,
       ref.read(generatorsContentProvider),
       ref.read(upgradesContentProvider),
       ref.read(timeProvider)(),
     );
+    // Веха, открытая сном, — ради неё и ложились; сказать о ней надо в той
+    // же плашке, а не второй следом: уведомлений минимум.
+    final fresh = [
+      for (final m in state.prestige.milestones)
+        if (m.wisdom > before) m,
+    ];
     ref.read(toastProvider.notifier).show(
           kind: 'ПОХМЕЛЬЕ',
           title: 'Мудрость: ${state.prestige.wisdom}',
-          note: 'всё причудилось, но руки помнят',
+          note: switch (fresh.length) {
+            0 => 'всё причудилось, но руки помнят',
+            1 => 'веха: ${milestoneText(fresh.first.effect)}',
+            _ => 'вехи: ${milestoneText(fresh.first.effect)} и ещё ${fresh.length - 1}',
+          },
           event: VityaEvent.hangover,
         );
     _feedback.hit(Sfx.hangover, Buzz.medium);

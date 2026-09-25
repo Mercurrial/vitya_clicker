@@ -35,6 +35,9 @@
 /// первом запуске новой версии, а не догадывается сам.
 library;
 
+import '../models/upgrade.dart' show UpgradeTarget;
+import 'wisdom_milestones.dart';
+
 /// Версия баланса. Поднимать при ЛЮБОМ изменении чисел ниже, даже безобидном:
 /// по ней игра понимает, что игроку надо показать список изменений.
 ///
@@ -180,6 +183,22 @@ class Balance {
   /// сколько настоящих минут он проживается.
   final double fluxMaxSpeed;
 
+  /// Во сколько раз коллайдер дороже, чем ему положено по лестнице.
+  ///
+  /// Коллайдер — портал в новый мир, а не тринадцатая ступень: ступени 1–12
+  /// идут своим ходом к ~12 часам, коллайдер — отдельная долгая цель второй
+  /// половины игры, не раньше суток активной игры (docs/DECISIONS.md,
+  /// «Экономика и мудрость»). По лестнице он стоил бы всего ×28 к орбитальной
+  /// и брался бы вслед за ней.
+  ///
+  /// Улучшения коллайдера дорожают вместе с ним: иначе «×2 коллайдеру» стоило
+  /// бы дешевле самого коллайдера и продавалось бы тому, кому нечего множить.
+  final double colliderCostFactor;
+
+  /// Дорожка вех мудрости — всех миров, каждая с пометкой своего
+  /// (см. `wisdom_milestones.dart`).
+  final List<WisdomMilestone> wisdomMilestones;
+
   const Balance({
     required this.costGrowth,
     required this.firstWisdomMl,
@@ -209,6 +228,8 @@ class Balance {
     required this.fluxBankCostBase,
     required this.fluxBankCostStep,
     required this.fluxMaxSpeed,
+    required this.colliderCostFactor,
+    required this.wisdomMilestones,
   });
 
   /// Действующий баланс.
@@ -243,6 +264,8 @@ class Balance {
     double? fluxBankCostBase,
     double? fluxBankCostStep,
     double? fluxMaxSpeed,
+    double? colliderCostFactor,
+    List<WisdomMilestone>? wisdomMilestones,
   }) =>
       Balance(
         costGrowth: costGrowth ?? this.costGrowth,
@@ -273,6 +296,8 @@ class Balance {
         fluxBankCostBase: fluxBankCostBase ?? this.fluxBankCostBase,
         fluxBankCostStep: fluxBankCostStep ?? this.fluxBankCostStep,
         fluxMaxSpeed: fluxMaxSpeed ?? this.fluxMaxSpeed,
+        colliderCostFactor: colliderCostFactor ?? this.colliderCostFactor,
+        wisdomMilestones: wisdomMilestones ?? this.wisdomMilestones,
       );
 }
 
@@ -313,7 +338,67 @@ const Balance kBalance = Balance(
   fluxBankCostBase: 30,
   fluxBankCostStep: 15,
   fluxMaxSpeed: 10,
+  colliderCostFactor: 5e4,
+  wisdomMilestones: kGarageMilestones,
 );
+
+/// Дорожка вех гаража.
+///
+/// Две части, и граница между ними — не вкус, а устройство экономики.
+///
+/// **До 20-й мудрости — удобства и младшие ступени.** Пока лестница не
+/// пройдена, общий множитель просто укорачивает заходы: с ним та же точка
+/// берётся за меньшее время, и мудрость растёт быстрее. Черновые вехи «всё
+/// ×2» с 12-й мудрости схлопывали заходы до пяти минут, двенадцатая ступень
+/// уезжала раньше десяти часов, а портал — к девяти. Поэтому здесь то, что
+/// игрок чувствует, но что не разгоняет петлю: младшие ступени (они гонят
+/// только в начале захода), старт с деньгами, что переживает похмелье, сорт
+/// и гости.
+///
+/// **С 20-й — «всё ×1.5» через одну.** К этому времени лестница пройдена до
+/// орбитальной, и дальше рост шёл бы только поштучной покупкой: без вех
+/// заходы вырастали до 6–8 часов, и до портала «считает» не доходил. Сила
+/// подобрана прогоном: ×2 через одну снова схлопывает заходы, ×1.3 — не
+/// снимает стену.
+///
+/// Вехи идут через одну-две: мудрость за заход — от одной до пяти, и
+/// следующая веха всегда не дальше двух заходов (цель в `balance_targets`).
+/// Дорожка тянется за портал: в гараже играют и после него.
+///
+/// Банка ×2 — за вторую мудрость, а не за первую, как в примере владельца:
+/// за первую она роняла рывок до 39,6 % при цели 40–55 %. Первая веха ничего
+/// не ускоряет (docs/DECISIONS.md, «Экономика и мудрость»).
+const List<WisdomMilestone> kGarageMilestones = [
+  WisdomMilestone(World.garage, 1, KeepUpgrades(UpgradeTarget.heatControl)),
+  WisdomMilestone(World.garage, 2, StillBoost('banka', 2)),
+  WisdomMilestone(World.garage, 3, RunStart(1e4)),
+  WisdomMilestone(World.garage, 5, StillBoost('bidon', 2)),
+  WisdomMilestone(World.garage, 7, KeepUpgrades(UpgradeTarget.tankCapacity)),
+  WisdomMilestone(World.garage, 9, StillBoost('flyaga', 2)),
+  WisdomMilestone(World.garage, 11, SortSpeed(1.5)),
+  WisdomMilestone(World.garage, 13, StillBoost('dedov', 2)),
+  WisdomMilestone(World.garage, 15, GuestPay(1.5)),
+  WisdomMilestone(World.garage, 17, RunStart(1e8)),
+  WisdomMilestone(World.garage, 20, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 22, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 23, RunStart(1e12)),
+  WisdomMilestone(World.garage, 24, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 26, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 27, GuestPay(2)),
+  WisdomMilestone(World.garage, 28, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 30, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 31, SortSpeed(2)),
+  WisdomMilestone(World.garage, 32, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 34, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 36, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 38, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 40, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 42, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 44, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 46, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 48, AllBoost(1.5)),
+  WisdomMilestone(World.garage, 50, AllBoost(1.5)),
+];
 
 /// Прогнать код на другом балансе и вернуть всё как было.
 ///

@@ -210,13 +210,22 @@ class GameEngine {
   ///
   /// Цена складывается из рыночной за миллилитр, надбавки за **сорт** (чем
   /// лучше нагнали, тем дороже) и коэффициента покупателя.
+  ///
+  /// Гостю — ещё и надбавка от вех мудрости. Здесь, а не в [sellTo]: цена,
+  /// которую показывает кнопка гостя, обязана совпасть с тем, что он заплатит.
   double saleValueFor(GameState state, Buyer buyer, DateTime currentTime) {
     final volume = buyer.volumeFrom(state.resources.ml);
     return volume *
         Market.pricePerMl(currentTime, state.upgrades) *
         state.sort.multiplier *
-        buyer.multiplier;
+        buyer.multiplier *
+        (_isGuest(buyer) ? state.prestige.bonuses.guestPay : 1.0);
   }
+
+  /// Гость — любой, кого нет среди постоянных покупателей: события
+  /// превращаются в покупателя на лету (GarageEvent.asBuyer), и отдельного
+  /// признака у них нет намеренно — движок про события не знает.
+  static bool _isGuest(Buyer buyer) => !kBuyers.any((b) => b.id == buyer.id);
 
   /// Сдать товар покупателю.
   ///
@@ -228,10 +237,7 @@ class GameEngine {
 
     final volume = buyer.volumeFrom(state.resources.ml);
     final revenue = saleValueFor(state, buyer, currentTime);
-    // Гость — любой, кого нет среди постоянных покупателей: события
-    // превращаются в покупателя на лету (GarageEvent.asBuyer), и отдельного
-    // признака у них нет намеренно — движок про события не знает.
-    final guest = !kBuyers.any((b) => b.id == buyer.id);
+    final guest = _isGuest(buyer);
 
     return state.copyWith(
       resources: state.resources.copyWith(
@@ -379,10 +385,21 @@ class GameEngine {
   ) {
     if (!state.prestige.canPrestige) return state;
 
-    return GameState.initial(
+    // Вехи — по мудрости ПОСЛЕ похмелья: веху, которую оно открыло, игрок
+    // получает в этом же заходе, а не в следующем.
+    final prestige = state.prestige.claimAll();
+    final bonuses = prestige.bonuses;
+    final kept = {
+      for (final u in state.upgrades.items)
+        if (u.purchased && bonuses.kept.contains(u.target)) u.id,
+    };
+
+    final next = GameState.initial(
       initialGenerators: startingGenerators(initialGenerators),
-      initialUpgrades: initialUpgrades,
-      prestige: state.prestige.claimAll(),
+      initialUpgrades: [
+        for (final u in initialUpgrades) kept.contains(u.id) ? u.copyWith(purchased: true) : u,
+      ],
+      prestige: prestige,
       // Достижения — мета-слой: они переживают похмелье вместе с мудростью,
       // иначе открытые ими функции отбирались бы обратно.
       achievements: state.achievements,
@@ -394,5 +411,8 @@ class GameEngine {
       flux: state.flux,
       lastUpdateTime: currentTime,
     );
+    return bonuses.startMoney > 0
+        ? next.copyWith(resources: next.resources.copyWith(money: bonuses.startMoney))
+        : next;
   }
 }

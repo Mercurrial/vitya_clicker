@@ -14,6 +14,8 @@ library;
 import 'dart:math' as math;
 
 import 'balance.dart';
+import 'wisdom_milestones.dart';
+import '../core/formatters.dart';
 import '../models/generator.dart';
 import '../models/upgrade.dart';
 
@@ -56,12 +58,19 @@ List<Generator> get kGenerators {
       Generator(
         id: kGeneratorNames[i].id,
         name: kGeneratorNames[i].name,
-        baseCost: b.firstGeneratorCost * math.pow(b.tierCostRatio, i),
+        baseCost: _tierBaseCost(i, b),
         baseProduction: b.firstGeneratorOutput * math.pow(b.tierOutputRatio, i),
       ),
   ];
   _ladderFor = b;
   return _ladder!;
+}
+
+/// Базовая цена ступени [tier]: по лестнице, а коллайдер — ещё и с
+/// наценкой портала ([Balance.colliderCostFactor]).
+double _tierBaseCost(int tier, Balance b) {
+  final ladder = b.firstGeneratorCost * math.pow(b.tierCostRatio, tier);
+  return tier == kGeneratorNames.length - 1 ? ladder * b.colliderCostFactor : ladder;
 }
 
 /// Лестница пересобирается только при смене баланса: в игре это ноль раз,
@@ -243,7 +252,7 @@ const List<TierUpgradeNames> kTierUpgrades = [
 /// лестницы множители не кончаются.
 List<Upgrade> _tierUpgrades(int tier, Balance b) {
   final t = kTierUpgrades[tier];
-  final base = b.firstGeneratorCost * math.pow(b.tierCostRatio, tier);
+  final base = _tierBaseCost(tier, b);
   return [
     for (var level = 0; level < t.boost.length; level++)
       Upgrade(
@@ -277,6 +286,31 @@ List<Upgrade> _tierUpgrades(int tier, Balance b) {
 /// 2.0 → «2», 1.3 → «1.3».
 String _x(double m) =>
     m == m.roundToDouble() ? m.toStringAsFixed(0) : m.toString();
+
+/// Что даёт веха мудрости — одной строкой, сухо, как описание улучшения.
+///
+/// Из самого эффекта, а не отдельной строкой в списке вех: правка числа
+/// вехи в балансе не может разойтись с тем, что написано игроку.
+String milestoneText(MilestoneEffect effect) => switch (effect) {
+      StillBoost(:final generatorId, :final factor) =>
+        '${_tierShort(generatorId)} ×${_x(factor)}',
+      AllBoost(:final factor) => 'Всё производство ×${_x(factor)}',
+      RunStart(:final money) => 'Заход начинается с ${Fmt.money(money)}',
+      KeepUpgrades(:final target) => '${_keptName(target)} переживают похмелье',
+      SortSpeed(:final factor) => 'Сорт растёт быстрее ×${_x(factor)}',
+      GuestPay(:final factor) => 'Гости платят ×${_x(factor)}',
+    };
+
+String _tierShort(String generatorId) =>
+    kTierUpgrades.firstWhere((t) => t.generatorId == generatorId).short;
+
+String _keptName(UpgradeTarget target) => switch (target) {
+      UpgradeTarget.heatControl => 'Улучшения жара',
+      UpgradeTarget.tankCapacity => 'Улучшения бака',
+      UpgradeTarget.quality => 'Улучшения цены',
+      UpgradeTarget.generatorOutput || UpgradeTarget.allGenerators => 'Улучшения аппаратов',
+      UpgradeTarget.synergyResonance || UpgradeTarget.synergyCoupling => 'Связки',
+    };
 
 // --- Жар: держать окно легче ---
 //

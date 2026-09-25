@@ -15,8 +15,8 @@ import 'package:idle_game/sim/balance_targets.dart';
 /// испорченный вечер у игрока.
 void main() {
   group('Действующий баланс попадает в цели', () {
-    // Одна оценка на всю группу: в ней партия на 15 часов с похмельями, и
-    // гонять её на каждый тест — минуты впустую.
+    // Одна оценка на всю группу: в ней партии на 32 и 36 часов с
+    // похмельями, и гонять их на каждый тест — минуты впустую.
     late Score score;
 
     setUpAll(() => score = scoreBalance(kBalance));
@@ -79,6 +79,47 @@ void main() {
       final reason = '12-я ступень на ${formatDuration(score.tier12At)}';
       expect(score.tier12At!, greaterThanOrEqualTo(BalanceTargets.tier12Min), reason: reason);
       expect(score.tier12At!, lessThanOrEqualTo(BalanceTargets.tier12Max), reason: reason);
+    });
+
+    test('коллайдер у того, кто считает, — через 24–30 часов', () {
+      // Портал — цель второй половины игры, а не тринадцатая ступень.
+      // Двигает его цена коллайдера, а доводят до него вехи мудрости.
+      final at = score.portalAt;
+      expect(at, isNotNull,
+          reason: 'за ${BalanceTargets.portalHorizon.inHours} ч до портала не дошли, '
+              'заходы: ${score.marathon!.runs.map(formatDuration).join(' · ')}');
+      final reason = 'портал на ${formatClock(at)}';
+      expect(at!, greaterThanOrEqualTo(BalanceTargets.portalMin), reason: reason);
+      expect(at, lessThanOrEqualTo(BalanceTargets.portalMax), reason: reason);
+    });
+
+    test('обычный игрок берёт коллайдер не раньше 36 часов', () {
+      final at = score.portalAtCasual;
+      expect(at == null || at >= BalanceTargets.portalCasualMin, isTrue,
+          reason: 'у «обычного» портал на ${formatClock(at)}');
+    });
+
+    test('до портала — 10–16 похмелий', () {
+      final m = score.marathon!;
+      expect(m.hangoversBeforePortal,
+          inInclusiveRange(BalanceTargets.hangoversMin, BalanceTargets.hangoversMax),
+          reason: 'похмелья: ${m.result.hangovers.map(formatClock).join(' ')}');
+    });
+
+    test('до портала — ни одного захода дольше 4 часов', () {
+      final m = score.marathon!;
+      expect(m.longestRunBeforePortal!, lessThanOrEqualTo(BalanceTargets.longestRunMax),
+          reason: 'стена: заходы ${m.runs.map(formatDuration).join(' · ')}');
+    });
+
+    test('следующая веха — не дальше двух заходов', () {
+      expect(score.milestonesRunOut, isFalse,
+          reason: 'дорожка вех кончилась раньше портала: следующей вехи не видно');
+      for (final r in score.marathon!.milestoneReach) {
+        if (r.runs == null) continue;
+        expect(r.runs!, lessThanOrEqualTo(BalanceTargets.milestoneRunsMax),
+            reason: 'с ${r.wisdom} мудрости до вехи на ${r.next} — ${r.runs} заходов');
+      }
     });
 
     test('ночь открытой вкладки не даёт мудрость за пару минут игры', () {

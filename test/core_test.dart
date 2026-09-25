@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/core/game_clock.dart';
 import 'package:idle_game/core/save.dart';
@@ -39,6 +42,36 @@ void main() {
       expect(Fmt.short(double.nan), '0');
       expect(Fmt.short(double.infinity), '∞');
       expect(Fmt.short(-1500), '-1.5К');
+    });
+
+    test('на стыке ступеней — следующая ступень, а не четыре цифры', () {
+      // 999 999 делилось до 999.999 и округлялось в «1000К»: касса на миг
+      // становилась шире, чем обычно.
+      expect(Fmt.short(999999), '1М');
+      expect(Fmt.short(999999, trim: false), '1.00М');
+      expect(Fmt.short(9996, trim: false), '10.0К');
+      expect(Fmt.volume(999999999, trim: false), '1.00М л');
+    });
+
+    test('до цены коллайдера и далеко за ней — три цифры и суффикс', () {
+      // Касса доходит до цены коллайдера (docs/PLAN-1.0.md, раздел 6), а
+      // нагнанное уходит дальше. Запас — десять порядков сверх неё: научная
+      // запись («1.7e23») ломает тон, а четырёхзначная мантисса — вёрстку.
+      final limit = kGenerators.last.baseCost * 1e10;
+      for (var k = 3; math.pow(10.0, k) <= limit; k++) {
+        final p = math.pow(10.0, k);
+        for (final v in [p.toDouble(), 4.12 * p, 999.7 * p]) {
+          final s = Fmt.short(v, trim: false);
+          final m = RegExp(r'^(\d+(?:\.\d+)?)(\D+)$').firstMatch(s);
+          expect(m, isNotNull, reason: '$v → «$s»: нет суффикса или запись научная');
+          expect(m!.group(1)!.replaceAll('.', ''), hasLength(3),
+              reason: '$v → «$s»: мантисса не в три цифры');
+          // Кириллические «О» и «З» в цифровом шрифте читаются как 0 и 3:
+          // «4.12Окт» выглядело как «4.120кт» (docs/DECISIONS.md, «Интерфейс»).
+          expect(m.group(2), isNot(matches(RegExp('^[ОЗ]'))),
+              reason: '$v → «$s»: суффикс читается как цифра');
+        }
+      }
     });
   });
 

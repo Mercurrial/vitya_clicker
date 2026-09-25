@@ -16,6 +16,7 @@ import '../models/upgrades_state.dart';
 ///     × апгрейды    (персональные ×N и глобальные ×N)
 ///     × синергии    (Наставник Петрович, Семейный подряд)
 ///     × мудрость    (престиж)
+///     × вехи        (ступень и всё — от мудрости)
 ///
 /// Функция чистая: зависит только от состояния. Это обязательное условие для
 /// оффлайн-дохода — его считаем как f(состояние, прошедшее время).
@@ -94,11 +95,15 @@ class Production {
     double achievementMultiplier = 1.0,
   ]) {
     if (g.ownedCount == 0) return 0.0;
+    final bonuses = prestige.bonuses;
     var out = g.ownedCount * g.baseProduction;
     out *= milestoneMultiplier(g.ownedCount);
     out *= ups.generatorMultiplier(g.id);
     out *= _synergyMultiplier(g, gens, ups);
     out *= prestige.globalMultiplier;
+    // Вехи мудрости: ступень и всё производство. Вычисляются из мудрости,
+    // в сейве их нет (см. wisdom_milestones.dart).
+    out *= bonuses.still(g.id) * bonuses.all;
     out *= achievementMultiplier;
     return out;
   }

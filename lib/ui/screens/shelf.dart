@@ -14,6 +14,7 @@ import '../widgets/shop.dart';
 import 'flux_tab.dart';
 import 'goals_tab.dart';
 import 'vitya_tab.dart';
+import 'wisdom_tab.dart';
 
 /// Поля по бокам подписи вкладки — внутри подложки.
 const double _kTabPad = 1;
@@ -38,9 +39,14 @@ const List<(int, String)> kBuyModes = [
 /// Вкладки шторки. Своим перечислением, а не номером: вкладка потока
 /// появляется не сразу, и с номерами выбранная вкладка съезжала бы на
 /// соседнюю в тот момент, когда поток приходит.
+///
+/// «МУДРОСТЬ» — третьей, перед потоком: так она не сдвигается, когда поток
+/// приходит, и её точка «пора спать» видна и на 320 точках, где строка
+/// вкладок уже листается вбок.
 enum ShelfTab {
   stills('АППАРАТЫ'),
   upgrades('УЛУЧШЕНИЯ'),
+  wisdom('МУДРОСТЬ'),
   flux('ПОТОК'),
   goals('ЦЕЛИ'),
   vitya('ВИТЯ');
@@ -81,6 +87,7 @@ class Shelf extends ConsumerWidget {
           child: switch (shown) {
             ShelfTab.stills => const _StillsTab(),
             ShelfTab.upgrades => const _UpgradesTab(),
+            ShelfTab.wisdom => const WisdomTab(),
             ShelfTab.flux => const FluxTab(),
             ShelfTab.goals => const GoalsTab(),
             ShelfTab.vitya => const VityaTab(),
@@ -131,7 +138,7 @@ class _Tabs extends ConsumerWidget {
           ShelfTab.upgrades when affordableUpgrades > 0 => affordableUpgrades,
           ShelfTab.flux when fluxBuys > 0 => fluxBuys,
           ShelfTab.flux when f.isBankFull => 0,
-          ShelfTab.vitya when canSleep => 0,
+          ShelfTab.wisdom when canSleep => 0,
           _ => null,
         };
 
