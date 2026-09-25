@@ -259,17 +259,18 @@ class _MilestoneRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: GS.s3),
+          // Взятую веху видно по янтарному кружку. Галочки нет: в цифровом
+          // шрифте её нет, и запасной рисовал «√».
           Expanded(
             child: Text(
               milestoneText(milestone.effect),
               style: GType.ui(
                 size: 13,
                 weight: next ? FontWeight.w600 : FontWeight.w400,
-                color: taken ? GColors.textHi : (next ? GColors.textHi : GColors.textLo),
+                color: taken || next ? GColors.textHi : GColors.textLo,
               ),
             ),
           ),
-          if (taken) Text('✓', style: GType.num(size: 14, weight: FontWeight.w700, color: GColors.amber)),
         ],
       ),
     );
