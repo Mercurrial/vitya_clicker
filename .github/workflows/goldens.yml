@@ -20,7 +20,7 @@ on:
 
 permissions:
   contents: write       # закоммитить снимки в ветку
-  actions: write        # запустить «Проверку PR» на новом коммите
+  actions: write        # одобрить «Проверку PR» на новом коммите
 
 # Два запуска на одну ветку подрались бы за push.
 concurrency:
@@ -86,12 +86,28 @@ jobs:
           git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
-      # Push от GITHUB_TOKEN не запускает другие workflow — так GitHub
-      # защищается от бесконечных циклов. Без этого шага у нового коммита в
-      # PR не было бы «Проверки PR» вовсе. workflow_dispatch — одно из двух
-      # событий, которые GITHUB_TOKEN запускать может.
-      - name: Запустить «Проверку PR» на новом коммите
+      # Push от GITHUB_TOKEN «Проверку PR» сам не запускает: GitHub заводит
+      # её прогон, но ставит ждать одобрения — защита от бесконечных циклов.
+      # Без одобрения у коммита со снимками в PR висело бы «ждёт одобрения»
+      # вместо зелёной проверки. Запуск ci.yml через workflow_dispatch не
+      # годится: такие прогоны PR не показывает (проверено 25.09.2026).
+      - name: Одобрить «Проверку PR» на новом коммите
         if: steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ci.yml --ref "$GITHUB_REF_NAME"
+        run: |
+          sha=$(git rev-parse HEAD)
+          # Прогон появляется не сразу. Нет PR у ветки — не появится вовсе.
+          for _ in $(seq 12); do
+            ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&event=pull_request&status=action_required" \
+              --jq '.workflow_runs[].id')
+            [ -n "$ids" ] && break
+            sleep 5
+          done
+          if [ -z "$ids" ]; then
+            echo "Прогона «Проверки PR» на $sha нет — у ветки нет открытого PR?" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for id in $ids; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve"
+          done

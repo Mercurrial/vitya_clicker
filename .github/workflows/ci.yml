@@ -17,19 +17,13 @@ name: Проверка PR
 on:
   pull_request:
     branches: [main]
-  # Ручной запуск на ветке. Его же делает goldens.yml после своего коммита:
-  # push от GITHUB_TOKEN проверку не запускает, и у коммита со снимками её
-  # иначе не было бы вовсе.
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-# Новый push в тот же PR отменяет недоделанную проверку старого. Ручной
-# запуск — в своей группе: отмена PR-прогоном оставила бы в PR серую
-# «отменено» рядом с зелёной проверкой того же коммита.
+# Новый push в тот же PR отменяет недоделанную проверку старого.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
