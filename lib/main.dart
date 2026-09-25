@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/app_info.dart';
 import 'core/bootstrap.dart';
 import 'core/game_clock.dart';
+import 'core/save_code.dart';
 import 'core/sfx_player.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
 import 'ui/game/vitya_portrait.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
+import 'ui/screens/save_rescue.dart';
 import 'ui/screens/test_save_notice.dart';
 import 'ui/screens/welcome_back.dart';
 import 'providers/settings_provider.dart';
@@ -48,9 +50,7 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
-        initialStateProvider.overrideWithValue(boot.state),
-        saveServiceProvider.overrideWithValue(boot.saves),
-        settingsStoreProvider.overrideWithValue(boot.settings),
+        ...bootOverrides(boot),
         // Настоящий звук подставляется только здесь. Во всех тестах остаётся
         // тишина по умолчанию — ни один из них не пытается открыть динамик.
         soundOutputProvider.overrideWith((ref) {
@@ -63,6 +63,18 @@ Future<void> main() async {
     ),
   );
 }
+
+/// Что игра получает от запуска. Отдельно от [main], чтобы тест собирал
+/// игру ровно так же.
+List<Override> bootOverrides(Bootstrap boot) => [
+      initialStateProvider.overrideWithValue(boot.state),
+      // Сейв новой версии: сервиса нет, и записать поверх нечем — ни
+      // автосейву, ни сворачиванию. Гаража на экране нет и так, но запись
+      // при сворачивании зовётся мимо экрана, и полагаться на то, что до
+      // неё не дойдёт, — значит однажды затереть чужой прогресс.
+      if (!boot.saveFromFuture) saveServiceProvider.overrideWithValue(boot.saves),
+      settingsStoreProvider.overrideWithValue(boot.settings),
+    ];
 
 class VityaApp extends StatelessWidget {
   final Bootstrap boot;
@@ -79,7 +91,10 @@ class VityaApp extends StatelessWidget {
         fontFamily: GType.uiFamily,
         useMaterial3: true,
       ),
-      home: _Root(boot: boot),
+      // Сейв новой версии — не игра, а просьба обновиться (save_rescue.dart).
+      home: boot.saveFromFuture
+          ? const SaveFromFutureScreen()
+          : _Root(boot: boot),
     );
   }
 }
@@ -102,34 +117,82 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
 
     // Диалоги показываем после первого кадра, иначе контекст ещё не готов.
     //
-    // Порядок важен: сперва «что изменилось», потом «сколько накапало». Если
-    // поменялся баланс, игрок должен узнать об этом ДО того, как увидит
-    // цифры, — иначе он успеет решить, что игра сломалась.
-    if (widget.boot.testSaveDropped ||
-        widget.boot.hasBalanceNews ||
-        widget.boot.shouldGreet) {
+    // Порядок важен. Сперва — что стало с сейвом: тестовый не перенесён,
+    // свой не прочитался, отложенная копия снова читается. От этого зависит,
+    // какой гараж перед игроком, а всё дальнейшее — уже про этот гараж.
+    // Потом «что изменилось», потом «сколько накапало»: если поменялся
+    // баланс, игрок должен узнать об этом ДО того, как увидит цифры, — иначе
+    // он успеет решить, что игра сломалась.
+    final boot = widget.boot;
+    if (boot.testSaveDropped ||
+        boot.saveWasLost ||
+        boot.rescuedGarage != null ||
+        boot.hasBalanceNews ||
+        boot.shouldGreet) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openIntro());
     }
   }
 
   Future<void> _openIntro() async {
     if (!mounted) return;
-    if (widget.boot.testSaveDropped) {
+    final boot = widget.boot;
+    if (boot.testSaveDropped) {
       await showTestSaveNotice(context);
       // Сообщение показывается, пока своего сейва нет. Запись сразу — чтобы
       // закрытое до автосейва приложение не повторило его без нужды.
       await ref.read(gameProvider.notifier).saveNow();
       if (!mounted) return;
     }
-    if (widget.boot.hasBalanceNews) {
-      await showBalanceNews(context, widget.boot.balanceNews);
+    final broken = boot.brokenSave;
+    if (broken != null) {
+      await showBrokenSaveNotice(context,
+          save: broken, kept: boot.brokenSaveKept);
+      // Так же, как с тестовым сейвом: сообщение живёт, пока битый сейв
+      // лежит под основным ключом. Копия отложена ещё при запуске, до
+      // первой записи, так что писать новый гараж уже можно.
+      await ref.read(gameProvider.notifier).saveNow();
+      if (!mounted) return;
+    }
+    final copy = boot.rescuedGarage;
+    if (copy != null) {
+      final restore = await offerRescuedGarage(
+        context,
+        copy: copy.state,
+        current: ref.read(gameProvider),
+      );
+      if (restore && await _restore(copy)) {
+        // Новости баланса и экран возвращения посчитаны для гаража, которого
+        // больше нет, — показывать их про вернувшийся было бы неправдой.
+        return;
+      }
+      if (!restore) await boot.saves.forget(copy.raw);
+      if (!mounted) return;
+    }
+    if (boot.hasBalanceNews) {
+      await showBalanceNews(context, boot.balanceNews);
       // Отметка о просмотре — это запись сейва с текущей версией баланса.
       // Пока она не легла на диск, экран покажется снова; так честнее, чем
       // потерять уведомление из-за закрытия приложения.
       await ref.read(gameProvider.notifier).saveNow();
     }
-    if (!mounted || !widget.boot.shouldGreet) return;
-    _greet(widget.boot.offline, widget.boot.fluxGained);
+    if (!mounted || !boot.shouldGreet) return;
+    _greet(boot.offline, boot.fluxGained);
+  }
+
+  /// Вернуть гараж из отложенной копии.
+  ///
+  /// Тем же путём, что и перенос кодом: тот же разбор с миграциями и та же
+  /// запись, уже проверенные тестами переноса. Отдельная дорога в обход
+  /// `GameNotifier` разошлась бы с ним при первой же правке формата.
+  Future<bool> _restore(RescuedGarage copy) async {
+    final error = await ref
+        .read(gameProvider.notifier)
+        .importCode(encodeSaveCode(copy.raw));
+    if (error != null) return false;
+    // Копия выбрасывается только после записи вернувшегося гаража: закрой
+    // игру между ними — вопрос повторится, но гараж не пропадёт.
+    await widget.boot.saves.forget(copy.raw);
+    return true;
   }
 
   void _greet(OfflineResult away, double gained) {

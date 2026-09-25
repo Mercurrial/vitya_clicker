@@ -201,7 +201,12 @@ void main() {
 
     test('сейв из будущей версии не трогаем', () {
       const future = '{"version": ${kSaveVersion + 1}, "ml": 1}';
-      expect(codec.decode(future).wasCorrupt, isTrue);
+      final result = codec.decode(future);
+      expect(result.isEmpty, isTrue, reason: 'эта версия его не понимает');
+      // Не порча: испорченный заменяют новым гаражом, а этот цел и ждёт
+      // новую версию (save_rescue_test.dart).
+      expect(result.fromFuture, isTrue);
+      expect(result.wasCorrupt, isFalse);
     });
 
     test('до выпуска сейв не мигрирует: версия одна', () {

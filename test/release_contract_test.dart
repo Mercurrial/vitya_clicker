@@ -8,6 +8,8 @@ import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/core/save.dart';
 import 'package:idle_game/core/save_code.dart';
 
+import 'support/economy_fingerprint.dart';
+
 /// Договор с уже выпущенной версией.
 ///
 /// Всё остальное тестирование отвечает на вопрос «работает ли то, что я
@@ -123,71 +125,46 @@ void main() {
   });
 
   group('Забыть поднять версию баланса нельзя', () {
-    /// Отпечаток действующих чисел.
-    ///
-    /// Нужен потому, что забыть поднять [kBalanceVersion] очень легко: правишь
-    /// одно число в `balance.dart`, тесты зелёные, а игрок при обновлении не
-    /// получает ни объяснения, ни компенсации — просто замечает, что доход
-    /// поехал. Отпечаток превращает эту забывчивость в упавший тест.
-    ///
-    /// Поменял числа — поменяй и отпечаток, добавив запись в [kBalanceLog] и
-    /// подняв версию. Это ровно тот момент, когда стоит остановиться и
-    /// подумать, что сказать игроку.
-    String fingerprint(Balance b) => [
-          b.costGrowth,
-          b.firstWisdomMl,
-          b.firstWisdomBonus,
-          b.bonusPerWisdom,
-          b.basePricePerMl,
-          b.baseTankMl,
-          b.baseBufferSeconds,
-          b.maxBufferSeconds,
-          b.milestones.join(','),
-          b.firstGeneratorCost,
-          b.tierCostRatio,
-          b.firstGeneratorOutput,
-          b.tierOutputRatio,
-          b.tierUpgradeCosts.join(','),
-          b.tierUpgradeMultiplier,
-          b.globalUpgradeCost,
-          b.globalUpgradeMultiplier,
-          b.qualityUpgradeCost,
-          b.qualityUpgradeMultiplier,
-          b.fluxMinutesPerHour,
-          b.fluxMaxMinutesPerHour,
-          b.fluxBankHours,
-          b.fluxMaxBankHours,
-          b.fluxRateCostBase,
-          b.fluxRateCostStep,
-          b.fluxBankCostBase,
-          b.fluxBankCostStep,
-          b.fluxMaxSpeed,
-          b.colliderCostFactor,
-          // Вехи — числа экономики: правка вехи может отнять у игрока
-          // бонус, а значит, это правка баланса, как и любая другая.
-          b.wisdomMilestones.join(','),
-        ].join('|');
-
-    // Отпечаток записан при чистом старте и до выпуска не сверяется:
-    // экономику ещё перестраивают. Выпуск, снимая первый эталон, обязан
-    // записать сюда действующие числа — иначе этот тест упадёт первым же
-    // прогоном, и это правильно.
-    test('числа баланса совпадают с записанным отпечатком', skip: released
+    // Отпечаток — все числа экономики, от которых зависят доход, цены и
+    // скорость прогресса, а не только поля Balance.
+    //
+    // Нужен потому, что забыть поднять kBalanceVersion очень легко: правишь
+    // одно число, тесты зелёные, а игрок при обновлении не получает ни
+    // объяснения, ни компенсации — просто замечает, что доход поехал.
+    // Отпечаток превращает эту забывчивость в упавший тест. Первый отпечаток
+    // собирался из одних полей Balance и промолчал бы о правке цены сорта,
+    // гостя или серии жара.
+    //
+    // Что в отпечатке, а что сознательно нет, — test/support/
+    // economy_fingerprint.dart. Что каждое число в него действительно
+    // попадает и что новое не забыто, проверяет economy_fingerprint_test —
+    // всегда, а не только после выпуска.
+    //
+    // До выпуска сверка пропускается: экономику ещё перестраивают. Выпуск,
+    // снимая первый эталон, записывает сюда действующий отпечаток — тест
+    // сам его напечатает, упав на первом прогоне с эталоном.
+    test('числа экономики совпадают с записанным отпечатком', skip: released
         ? false
         : 'до выпуска: эталона в test/fixtures нет, числа ещё правят', () {
-      const expected = '1.26|250000000.0|0.08|0.1|2000.0|120.0|1800.0|'
-          '10,25,50,100|15.0|30.0|1.0|6.05';
+      // Пусто до выпуска 1.0.0: записывает выпуск (задача 9 плана).
+      const expected = r'''
+''';
 
-      expect(
-        fingerprint(kBalance),
-        expected,
-        reason: 'числа баланса изменились. Это нормально — но тогда:\n'
-            '  1) подними kBalanceVersion;\n'
-            '  2) добавь запись в kBalanceLog: что изменилось и почему;\n'
-            '  3) если игроку стало хуже — назначь компенсацию;\n'
-            '  4) обнови отпечаток здесь.\n'
-            'Пункт 3 — единственная причина, по которой всё это существует.',
-      );
+      final actual = economyFingerprint(currentEconomy());
+      final changes = fingerprintChanges(expected, actual);
+      if (changes.isEmpty) return;
+
+      final block = "const expected = r'''\n$actual\n''';";
+      fail(expected.trim().isEmpty
+          ? 'отпечаток чисел экономики не записан. Выпуск записывает его '
+              'вместе с первым эталоном — вот действующий, целиком:\n\n$block'
+          : 'числа экономики изменились:\n${changes.join('\n')}\n\n'
+              'Это нормально — но тогда:\n'
+              '  1) подними kBalanceVersion;\n'
+              '  2) добавь запись в kBalanceLog: что изменилось и почему;\n'
+              '  3) если игроку стало хуже — isNerf: true и компенсация;\n'
+              '  4) обнови отпечаток здесь:\n\n$block\n\n'
+              'Пункт 3 — единственная причина, по которой всё это существует.');
     });
 
     test('версия баланса объявлена в журнале', () {
