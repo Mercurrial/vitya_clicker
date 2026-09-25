@@ -62,7 +62,10 @@ jobs:
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
           done
 
-      - run: flutter build web --release --base-href /vitya_clicker/
+      # Адрес сайта — имя репозитория. Берётся из него же, а не пишется
+      # руками: когда репозиторий переименовали из vitya_clicker, прибитый
+      # адрес собрал бы сайт, который грузит скрипты по старому пути.
+      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
