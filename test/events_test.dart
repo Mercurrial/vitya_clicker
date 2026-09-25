@@ -30,34 +30,49 @@ void main() {
     return found;
   }
 
-  group('События случаются, но не постоянно', () {
-    test('за сутки их несколько, а не ноль и не сорок', () {
-      final perDay = windows(7).length / 7;
-      expect(perDay, greaterThanOrEqualTo(4),
-          reason: 'события, которое не наступает, не существует');
-      expect(perDay, lessThanOrEqualTo(24),
-          reason: 'если гость в гараже всегда, он уже не гость, а Петрович');
-    });
-
-    test('большую часть времени в гараже тихо', () {
-      var busy = 0;
-      const minutes = 3 * 24 * 60;
-      for (var m = 0; m < minutes; m++) {
-        if (eventAt(start.add(Duration(minutes: m))) != null) busy++;
+  // Решение владельца (docs/DECISIONS.md, «Гости»): гость приходит ровно
+  // раз в десять минут и стоит пять. Раньше здесь проверялось «большую часть
+  // времени в гараже тихо» — это было про старое расписание по жребию, где
+  // гостя можно было ждать два часа.
+  group('Гость приходит по часам', () {
+    test('ровно раз в десять минут, в ровные минуты', () {
+      final found = windows(1);
+      expect(found.length, 24 * 60 ~/ kEventPeriod.inMinutes,
+          reason: 'за сутки должно быть 144 гостя');
+      for (final w in found) {
+        expect(w.at.minute % 10, 0, reason: 'гость пришёл в ${w.at}');
       }
-      final share = busy / minutes;
-      expect(share, lessThan(0.5),
-          reason: 'событие должно быть событием, а не фоном: занято '
-              '${(share * 100).round()}% времени');
-      expect(share, greaterThan(0.05));
     });
 
-    test('все события когда-нибудь выпадают', () {
-      // Иначе самое редкое видит только тот, кто играет месяцами.
-      final seen = windows(30).map((w) => w.id).toSet();
-      expect(seen.length, kGarageEvents.length,
+    test('стоит пять минут, потом пять минут тихо', () {
+      for (var m = 0; m < 24 * 60; m++) {
+        final now = start.add(Duration(minutes: m));
+        expect(eventAt(now) != null, now.minute % 10 < 5, reason: '$now');
+      }
+    });
+
+    test('до следующего гостя не больше десяти минут', () {
+      for (var s = 0; s < 3600; s += 7) {
+        final now = start.add(Duration(seconds: s));
+        final wait = untilNextEvent(now);
+        expect(wait, greaterThan(Duration.zero));
+        expect(wait, lessThanOrEqualTo(kEventPeriod));
+        // Через это время гость действительно в гараже.
+        expect(eventAt(now.add(wait)), isNotNull, reason: '$now + $wait');
+      }
+    });
+
+    test('кто придёт — случайно, и все когда-нибудь выпадают', () {
+      final ids = windows(1).map((w) => w.id).toList();
+      expect(ids.toSet().length, kGarageEvents.length,
           reason: 'не выпали: '
-              '${kGarageEvents.map((e) => e.id).toSet().difference(seen)}');
+              '${kGarageEvents.map((e) => e.id).toSet().difference(ids.toSet())}');
+      // Не по кругу: иначе игрок выучит очередь.
+      var cyclic = true;
+      for (var i = kGarageEvents.length; i < ids.length; i++) {
+        if (ids[i] != ids[i - kGarageEvents.length]) cyclic = false;
+      }
+      expect(cyclic, isFalse, reason: 'гости идут по кругу');
     });
   });
 
