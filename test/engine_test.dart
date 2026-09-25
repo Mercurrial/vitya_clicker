@@ -86,9 +86,9 @@ void main() {
     test('цена растёт с каждой купленной штукой', () {
       var s = fresh();
       s = s.copyWith(resources: s.resources.copyWith(money: 1e6));
-      final first = engine.generatorCost(s.generators.items.first);
+      final first = engine.generatorCost(s.generators.items.first, t0);
       s = engine.buyGenerator(s, 'banka', t0);
-      final second = engine.generatorCost(s.generators.items.first);
+      final second = engine.generatorCost(s.generators.items.first, t0);
       expect(second, greaterThan(first));
       expect(second / first, closeTo(Balance.current.costGrowth, 1e-9));
     });
@@ -108,7 +108,7 @@ void main() {
       s = s.copyWith(
         resources: s.resources.copyWith(money: 1000, ml: 500),
       );
-      final cost = engine.generatorCost(s.generators.items.first);
+      final cost = engine.generatorCost(s.generators.items.first, t0);
       s = engine.buyGenerator(s, 'banka', t0);
 
       expect(s.resources.money, closeTo(1000 - cost, 1e-9));

@@ -5,12 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bootstrap.dart';
 import 'core/sfx_player.dart';
+import 'models/achievement.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
+import 'ui/game/vitya_portrait.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
 import 'ui/screens/welcome_back.dart';
-import 'ui/theme/art_style.dart';
+import 'providers/settings_provider.dart';
 import 'ui/theme/garage.dart';
 
 Future<void> main() async {
@@ -120,6 +122,8 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
       context,
       offline: widget.boot.offline,
       gained: widget.boot.offlineGain,
+      tankFull: _tankStuck(),
+      era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
     );
   }
 
@@ -144,7 +148,13 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
         notifier.applyOffline(away.credited);
         final gained = ref.read(gameProvider).resources.ml - before;
         if (away.isMeaningful && gained > 0 && mounted) {
-          showWelcomeBack(context, offline: away, gained: gained);
+          showWelcomeBack(
+            context,
+            offline: away,
+            gained: gained,
+            tankFull: _tankStuck(),
+            era: vityaEraFor(ref.read(gameProvider).prestige.totalEverEarned),
+          );
         }
     }
     if (state != AppLifecycleState.resumed) {
@@ -153,6 +163,13 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
   }
 
   int? _leftAt;
+
+  /// Стоит ли производство из-за полного бака. С автопродажей не стоит: она
+  /// сдаст бак на первом же тике, и писать «аппараты стоят» было бы неправдой.
+  bool _tankStuck() {
+    final s = ref.read(gameProvider);
+    return s.isTankFull && !s.achievements.hasPerk(AchievementPerk.autoSell);
+  }
 
   @override
   Widget build(BuildContext context) {

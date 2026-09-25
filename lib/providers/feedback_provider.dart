@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/settings.dart';
 import '../core/sfx.dart';
-import '../ui/theme/art_style.dart';
+import 'settings_provider.dart';
 
 /// Куда выводить звук.
 ///

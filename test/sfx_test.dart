@@ -7,7 +7,7 @@ import 'package:idle_game/core/settings.dart';
 import 'package:idle_game/core/sfx.dart';
 import 'package:idle_game/providers/feedback_provider.dart';
 import 'package:idle_game/providers/game_provider.dart';
-import 'package:idle_game/ui/theme/art_style.dart';
+import 'package:idle_game/providers/settings_provider.dart';
 
 /// Звук и вибрация.
 ///

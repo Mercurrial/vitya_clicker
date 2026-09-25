@@ -69,6 +69,30 @@ void main() {
       }
     });
 
+    test('хеш расписания одинаков в браузере и на телефоне', () {
+      // В вебе int — это double с 53 точными битами. Считаем тот же хеш на
+      // double: если хоть одно произведение вылезет за 2^53, младшие биты
+      // потеряются и ответ разойдётся с настоящим. Так и было: веб-версия
+      // жила по своему расписанию.
+      const m = 1073741824.0; // 2^30
+      int viaDoubles(int x) {
+        var h = (x % 1073741824).toDouble();
+        h = (h * 0x9E37 + 0x7F4A) % m;
+        var i = h.toInt() ^ (h.toInt() >> 15);
+        h = (i.toDouble() * 0x85EB) % m;
+        i = h.toInt() ^ (h.toInt() >> 13);
+        h = (i.toDouble() * 0xC2B3) % m;
+        return h.toInt() ^ (h.toInt() >> 16);
+      }
+
+      final base = DateTime.utc(2026, 1, 1).millisecondsSinceEpoch ~/ 60000;
+      for (var k = 0; k < 20000; k++) {
+        final x = base + k * 7919;
+        expect(scheduleHash(x), viaDoubles(x), reason: 'x = $x');
+      }
+      expect((1 << 30) * kScheduleHashMaxFactor + 0x7F4A, lessThan(1 << 53));
+    });
+
     test('часовой пояс ничего не меняет', () {
       // Игрок может сидеть в любом поясе, а событие обязано быть общим.
       final utc = DateTime.utc(2026, 3, 1, 12, 30);

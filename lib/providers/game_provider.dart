@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../content/achievements.dart';
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
@@ -102,10 +103,6 @@ class GameNotifier extends Notifier<GameState> {
   void setHeat(double multiplier) =>
       ref.read(heatMultiplierProvider.notifier).state = multiplier;
 
-  /// Достижения, открывшиеся с прошлого тика — интерфейс показывает по ним
-  /// всплывающие плашки.
-  final List<Achievement> freshAchievements = [];
-
   void _tick() {
     final engine = ref.read(gameEngineProvider);
     final now = ref.read(timeProvider)();
@@ -141,10 +138,35 @@ class GameNotifier extends Notifier<GameState> {
     // десятками за сеанс и превращались в шум, который перестают читать.
     // Остаётся редкое и важное — поднялся сорт, случилось похмелье.
 
+    // Взятая цель — событие, и о нём надо сказать. Раньше открытые цели
+    // складывались в список, который никто не читал: плашки не было вовсе,
+    // и множитель рос молча, а автопродажа включалась без объяснений.
     final checked = engine.checkAchievements(next);
-    if (checked.fresh.isNotEmpty) freshAchievements.addAll(checked.fresh);
+    if (checked.fresh.isNotEmpty) _announceGoals(checked.fresh);
 
     state = checked.state;
+  }
+
+  /// Плашка о взятой цели. Если открылось сразу несколько — одна плашка на
+  /// все: очередь из пяти плашек подряд читали бы как шум.
+  void _announceGoals(List<Achievement> fresh) {
+    final first = fresh.first;
+    final perk = fresh.map((a) => a.perk).firstWhere(
+          (p) => p != AchievementPerk.none,
+          orElse: () => AchievementPerk.none,
+        );
+    ref.read(toastProvider.notifier).show(
+          kind: 'ЦЕЛЬ ВЗЯТА',
+          title: fresh.length == 1
+              ? first.name
+              : '${first.name} и ещё ${fresh.length - 1}',
+          note: switch (perk) {
+            AchievementPerk.autoSell => 'открыта автопродажа: полный бак сдаётся сам',
+            AchievementPerk.bulkBuy => 'открыта покупка пачками: ×10, ×100, МАКС',
+            AchievementPerk.none => 'всё производство ${Fmt.mult(kAchievementMultiplier)}',
+          },
+          goalId: first.id,
+        );
   }
 
   /// Отдача — звук и вибрация. Живёт здесь, а не в кнопках, намеренно:

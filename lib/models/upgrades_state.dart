@@ -16,7 +16,7 @@ class UpgradesState extends Equatable {
     );
   }
 
-  /// Суммарный множитель силы тапа от купленных апгрейдов
+  /// Во сколько раз окно жара шире базового — от купленных улучшений руки.
   double get heatControlMultiplier {
     return items
         .where((u) => u.purchased && u.target == UpgradeTarget.heatControl)

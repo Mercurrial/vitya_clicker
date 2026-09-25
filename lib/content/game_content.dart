@@ -95,7 +95,7 @@ List<Generator> startingGenerators(List<Generator> content) => [
 ///   • объём   — аппараты производят больше
 ///   • цена    — качество поднимает рубли за литр
 ///   • ёмкость — бак вмещает больше, реже стоит простой
-///   • руки    — отдача за нажатие
+///   • руки    — окно жара шире, держать легче
 ///
 /// Описания сухие, как патчноут: смешно от формулировки, а не оттого, что
 /// шутку объяснили.
@@ -108,26 +108,26 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'tap_ruka',
     name: 'Крепкая рука',
-    description: 'Окно жара шире на 40%',
+    description: 'Окно жара шире на четверть',
     cost: 40,
     target: UpgradeTarget.heatControl,
-    multiplier: 1.4,
+    multiplier: 1.25,
   ),
   Upgrade(
     id: 'tap_mozol',
     name: 'Трудовая мозоль',
-    description: 'Окно жара шире ещё на 40%',
+    description: 'Окно жара шире ещё на четверть',
     cost: 1200,
     target: UpgradeTarget.heatControl,
-    multiplier: 1.4,
+    multiplier: 1.25,
   ),
   Upgrade(
     id: 'tap_hvatka',
     name: 'Дедовская хватка',
-    description: 'Окно жара шире ещё вдвое',
+    description: 'Окно жара шире ещё на треть',
     cost: 30000,
     target: UpgradeTarget.heatControl,
-    multiplier: 2.0,
+    multiplier: 1.3,
   ),
 
   // --- Ёмкость бака ---
@@ -258,7 +258,7 @@ const List<Upgrade> kUpgrades = [
   Upgrade(
     id: 'all_recept',
     name: 'Рецепт прадеда',
-    description: 'Все аппараты +50%',
+    description: 'Все аппараты ×1.5',
     cost: 40000,
     target: UpgradeTarget.allGenerators,
     multiplier: 1.5,
