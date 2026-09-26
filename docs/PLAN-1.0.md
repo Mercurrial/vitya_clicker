@@ -898,7 +898,7 @@ dart run tools/balance_report.dart 4       # если трогали эконо�
   правила CLAUDE.md. Партию дописывать не нужно: `make_fixture` уже
   проходит три захода с похмельями, потоком, гостем и коллайдером, и
   эталон несёт каждый ключ сейва, включая `portal` и `maxTier`
-  (задача `fixture-facts`). Стережёт это `release_fixture_test.dart` — перед
+  (задача `fixture-facts`, PR #30). Стережёт это `release_fixture_test.dart` — перед
   снятием он зелёный; действующий отпечаток чисел в
   `release_contract_test.dart`; CHANGELOG (раздел «1.0.0 — готовится»
   дописать), README, ROADMAP (закрыть сделанное, отложенное — из
