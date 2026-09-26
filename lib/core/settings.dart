@@ -45,4 +45,10 @@ abstract final class SettingsKeys {
   /// строковый, а заводить сериализацию булева ради двух галочек незачем.
   static const sound = 'sound';
   static const haptics = 'haptics';
+
+  /// Подсказку «поставь на экран Домой» закрыли (`home_screen.dart`). Не
+  /// прогресс, а «это уже говорили». Лежит в хранилище вкладки Safari —
+  /// сотрёт его iPhone через неделю без игры, сотрёт и прогресс, и тогда
+  /// подсказка покажется снова по делу.
+  static const homeScreenHint = 'home_screen_hint';
 }
