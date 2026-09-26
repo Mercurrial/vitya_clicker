@@ -12,6 +12,7 @@ library;
 
 import '../models/achievement.dart';
 import '../models/game_state.dart';
+import '../models/upgrade.dart';
 
 /// Множитель за одно достижение.
 const double kAchievementMultiplier = 1.05;
@@ -37,8 +38,13 @@ int _maxOwned(GameState s) {
 int _distinctOwned(GameState s, {int atLeast = 1}) =>
     s.generators.items.where((g) => g.ownedCount >= atLeast).length;
 
-bool _boughtWithTarget(GameState s, bool Function(String id) match) =>
-    s.upgrades.items.any((u) => u.purchased && match(u.id));
+// Цели про улучшения смотрят на ось улучшения (UpgradeTarget), а не на id.
+// «Не бодяжим» проверяла префикс `q_`, а улучшения качества строятся как
+// `price_<аппарат>`: цель стала невыполнимой, ряд «Ремесло» не закрывался
+// никогда, и его множитель был игроку недоступен. Ось переименованием не
+// ломается.
+bool _bought(GameState s, UpgradeTarget target) =>
+    s.upgrades.hasPurchased(target);
 
 final List<AchievementRow> kAchievementRows = [
   AchievementRow(
@@ -112,13 +118,13 @@ final List<AchievementRow> kAchievementRows = [
         id: 'a_quality',
         name: 'Не бодяжим',
         hint: 'Купить улучшение качества',
-        check: (s) => _boughtWithTarget(s, (id) => id.startsWith('q_')),
+        check: (s) => _bought(s, UpgradeTarget.quality),
       ),
       Achievement(
         id: 'a_tank_up',
         name: 'Тара нашлась',
         hint: 'Расширить бак',
-        check: (s) => _boughtWithTarget(s, (id) => id.startsWith('tank_')),
+        check: (s) => _bought(s, UpgradeTarget.tankCapacity),
       ),
       Achievement(
         id: 'a_hands',
@@ -159,8 +165,11 @@ final List<AchievementRow> kAchievementRows = [
         id: 'a_synergy',
         name: 'Всё по науке',
         hint: 'Купить «Наставника Петровича» и «Семейный подряд»',
-        check: (s) => _boughtWithTarget(s, (id) => id == 'syn_1') &&
-            _boughtWithTarget(s, (id) => id == 'syn_2'),
+        // У каждой оси связок ровно одно улучшение: «Наставник» — coupling,
+        // «Подряд» — resonance.
+        check: (s) =>
+            _bought(s, UpgradeTarget.synergyCoupling) &&
+            _bought(s, UpgradeTarget.synergyResonance),
       ),
     ],
   ),
