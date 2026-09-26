@@ -6,8 +6,10 @@ import 'package:idle_game/engine/formulas.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/models/achievement.dart';
 import 'package:idle_game/models/achievements_state.dart';
+import 'package:idle_game/models/clicker_state.dart';
 import 'package:idle_game/models/game_state.dart';
 import 'package:idle_game/models/prestige_state.dart';
+import 'package:idle_game/models/upgrade.dart';
 
 void main() {
   const engine = GameEngine();
@@ -58,6 +60,79 @@ void main() {
       final ids = checked.fresh.map((a) => a.id).toSet();
       expect(ids, containsAll(['a_first_still', 'a_first_sale']));
       expect(ids.length, greaterThanOrEqualTo(2));
+    });
+  });
+
+  group('Цели про улучшения', () {
+    AchievementRow rowOf(String id) =>
+        kAchievementRows.firstWhere((r) => r.items.any((a) => a.id == id));
+
+    test('«Не бодяжим» берётся после покупки любого улучшения цены', () {
+      // Цель проверяла префикс id `q_`, которого ни у одного улучшения не
+      // было, и не бралась никогда.
+      final quality =
+          kUpgrades.where((u) => u.target == UpgradeTarget.quality).toList();
+      expect(quality, isNotEmpty);
+
+      for (final u in quality) {
+        var s = withMoney(u.cost);
+        s = engine.buyUpgrade(s, u.id, t0);
+        expect(s.upgrades.items.firstWhere((x) => x.id == u.id).purchased,
+            isTrue,
+            reason: '${u.id} не купилось');
+
+        final ids = engine.checkAchievements(s).fresh.map((a) => a.id);
+        expect(ids, contains('a_quality'), reason: 'после ${u.id}');
+      }
+    });
+
+    test('ряд с «Не бодяжим» закрывается целиком', () {
+      final row = rowOf('a_quality');
+      final tank = kUpgrades.firstWhere((u) => u.target == UpgradeTarget.tankCapacity);
+      final quality = kUpgrades.firstWhere((u) => u.target == UpgradeTarget.quality);
+
+      var s = withMoney(1e12);
+      s = engine.buyGenerator(s, 'dedov', t0);
+      s = engine.buyUpgrade(s, tank.id, t0);
+      s = engine.buyUpgrade(s, quality.id, t0);
+      s = s.copyWith(clicker: const ClickerState(totalTaps: 500));
+      s = engine.checkAchievements(s).state;
+
+      for (final a in row.items) {
+        expect(s.achievements.has(a.id), isTrue, reason: a.id);
+      }
+      expect(s.achievements.completedRows, greaterThanOrEqualTo(1));
+    });
+
+    test('у каждой цели есть состояние, в котором она берётся', () {
+      // Условие цели — замыкание, и опечатка в id внутри него не видна ни
+      // анализатору, ни игроку: цель просто висит невыполнимой. Поэтому
+      // проверяем игру, в которой куплено и сделано всё: ни одна цель не
+      // может остаться невзятой, иначе её нельзя взять никогда.
+      var s = fresh();
+      s = s.copyWith(
+        generators: s.generators.copyWith(items: [
+          for (final g in s.generators.items) g.copyWith(ownedCount: 100),
+        ]),
+        upgrades: s.upgrades.copyWith(items: [
+          for (final u in s.upgrades.items) u.copyWith(purchased: true),
+        ]),
+        clicker: const ClickerState(totalTaps: 500),
+        prestige: const PrestigeState(
+          hangovers: 3,
+          bonusWisdom: 10,
+          totalEverEarned: 1e9,
+        ),
+      );
+      s = s.copyWith(
+        resources: s.resources.copyWith(ml: s.tankCapacity, money: 1e6),
+      );
+
+      final never = [
+        for (final a in kAllAchievements)
+          if (!a.check(s)) a.id,
+      ];
+      expect(never, isEmpty, reason: 'эти цели не берутся даже в конце игры');
     });
   });
 
