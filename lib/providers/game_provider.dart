@@ -8,6 +8,7 @@ import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
 import '../content/vitya_quotes.dart';
+import '../content/wisdom_milestones.dart';
 import '../core/formatters.dart';
 import '../ui/widgets/vitya_toast.dart';
 import '../models/achievement.dart';
@@ -329,9 +330,37 @@ class GameNotifier extends Notifier<GameState> {
         : engine.buyGeneratorBulk(state, id, count, now);
     // Только если покупка ДЕЙСТВИТЕЛЬНО случилась: щелчок в ответ на нажатие
     // по недоступной кнопке — это обещание, которого игра не выполнила.
-    if (!identical(state, before) && state != before) {
+    if (identical(state, before) || state == before) return;
+
+    // Снимок портала записывает движок; сказать о нём — здесь, по факту
+    // записи, а не по id аппарата: второй коллайдер портал не открывает.
+    if (state.portal.isOpen(World.garage) && !before.portal.isOpen(World.garage)) {
+      _announcePortal();
+    } else {
       _feedback.hit(Sfx.buy, Buzz.select);
     }
+  }
+
+  /// Коллайдер открыл портал. Нового мира в 1.0.0 ещё нет, игра идёт дальше
+  /// в гараже — и игрок должен узнать, что до портала он дошёл и что он
+  /// не сломан, а ждёт обновления.
+  ///
+  /// Плашка одна на всю игру, как и сам снимок. Текст разложен на три
+  /// строки плашки, а не на две: подпись в одну строку на экране в 320
+  /// точек обрезалась бы на «обновлени…».
+  void _announcePortal() {
+    ref.read(toastProvider.notifier).show(
+          kind: 'ПОРТАЛ ОТКРЫТ',
+          title: 'Новый мир',
+          note: 'в следующем обновлении',
+        );
+    // Своего звука у портала нет — звуки синтезирует tools/make_sounds.dart.
+    // Покупка звучит как покупка, а вибрация сильнее обычной: момент редкий.
+    _feedback.hit(Sfx.buy, Buzz.medium);
+
+    // Снимок — факт, который задним числом не восстановить: пишем сразу, не
+    // дожидаясь автосейва.
+    saveNow();
   }
 
   void buyUpgrade(String id) {

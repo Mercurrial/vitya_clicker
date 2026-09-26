@@ -140,6 +140,17 @@ void main() {
         'claimedMl': 4.79e18,
         'lifetime': 5.1e18,
         'hangovers': 42,
+        'maxTier': 'collider',
+        'portal': {
+          'garage': {
+            'at': 1790000000123,
+            'lifetime': 2.9123456789e24,
+            'claimedMl': 1.7123456789e24,
+            'bonusWisdom': 1,
+            'hangovers': 12,
+            'playSec': 94321.40000000001,
+          },
+        },
         'balanceVersion': 1,
         'lastSeen': 1780000000000,
       });

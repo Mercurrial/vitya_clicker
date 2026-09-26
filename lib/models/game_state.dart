@@ -6,6 +6,7 @@ import 'clicker_state.dart';
 import 'flux_state.dart';
 import 'generator.dart';
 import 'generators_state.dart';
+import 'portal_state.dart';
 import 'prestige_state.dart';
 import 'resources_state.dart';
 import 'sort_state.dart';
@@ -31,6 +32,22 @@ class GameState extends Equatable {
   /// Поток времени — копится за AFK, тратится ускорением. Переживает похмелье.
   final FluxState flux;
 
+  /// Открытые порталы — снимки, записанные первой покупкой коллайдера.
+  /// Переживает похмелье.
+  final PortalState portal;
+
+  /// Наивысшая ступень лестницы за всё время — id аппарата. `null` — не
+  /// куплено ни одной ступени (в игре так не бывает: банка есть с начала).
+  ///
+  /// Id, а не номер ступени: номер уедет, если в лестницу вставят ступень,
+  /// и игрок молча окажется на соседней. Id вечные (`game_content.dart`).
+  ///
+  /// Только растёт и переживает похмелье: похмелье забирает аппараты, а не
+  /// то, докуда Витя дошёл. Задним числом её не восстановить, поэтому
+  /// поднимается она сама — в [GameState.initial] и [copyWith], стоит
+  /// аппаратам поменяться, — а не в каждом месте, где их покупают.
+  final String? maxTier;
+
   final DateTime lastUpdateTime;
 
   /// Кэш суммарного дохода в мл/с — пересчитывается только при изменении того,
@@ -47,6 +64,8 @@ class GameState extends Equatable {
     required this.sort,
     required this.stats,
     this.flux = const FluxState(),
+    this.portal = const PortalState(),
+    this.maxTier,
     required this.lastUpdateTime,
     required this.mlPerSecond,
   });
@@ -58,6 +77,8 @@ class GameState extends Equatable {
     AchievementsState achievements = const AchievementsState(),
     StatsState? stats,
     FluxState flux = const FluxState(),
+    PortalState portal = const PortalState(),
+    String? maxTier,
     DateTime? lastUpdateTime,
   }) {
     final at = lastUpdateTime ?? DateTime.now();
@@ -75,6 +96,8 @@ class GameState extends Equatable {
       sort: const SortState(),
       stats: stats ?? StatsState.startedAt(at),
       flux: flux,
+      portal: portal,
+      maxTier: _higherTier(maxTier, gens),
       lastUpdateTime: at,
       mlPerSecond: Production.mlPerSecond(gens, ups, prestige, achievements.multiplier),
     );
@@ -90,6 +113,7 @@ class GameState extends Equatable {
     SortState? sort,
     StatsState? stats,
     FluxState? flux,
+    PortalState? portal,
     DateTime? lastUpdateTime,
   }) {
     final nextGens = generators ?? this.generators;
@@ -115,9 +139,28 @@ class GameState extends Equatable {
       sort: sort ?? this.sort,
       stats: stats ?? this.stats,
       flux: flux ?? this.flux,
+      portal: portal ?? this.portal,
+      maxTier: generators != null ? _higherTier(maxTier, nextGens) : maxTier,
       lastUpdateTime: lastUpdateTime ?? this.lastUpdateTime,
       mlPerSecond: nextRate,
     );
+  }
+
+  /// Выше из двух: ступень [reached] или старшая из купленных в [gens].
+  ///
+  /// Порядок ступеней — порядок в [gens], то есть в лестнице. Id, которого
+  /// в лестнице нет, не в счёт: сравнить его не с чем, а оставить — значит
+  /// держать ступень, которая может оказаться ниже купленной.
+  static String? _higherTier(String? reached, GeneratorsState gens) {
+    final items = gens.items;
+    var top = items.indexWhere((g) => g.id == reached);
+    for (var i = items.length - 1; i > top; i--) {
+      if (items[i].ownedCount > 0) {
+        top = i;
+        break;
+      }
+    }
+    return top < 0 ? null : items[top].id;
   }
 
   /// Сколько влезает в бак. Растёт вместе с производством, иначе экспонента
@@ -145,6 +188,8 @@ class GameState extends Equatable {
         sort,
         stats,
         flux,
+        portal,
+        maxTier,
         lastUpdateTime,
         mlPerSecond,
       ];

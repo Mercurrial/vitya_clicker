@@ -2,9 +2,11 @@ import '../content/achievements.dart';
 import '../content/balance.dart';
 import '../content/buyers.dart';
 import '../content/game_content.dart';
+import '../content/wisdom_milestones.dart';
 import '../models/achievement.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
+import '../models/portal_state.dart';
 import '../models/upgrade.dart';
 import 'formulas.dart';
 import 'market.dart';
@@ -318,11 +320,15 @@ class GameEngine {
     final items = List<Generator>.from(state.generators.items);
     items[index] = generator.copyWith(ownedCount: generator.ownedCount + 1);
 
-    return state.copyWith(
-      resources: state.resources.copyWith(money: state.resources.money - cost),
-      generators: state.generators.copyWith(items: items),
-      stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + 1),
-      // Метку времени не трогаем — её двигает только тик, см. processTick.
+    return _openPortal(
+      state.copyWith(
+        resources: state.resources.copyWith(money: state.resources.money - cost),
+        generators: state.generators.copyWith(items: items),
+        stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + 1),
+        // Метку времени не трогаем — её двигает только тик, см. processTick.
+      ),
+      generatorId,
+      currentTime,
     );
   }
 
@@ -365,11 +371,34 @@ class GameEngine {
     final items = List<Generator>.from(state.generators.items);
     items[index] = generator.copyWith(ownedCount: generator.ownedCount + take);
 
+    return _openPortal(
+      state.copyWith(
+        resources: state.resources.copyWith(money: state.resources.money - cost),
+        generators: state.generators.copyWith(items: items),
+        stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + take),
+        // Метку времени не трогаем — её двигает только тик, см. processTick.
+      ),
+      generatorId,
+      currentTime,
+    );
+  }
+
+  /// Купленный [boughtId] — коллайдер, и портал из гаража ещё не открыт:
+  /// записать снимок портала.
+  ///
+  /// Зовут обе покупки аппарата — штучная и пачкой. Коллайдер берут и так и
+  /// так («МАКС» на одну штуку — тоже пачка), и снимок, записанный только
+  /// одной из них, у части игроков не появился бы вовсе.
+  ///
+  /// Снимается ПОСЛЕ покупки, но покупка его полей не трогает: нагнанное,
+  /// похмелья и время в игре от денег не зависят.
+  GameState _openPortal(GameState state, String boughtId, DateTime at) {
+    if (boughtId != kPortalStillId || state.portal.isOpen(World.garage)) return state;
     return state.copyWith(
-      resources: state.resources.copyWith(money: state.resources.money - cost),
-      generators: state.generators.copyWith(items: items),
-      stats: state.stats.copyWith(stillsBought: state.stats.stillsBought + take),
-      // Метку времени не трогаем — её двигает только тик, см. processTick.
+      portal: state.portal.open(
+        World.garage,
+        PortalSnapshot.take(at: at, prestige: state.prestige, stats: state.stats),
+      ),
     );
   }
 
@@ -433,6 +462,11 @@ class GameEngine {
       // Поток — время игрока, а не имущество гаража: его улучшения куплены
       // за ожидание, и отнимать их похмельем значило бы наказать за сон.
       flux: state.flux,
+      // Портал и наивысшая ступень — то, докуда Витя дошёл, а не то, что у
+      // него есть. Похмелье забирает аппараты, но не пройденный путь; без
+      // этих двух строк второй слой не узнал бы, кто был у портала.
+      portal: state.portal,
+      maxTier: state.maxTier,
       lastUpdateTime: currentTime,
     );
     return bonuses.startMoney > 0

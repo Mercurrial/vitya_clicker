@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/content/game_content.dart';
 import 'package:idle_game/content/sorts.dart';
+import 'package:idle_game/content/wisdom_milestones.dart';
 import 'package:idle_game/core/game_serializer.dart';
 import 'package:idle_game/engine/game_engine.dart';
 import 'package:idle_game/models/game_state.dart';
@@ -74,6 +75,29 @@ void main() {
       expect(s.prestige.wisdom, 7);
       expect(s.prestige.claimedMl, closeTo(claimed, 1e-6));
       expect(s.prestige.hangovers, 3);
+    });
+
+    test('портал и наивысшая ступень переживают сохранение', () {
+      // Оба — факты, которые задним числом не восстановить: после похмелья
+      // коллайдера нет. Подробно — test/portal_test.dart.
+      var s = build().copyWith(
+        resources: build().resources.copyWith(money: 1e40),
+        prestige: const PrestigeState(totalEverEarned: 5e20, hangovers: 12),
+      );
+      s = engine.buyGenerator(s, kPortalStillId, now);
+      s = engine.prestige(s, kGenerators, kUpgrades, now);
+      expect(s.generators.items.last.ownedCount, 0);
+
+      final back = ser.fromJson(
+        ser.toJson(s, lastSeenMillis: 1),
+        content: kGenerators,
+        upgrades: kUpgrades,
+        now: now.add(const Duration(days: 1)),
+      );
+      expect(back.portal, s.portal);
+      expect(back.portal[World.garage]?.at, now);
+      expect(back.portal[World.garage]?.hangovers, 12);
+      expect(back.maxTier, kPortalStillId);
     });
 
     test('метка последнего выхода читается обратно', () {
@@ -184,6 +208,8 @@ void main() {
           'bought': 'не список',
           'wisdom': null,
           'lifetime': double.nan,
+          'portal': 'не карта',
+          'maxTier': 13,
         },
         content: kGenerators,
         upgrades: kUpgrades,
@@ -194,6 +220,8 @@ void main() {
       expect(s.prestige.wisdom, 0);
       expect(s.prestige.totalEverEarned, 0);
       expect(s.upgrades.items.every((u) => !u.purchased), isTrue);
+      expect(s.portal.isEmpty, isTrue);
+      expect(s.maxTier, isNull, reason: 'аппаратов нет — и ступени нет');
     });
   });
 }

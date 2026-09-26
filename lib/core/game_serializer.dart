@@ -14,6 +14,7 @@ import '../content/achievements.dart';
 import '../content/balance.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
+import '../content/wisdom_milestones.dart';
 import '../models/achievements_state.dart';
 import '../models/sort_state.dart';
 import '../models/clicker_state.dart';
@@ -21,6 +22,7 @@ import '../models/flux_state.dart';
 import '../models/game_state.dart';
 import '../models/generator.dart';
 import '../models/generators_state.dart';
+import '../models/portal_state.dart';
 import '../models/prestige_state.dart';
 import '../models/resources_state.dart';
 import '../models/stats_state.dart';
@@ -54,6 +56,9 @@ class GameSerializer {
       'bonusWisdom': s.prestige.bonusWisdom,
       'lifetime': s.prestige.totalEverEarned,
       'hangovers': s.prestige.hangovers,
+      // Наивысшая ступень — id аппарата, а не номер: номер уедет, если в
+      // лестницу вставят ступень. Поле гаража, как и всё выше.
+      if (s.maxTier case final tier?) 'maxTier': tier,
       // Статистика — своим блоком, а не россыпью ключей верхнего уровня: так
       // видно, какие поля к ней относятся, и следующему блоку есть куда лечь
       // рядом, не перемешиваясь.
@@ -64,6 +69,10 @@ class GameSerializer {
       'flux': s.flux.seconds,
       'fluxRate': s.flux.rateLevel,
       'fluxBank': s.flux.bankLevel,
+      // Портал — общий ключ, а не гаражный: снимки лежат по миру, из
+      // которого портал открыт, и снимок следующего мира ляжет рядом.
+      // Нет порталов — нет ключа: отсутствие и значит «не открыт».
+      if (!s.portal.isEmpty) 'portal': _portalToJson(s.portal),
       // Под каким балансом игрок в последний раз видел игру. По этому числу
       // при обновлении показывается список изменений и начисляется
       // компенсация.
@@ -113,6 +122,9 @@ class GameSerializer {
         rateLevel: _asInt(json['fluxRate']),
         bankLevel: _asInt(json['fluxBank']),
       ),
+      portal: _portalFromJson(json['portal']),
+      // Не меньше купленного сейчас — это GameState.initial досчитает сам.
+      maxTier: switch (json['maxTier']) { final String id => id, _ => null },
       lastUpdateTime: now,
     );
 
@@ -168,6 +180,56 @@ class GameSerializer {
       stillsBought: _asInt(j['stillsBought']),
       upgradesBought: _asInt(j['upgradesBought']),
       fastestRunSeconds: fastest > 0 ? fastest : null,
+    );
+  }
+
+  /// Ключ мира в блоке `portal`.
+  ///
+  /// Руками, а не `World.name`: переименуй кто значение перечисления в коде —
+  /// снимки у игроков молча перестали бы читаться. Новый мир без ключа здесь
+  /// не соберётся: switch обязан перебрать все миры.
+  static String _worldKey(World world) => switch (world) {
+        World.garage => 'garage',
+      };
+
+  Map<String, dynamic> _portalToJson(PortalState p) => {
+        for (final MapEntry(key: world, value: shot) in p.opened.entries)
+          _worldKey(world): {
+            'at': shot.at.millisecondsSinceEpoch,
+            'lifetime': shot.lifetime,
+            'claimedMl': shot.claimedMl,
+            'bonusWisdom': shot.bonusWisdom,
+            'hangovers': shot.hangovers,
+            'playSec': shot.playSeconds,
+          },
+      };
+
+  /// Порталы из сейва.
+  ///
+  /// Мусор не роняет загрузку: упади разбор здесь, читаемый сейв ушёл бы в
+  /// отложенные копии как нечитаемый (`bootstrap.dart`), и игрок остался бы
+  /// без гаража из-за одного лишнего ключа. Поэтому блок не того вида
+  /// читается как «порталов нет», а снимок без понятного момента — как
+  /// неоткрытый портал: момент и отличает снимок от набора нулей.
+  PortalState _portalFromJson(dynamic v) {
+    if (v is! Map) return const PortalState();
+    return PortalState(Map.unmodifiable({
+      for (final world in World.values)
+        if (_snapshotFromJson(v[_worldKey(world)]) case final shot?) world: shot,
+    }));
+  }
+
+  PortalSnapshot? _snapshotFromJson(dynamic v) {
+    if (v is! Map) return null;
+    final at = _asMoment(v['at']);
+    if (at == null) return null;
+    return PortalSnapshot(
+      at: at,
+      lifetime: _asDouble(v['lifetime']),
+      claimedMl: _asDouble(v['claimedMl']),
+      bonusWisdom: _asInt(v['bonusWisdom']),
+      hangovers: _asInt(v['hangovers']),
+      playSeconds: _asDouble(v['playSec']),
     );
   }
 
