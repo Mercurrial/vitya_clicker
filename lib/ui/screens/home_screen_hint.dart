@@ -10,17 +10,27 @@ import 'package:flutter/material.dart';
 import '../theme/garage.dart';
 
 Future<void> showHomeScreenHint(BuildContext context) {
-  final strong = GType.body().copyWith(
-    color: GColors.textHi,
-    fontWeight: FontWeight.w600,
-  );
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: const Color(0xCC0B0806),
-    builder: (context) => AlertDialog(
+    builder: (context) => const HomeScreenHint(),
+  );
+}
+
+class HomeScreenHint extends StatelessWidget {
+  const HomeScreenHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final strong = GType.body().copyWith(
+      color: GColors.textHi,
+      fontWeight: FontWeight.w600,
+    );
+    return AlertDialog(
       backgroundColor: GColors.surface1,
-      // Крупный шрифт в настройках браузера не должен прятать кнопку.
+      // Крупный шрифт в настройках телефона не должен уносить кнопку за
+      // край экрана.
       scrollable: true,
       title: Text('Поставь игру на экран «Домой»',
           style: GType.ui(size: 17, weight: FontWeight.w600)),
@@ -54,6 +64,6 @@ Future<void> showHomeScreenHint(BuildContext context) {
           child: Text('Понятно', style: GType.body()),
         ),
       ],
-    ),
-  );
+    );
+  }
 }
