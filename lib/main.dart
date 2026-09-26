@@ -6,13 +6,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/app_info.dart';
 import 'core/bootstrap.dart';
 import 'core/game_clock.dart';
+import 'core/home_screen.dart';
 import 'core/save_code.dart';
 import 'core/sfx_player.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/game_provider.dart';
+import 'providers/ios_launch_provider.dart';
 import 'ui/game/vitya_portrait.dart';
 import 'ui/screens/balance_news.dart';
 import 'ui/screens/garage_screen.dart';
+import 'ui/screens/home_screen_hint.dart';
 import 'ui/screens/save_rescue.dart';
 import 'ui/screens/test_save_notice.dart';
 import 'ui/screens/welcome_back.dart';
@@ -110,6 +113,10 @@ class _Root extends ConsumerStatefulWidget {
 }
 
 class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
+  /// Подсказать поставить игру на экран «Домой» (`core/home_screen.dart`).
+  late final bool _suggestHomeScreen = shouldSuggestHomeScreen(
+      ref.read(iosLaunchProvider), ref.read(settingsStoreProvider));
+
   @override
   void initState() {
     super.initState();
@@ -123,10 +130,15 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
     // Потом «что изменилось», потом «сколько накапало»: если поменялся
     // баланс, игрок должен узнать об этом ДО того, как увидит цифры, — иначе
     // он успеет решить, что игра сломалась.
+    //
+    // Подсказка «на экран Домой» — сразу после сообщений о сейве: она тоже
+    // про то, где живёт этот гараж, и не должна их перебивать. Но до
+    // новостей и возвращения — те про цифры и стоят вплотную к игре.
     final boot = widget.boot;
     if (boot.testSaveDropped ||
         boot.saveWasLost ||
         boot.rescuedGarage != null ||
+        _suggestHomeScreen ||
         boot.hasBalanceNews ||
         boot.shouldGreet) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openIntro());
@@ -166,6 +178,13 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
         return;
       }
       if (!restore) await boot.saves.forget(copy.raw);
+      if (!mounted) return;
+    }
+    if (_suggestHomeScreen) {
+      // После возврата гаража из копии (return выше) подсказка ждёт
+      // следующего запуска: закрыть её ещё не успели.
+      await showHomeScreenHint(context);
+      await markHomeScreenHintSeen(ref.read(settingsStoreProvider));
       if (!mounted) return;
     }
     if (boot.hasBalanceNews) {

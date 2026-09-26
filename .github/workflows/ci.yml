@@ -1,6 +1,6 @@
 name: Проверка PR
 
-# Анализ, тесты и снимки экрана — на каждый PR, до влития в main.
+# Анализ, тесты, снимки экрана и сборка веба — на каждый PR, до влития в main.
 #
 # Раньше тесты гонялись только внутри выкладки, то есть уже ПОСЛЕ влития:
 # сломанное успевало попасть в main и на сайт. Теперь выкладка идёт по тегу
@@ -74,3 +74,26 @@ jobs:
           path: test/failures/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Веб-версию раньше собирала только выкладка (deploy-web.yml), то есть
+  # уже после тега. Тесты и анализ веб не собирают: `flutter test` идёт на
+  # виртуальной машине Dart, и файлы под `dart.library.js_interop`
+  # (`ios_launch_web.dart`, `page_reload_web.dart`) в нём не компилируются
+  # вовсе. Сломанный код только для браузера проходил бы проверку PR и
+  # всплывал бы уже после выпуска — а iPhone играет именно в веб.
+  # `--base-href` здесь не нужен: проверяется, что собирается, а не адрес.
+  web:
+    name: Сборка веба
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Та же версия, что в выкладке. См. deploy-web.yml.
+          flutter-version: 3.24.3
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build web --release
