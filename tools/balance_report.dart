@@ -13,14 +13,14 @@
 ///
 /// Вторая половина — профили с отсутствием (lib/sim/sim_profiles.dart). Их
 /// длина не зависит от аргумента: ночь — 8 часов, сутки — сутки. В конце —
-/// цели баланса с числами. Весь отчёт идёт несколько минут.
+/// цели баланса с числами — с гостями и без. Весь отчёт идёт несколько
+/// минут.
 library;
 
 import 'dart:io';
 
 import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
-import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/sim/balance_sim.dart';
 import 'package:idle_game/sim/balance_targets.dart';
 import 'package:idle_game/sim/sim_profiles.dart';
@@ -59,7 +59,7 @@ void main(List<String> args) {
   // лестницы, и старшие за несколько часов не купит никто. Без них раздел
   // показывал бы полсписка, который на деле покупается.
   _printDeadContent([...results, for (final m in marathons) m.result]);
-  _printTargets(score);
+  _printTargets(score, scoreBalance(kBalance, guests: false));
 }
 
 void _printRun(SimResult r) {
@@ -290,60 +290,85 @@ void _printMilestones(List<MarathonResult> marathons) {
 
 /// Цели из lib/sim/balance_targets.dart — то же, что проверяет
 /// test/balance_test.dart, но с числами, а не только «прошёл / нет».
-void _printTargets(Score s) {
-  _header('ЦЕЛИ — то же, что проверяет test/balance_test.dart');
+///
+/// Две колонки: без гостей и с ними. Тест судит по второй — так играют в
+/// игре; первая показывает, сколько дают гости.
+void _printTargets(Score s, Score bare) {
+  _header('ЦЕЛИ — то же, что проверяет test/balance_test.dart (✗ — промах с гостями)');
   final curve = firstWisdomFromCurve(kBalance);
-  String mark(bool ok) => ok ? '  ' : '✗ ';
   bool within(Duration? d, Duration lo, Duration hi) => d != null && d >= lo && d <= hi;
-
-  stdout.writeln('${mark(within(s.firstWisdom, BalanceTargets.firstWisdomMin, BalanceTargets.firstWisdomMax))}'
-      '1-я мудрость, «считает»: ${formatClock(s.firstWisdom)}');
-  stdout.writeln('${mark(within(s.firstWisdomCasual, Duration.zero, BalanceTargets.firstWisdomCasualMax))}'
-      '1-я мудрость, «обычный»: ${formatClock(s.firstWisdomCasual)}');
-  stdout.writeln('${mark((kBalance.firstWisdomMl / curve - 1).abs() <= 0.02)}'
-      'порог: в балансе ${kBalance.firstWisdomMl.toStringAsExponential(3)}, '
-      'с кривой к ${formatClock(BalanceTargets.firstWisdomAt)} — ${curve.toStringAsExponential(3)} мл');
-  stdout.writeln('${mark(s.tiersAtFirstWisdom >= BalanceTargets.tiersAtFirstWisdomMin && s.tiersAtFirstWisdom <= BalanceTargets.tiersAtFirstWisdomMax)}'
-      'ступеней к 1-й мудрости: ${s.tiersAtFirstWisdom} из $kGeneratorCount');
-  stdout.writeln('  окупаемость по заходам после ${BalanceTargets.paybackSkip.inMinutes}-й минуты, медиана / 90 % / худшая:');
-  for (final (i, r) in s.paybackByRun.indexed) {
-    final ok = (!r.finished ||
-            (r.median >= BalanceTargets.paybackMedianMin &&
-                r.median <= BalanceTargets.paybackMedianMax)) &&
-        r.p90 <= BalanceTargets.paybackP90Max &&
-        r.worst <= BalanceTargets.paybackWorstMax;
-    stdout.writeln('${mark(ok)}  заход ${i + 1}${r.finished ? '' : ' (недоигран)'}: '
-        '${formatDuration(r.median)} / ${formatDuration(r.p90)} / ${formatDuration(r.worst)}');
+  void row(bool ok, String label, String Function(Score) value) {
+    stdout.writeln('${ok ? '  ' : '✗ '}${label.padRight(44)} '
+        '${value(bare).padLeft(14)}  ${value(s).padLeft(14)}');
   }
+
+  stdout.writeln('  ${''.padRight(44)} ${'без гостей'.padLeft(14)}  ${'с гостями'.padLeft(14)}');
+  row(within(s.firstWisdom, BalanceTargets.firstWisdomMin, BalanceTargets.firstWisdomMax),
+      '1-я мудрость, «считает»', (x) => formatClock(x.firstWisdom));
+  row(within(s.firstWisdomCasual, Duration.zero, BalanceTargets.firstWisdomCasualMax),
+      '1-я мудрость, «обычный»', (x) => formatClock(x.firstWisdomCasual));
+  stdout.writeln('${(kBalance.firstWisdomMl / curve - 1).abs() <= 0.02 ? '  ' : '✗ '}'
+      'порог: в балансе ${kBalance.firstWisdomMl.toStringAsExponential(3)}, '
+      'с кривой (с гостями) к ${formatClock(BalanceTargets.firstWisdomAt)} — ${curve.toStringAsExponential(3)} мл');
+  row(s.tiersAtFirstWisdom >= BalanceTargets.tiersAtFirstWisdomMin &&
+          s.tiersAtFirstWisdom <= BalanceTargets.tiersAtFirstWisdomMax,
+      'ступеней к 1-й мудрости', (x) => '${x.tiersAtFirstWisdom} из $kGeneratorCount');
+  stdout.writeln('  окупаемость по заходам после ${BalanceTargets.paybackSkip.inMinutes}-й минуты, медиана / 90 % / худшая:');
+  final runs = s.paybackByRun.length > bare.paybackByRun.length
+      ? s.paybackByRun.length
+      : bare.paybackByRun.length;
+  for (var i = 0; i < runs; i++) {
+    String cell(Score x) {
+      if (i >= x.paybackByRun.length) return '—';
+      final r = x.paybackByRun[i];
+      return '${r.finished ? '' : '*'}${formatDuration(r.median)}/${formatDuration(r.p90)}/${formatDuration(r.worst)}';
+    }
+
+    final r = i < s.paybackByRun.length ? s.paybackByRun[i] : null;
+    final ok = r == null ||
+        ((!r.finished ||
+                (r.median >= BalanceTargets.paybackMedianMin &&
+                    r.median <= BalanceTargets.paybackMedianMax)) &&
+            r.p90 <= BalanceTargets.paybackP90Max &&
+            r.worst <= BalanceTargets.paybackWorstMax);
+    row(ok, '  заход ${i + 1}', cell);
+  }
+  stdout.writeln('    (* — недоигран, медиана не в счёт)');
   final rerun = s.rerunShare;
-  stdout.writeln('${mark(rerun != null && rerun >= BalanceTargets.rerunMin && rerun <= BalanceTargets.rerunMax)}'
-      'рывок: 2-й заход до той же точки — ${rerun == null ? '—' : '${(rerun * 100).toStringAsFixed(1)} %'} первого');
-  stdout.writeln('${mark(within(s.tier12At, BalanceTargets.tier12Min, BalanceTargets.tier12Max))}'
-      '12-я ступень, «считает»: ${formatDuration(s.tier12At)}');
-  final m = s.marathon!;
-  stdout.writeln('${mark(within(s.portalAt, BalanceTargets.portalMin, BalanceTargets.portalMax))}'
-      'коллайдер, «считает»: ${formatClock(s.portalAt)}');
+  row(rerun != null && rerun >= BalanceTargets.rerunMin && rerun <= BalanceTargets.rerunMax,
+      'рывок: 2-й заход до той же точки, % первого',
+      (x) => x.rerunShare == null ? '—' : '${(x.rerunShare! * 100).toStringAsFixed(1)} %');
+  row(within(s.tier12At, BalanceTargets.tier12Min, BalanceTargets.tier12Max),
+      '12-я ступень, «считает»', (x) => formatClock(x.tier12At));
+  row(within(s.portalAt, BalanceTargets.portalMin, BalanceTargets.portalMax),
+      'коллайдер, «считает»', (x) => formatClock(x.portalAt));
   final casual = s.portalAtCasual;
-  stdout.writeln('${mark(casual == null || casual >= BalanceTargets.portalCasualMin)}'
-      'коллайдер, «обычный»: ${casual == null ? 'не за ${BalanceTargets.portalCasualMin.inHours} ч' : formatClock(casual)}');
-  final h = m.hangoversBeforePortal;
-  stdout.writeln('${mark(h >= BalanceTargets.hangoversMin && h <= BalanceTargets.hangoversMax)}'
-      'похмелий до портала: $h');
-  final longest = m.longestRunBeforePortal;
-  stdout.writeln('${mark(longest != null && longest <= BalanceTargets.longestRunMax)}'
-      'самый длинный заход до портала: ${formatDuration(longest)}');
+  row(casual == null || casual >= BalanceTargets.portalCasualMin, 'коллайдер, «обычный»',
+      (x) => x.portalAtCasual == null
+          ? 'не за ${BalanceTargets.portalCasualMin.inHours} ч'
+          : formatClock(x.portalAtCasual));
+  final h = s.marathon!.hangoversBeforePortal;
+  row(h >= BalanceTargets.hangoversMin && h <= BalanceTargets.hangoversMax,
+      'похмелий до портала', (x) => '${x.marathon!.hangoversBeforePortal}');
+  final longest = s.marathon!.longestRunBeforePortal;
+  row(longest != null && longest <= BalanceTargets.longestRunMax,
+      'самый длинный заход до портала', (x) => formatClock(x.marathon!.longestRunBeforePortal));
   final worst = s.milestoneRunsWorst;
-  stdout.writeln('${mark(!s.milestonesRunOut && (worst ?? 0) <= BalanceTargets.milestoneRunsMax)}'
-      'следующая веха — не дальше ${worst == null ? '—' : '$worst ${Fmt.plural(worst, 'захода', 'заходов', 'заходов')}'}'
-      '${s.milestonesRunOut ? ', но дорожка кончилась раньше портала' : ''}');
-  stdout.writeln('${mark(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin)}'
-      'ночь открытой вкладки даёт мудрость после ${s.overnightTab?.inMinutes} мин игры');
+  row(!s.milestonesRunOut && (worst ?? 0) <= BalanceTargets.milestoneRunsMax,
+      'следующая веха не дальше, заходов',
+      (x) => '${x.milestoneRunsWorst ?? '—'}${x.milestonesRunOut ? ', дорожка кончилась' : ''}');
+  row(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin,
+      'ночь вкладки даёт мудрость после', (x) => '${x.overnightTab?.inMinutes} мин');
   final d20 = s.dailyFirstWisdomDay, d20c = s.dailyFirstWisdomDayCasual;
-  stdout.writeln('${mark(d20 != null && d20 >= BalanceTargets.dailyFirstWisdomDayMin && d20 <= BalanceTargets.dailyFirstWisdomDayMax && d20c != null && d20c <= BalanceTargets.dailyFirstWisdomDayCasualMax)}'
-      '${BalanceTargets.dailySession.inMinutes} мин в день, весь поток: 1-я мудрость — '
-      '«считает» ${d20 == null ? '—' : '$d20-й день'}, «обычный» ${d20c == null ? '—' : '$d20c-й день'}');
-  stdout.writeln('${mark(s.maxTankBuffer <= BalanceTargets.tankMax)}'
-      'запас бака, наибольший: ${formatDuration(s.maxTankBuffer)}');
-  stdout.writeln('  штраф: ${s.penalty.toStringAsFixed(2)} (ноль — всё в целях)');
+  row(d20 != null &&
+          d20 >= BalanceTargets.dailyFirstWisdomDayMin &&
+          d20 <= BalanceTargets.dailyFirstWisdomDayMax &&
+          d20c != null &&
+          d20c <= BalanceTargets.dailyFirstWisdomDayCasualMax,
+      '${BalanceTargets.dailySession.inMinutes} мин в день, день 1-й мудрости',
+      (x) => '${x.dailyFirstWisdomDay ?? '—'} / ${x.dailyFirstWisdomDayCasual ?? '—'} д');
+  row(s.maxTankBuffer <= BalanceTargets.tankMax, 'запас бака, наибольший',
+      (x) => formatDuration(x.maxTankBuffer));
+  row(s.penalty == 0, 'штраф (ноль — всё в целях)', (x) => x.penalty.toStringAsFixed(2));
   stdout.writeln('');
 }

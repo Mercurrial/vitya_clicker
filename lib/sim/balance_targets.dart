@@ -288,13 +288,18 @@ class Score {
 ///
 /// [quick] — только первый заход: без партии на 15 часов и без ночи. Этого
 /// хватает, чтобы поймать разнос, и это в десятки раз быстрее.
-Score scoreBalance(Balance candidate, {bool quick = false}) {
+///
+/// [guests] — `false`: игроки не замечают гостей. Цели меряются с гостями,
+/// как в игре; без них — только для сверки, насколько гости ускоряют.
+Score scoreBalance(Balance candidate, {bool quick = false, bool guests = true}) {
   return withBalance(candidate, () {
     const sim = BalanceSim(sampleEvery: Duration(minutes: 1));
+    final tryhard = guests ? PlayStyle.tryhard : PlayStyle.tryhard.withoutGuests;
+    final casualStyle = guests ? PlayStyle.casual : PlayStyle.casual.withoutGuests;
 
     // Первый заход без похмелья: до первой мудрости правило похмелья ни на
     // что не влияет, а дальше смотреть незачем.
-    final first = sim.start(PlayStyle.tryhard.withPrestige(null));
+    final first = sim.start(tryhard.withPrestige(null));
     sim.play(first, BalanceTargets.firstWisdomMax * 2,
         until: (p) => p.firstPrestige != null);
     final firstWisdom = first.firstPrestige;
@@ -303,7 +308,7 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
         if (first.firstBuy.containsKey(g.id)) g.id,
     ].length;
 
-    final casual = sim.start(PlayStyle.casual.withPrestige(null));
+    final casual = sim.start(casualStyle.withPrestige(null));
     sim.play(casual, BalanceTargets.firstWisdomCasualMax * 2,
         until: (p) => p.firstPrestige != null);
 
@@ -321,17 +326,17 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
     if (!quick) {
       // Одна партия на всё: её первые 15 часов — та же партия, что прежняя
       // на 15 часов, поэтому окупаемость меряется по ним, как раньше.
-      m = marathon(sim, PlayStyle.tryhard, horizon: BalanceTargets.portalHorizon);
+      m = marathon(sim, tryhard, horizon: BalanceTargets.portalHorizon);
       runs.addAll(_paybackByRun(m.result, upTo: BalanceTargets.marathonLength));
       rerun = m.rerunShare;
       tier12 = m.result.firstBuy[kGenerators[11].id];
       for (final c in m.result.timeline) {
         if (c.tankBuffer > maxTank) maxTank = c.tankBuffer;
       }
-      mCasual = marathon(sim, PlayStyle.casual, horizon: BalanceTargets.portalCasualMin);
-      overnight = overnightThreshold(sim, PlayStyle.tryhard, Absence.tabOpen);
-      daily20 = dailyWithFlux(sim, PlayStyle.tryhard).firstWisdomDay;
-      daily20Casual = dailyWithFlux(sim, PlayStyle.casual).firstWisdomDay;
+      mCasual = marathon(sim, casualStyle, horizon: BalanceTargets.portalCasualMin);
+      overnight = overnightThreshold(sim, tryhard, Absence.tabOpen);
+      daily20 = dailyWithFlux(sim, tryhard).firstWisdomDay;
+      daily20Casual = dailyWithFlux(sim, casualStyle).firstWisdomDay;
     }
 
     var penalty = 0.0;
