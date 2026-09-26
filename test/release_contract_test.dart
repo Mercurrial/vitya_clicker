@@ -9,6 +9,7 @@ import 'package:idle_game/core/save.dart';
 import 'package:idle_game/core/save_code.dart';
 
 import 'support/economy_fingerprint.dart';
+import 'support/save_facts.dart';
 
 /// Договор с уже выпущенной версией.
 ///
@@ -69,6 +70,17 @@ void main() {
     });
   }, skip: released ? 'выпуск состоялся: действуют правила ниже' : false);
 
+  // Факты эталона, которые загрузка вправе поменять, — путь и почему; путь
+  // покрывает и всё, что под ним. Служебные ключи (version, balanceVersion,
+  // lastSeen) не факты и в сверку не входят вовсе — см. kServiceKeys.
+  //
+  // Сейчас здесь пусто: загрузка ничего не пересчитывает, только читает.
+  // Сюда попадает осознанная правка после выпуска — id, убранный из игры,
+  // ключ, переименованный миграцией, — с тем, чем это возмещено игроку или
+  // куда переехало значение. Не способ заглушить упавшую сверку: пропавший
+  // факт — это то, что игрок потерял.
+  const mayChange = <String, String>{};
+
   group('Сейвы выпущенных версий открываются', () {
     for (final file in saves) {
       final name = file.uri.pathSegments.last;
@@ -88,24 +100,22 @@ void main() {
           now: now,
         );
 
-        // Факты обязаны пережить обновление. Оценки (доход, мудрость) могут
-        // измениться — на то они и оценки.
-        final original = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-        final stills = (original['stills'] as Map?) ?? const {};
-        for (final entry in stills.entries) {
-          final owned = state.generators.items
-              .firstWhere((g) => g.id == entry.key,
-                  orElse: () => kGenerators.first)
-              .ownedCount;
-          if (kGenerators.any((g) => g.id == entry.key)) {
-            expect(owned, entry.value,
-                reason: 'потеряны аппараты «${entry.key}»');
-          }
-        }
-
-        expect(state.prestige.totalEverEarned,
-            closeTo((original['lifetime'] as num?)?.toDouble() ?? 0, 1e-6),
-            reason: 'потеряна история — из неё растёт вся мудрость');
+        // Факты обязаны пережить обновление — все, а не выборочно: сверка
+        // двух ключей из двадцати пропустила бы потерю потока, статистики
+        // или портала. Сверяется с файлом, а не с тем, что вернула миграция:
+        // факт, потерянный миграцией, игрок теряет точно так же. Оценки
+        // (доход, мудрость) могут измениться — на то они и оценки, в сейве
+        // их нет.
+        final original =
+            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+        final lost = lostFacts(
+          original,
+          ser.toJson(state, lastSeenMillis: now.millisecondsSinceEpoch),
+          allowed: mayChange,
+        );
+        expect(lost, isEmpty,
+            reason: 'сейв версии $name открылся, но потерял факты — у каждого, '
+                'кто на ней играл, пропадёт то же самое');
 
         // И главное: состояние живое, а не просто разобранное.
         expect(() => state.mlPerSecond, returnsNormally);
