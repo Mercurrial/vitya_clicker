@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:idle_game/ui/screens/home_screen_hint.dart';
 import 'package:idle_game/ui/theme/garage.dart';
@@ -13,6 +14,27 @@ import 'package:idle_game/ui/theme/garage.dart';
 /// затем На экран Домой» одним взглядом. Смотреть и на буквы: символа, которого
 /// нет в шрифте, тест без снимка не заметит — так в подсказку попала «→».
 void main() {
+  // Настоящие шрифты, а не квадраты тестового: снимок ради переносов на
+  // 320 точках, а они зависят от ширины букв.
+  setUpAll(() async {
+    const fonts = {
+      GType.uiFamily: ['Rubik-Variable.ttf'],
+      GType.numFamily: [
+        'IBMPlexMono-Regular.ttf',
+        'IBMPlexMono-Medium.ttf',
+        'IBMPlexMono-SemiBold.ttf',
+        'IBMPlexMono-Bold.ttf',
+      ],
+    };
+    for (final MapEntry(key: family, value: files) in fonts.entries) {
+      final loader = FontLoader(family);
+      for (final file in files) {
+        loader.addFont(rootBundle.load('assets/fonts/$file'));
+      }
+      await loader.load();
+    }
+  });
+
   testWidgets('подсказка «на экран Домой» на 320×640', (tester) async {
     tester.view
       ..physicalSize = const Size(320, 640)
