@@ -20,6 +20,7 @@ import 'dart:io';
 
 import 'package:idle_game/content/balance.dart';
 import 'package:idle_game/content/game_content.dart';
+import 'package:idle_game/core/formatters.dart';
 import 'package:idle_game/sim/balance_sim.dart';
 import 'package:idle_game/sim/balance_targets.dart';
 import 'package:idle_game/sim/sim_profiles.dart';
@@ -46,13 +47,19 @@ void main(List<String> args) {
   _printOvernight(sim, players);
   _printDaily(sim, players);
   _printFlux();
-  final marathons = _printMarathon(sim, players);
 
-  // Мёртвый контент — после партии на 30 часов: улучшения идут вдоль всей
-  // лестницы, и старшие за несколько часов не купит никто. Без неё раздел
+  // Партии до портала — те же, по которым судят цели: гонять их дважды —
+  // лишние минуты.
+  final score = scoreBalance(kBalance);
+  final marathons = [score.marathon!, score.marathonCasual!];
+  _printMarathon(marathons);
+  _printMilestones(marathons);
+
+  // Мёртвый контент — после длинных партий: улучшения идут вдоль всей
+  // лестницы, и старшие за несколько часов не купит никто. Без них раздел
   // показывал бы полсписка, который на деле покупается.
-  _printDeadContent([...results, ...marathons]);
-  _printTargets();
+  _printDeadContent([...results, for (final m in marathons) m.result]);
+  _printTargets(score);
 }
 
 void _printRun(SimResult r) {
@@ -233,33 +240,58 @@ void _printFlux() {
   stdout.writeln('');
 }
 
-/// 30 часов подряд, похмелье — когда прибавка окупает заход.
-List<SimResult> _printMarathon(BalanceSim sim, List<PlayStyle> players) {
-  _header('30 ЧАСОВ С ПОХМЕЛЬЯМИ — ложится, когда прибавка окупает заход');
-  final out = <SimResult>[];
-  for (final style in players) {
-    final m = marathon(sim, style);
-    out.add(m.result);
+/// Партии с похмельями до портала: «считает» — 32 часа, «обычный» — 36.
+/// Похмелье — когда прибавка окупает заход.
+void _printMarathon(List<MarathonResult> marathons) {
+  _header('ДО ПОРТАЛА С ПОХМЕЛЬЯМИ — ложится, когда прибавка окупает заход');
+  for (final m in marathons) {
     final r = m.result;
     final share = m.rerunShare;
-    stdout.writeln('  ${style.name}: похмелий ${r.prestiges}, '
-        'самый длинный заход ${formatDuration(m.longestRun)}, '
-        'ступеней ${kGeneratorCount - r.unreached.length} из $kGeneratorCount, '
+    stdout.writeln('  ${r.style.name}, ${m.horizon.inHours} ч: портал ${formatClock(m.portalAt)}, '
+        'похмелий до него ${m.hangoversBeforePortal}, '
+        'самый длинный заход до него ${formatDuration(m.longestRunBeforePortal)}');
+    stdout.writeln('    ступеней ${kGeneratorCount - r.unreached.length} из $kGeneratorCount, '
+        '12-я на ${formatDuration(r.firstBuy[kGenerators[11].id])}, '
         '2-й заход до той же точки — ${share == null ? '—' : '${(share * 100).round()} %'} первого');
+    // Заход и мудрость после него: по ним видно, где вехи держат ритм, а
+    // где его теряют.
+    final runs = <String>[];
+    for (var i = 0; i < r.hangovers.length; i++) {
+      final from = i == 0 ? Duration.zero : r.hangovers[i - 1];
+      runs.add('${formatDuration(r.hangovers[i] - from)}→${r.hangoverWisdom[i]}');
+    }
+    stdout.writeln('    заходы → мудрость: ${runs.join(' · ')}');
     stdout.writeln('    похмелья: ${r.hangovers.map(formatClock).join('  ')}');
-    stdout.writeln('    заходы:   ${m.runs.map(formatDuration).join(' · ')}');
-    stdout.writeln('    мудрость к 6 / 10 / 12 / 30 ч: '
-        '${[6, 10, 12, 30].map((h) => m.wisdomAt(Duration(hours: h))).join(' / ')}');
+    final marks = [6, 12, 18, 24, 30].where((h) => Duration(hours: h) <= m.horizon);
+    stdout.writeln('    мудрость к ${marks.join(' / ')} ч: '
+        '${marks.map((h) => m.wisdomAt(Duration(hours: h))).join(' / ')}');
   }
   stdout.writeln('');
-  return out;
+}
+
+/// Дорожка вех: что даёт каждая и когда её берут.
+void _printMilestones(List<MarathonResult> marathons) {
+  _header('ВЕХИ МУДРОСТИ — когда взята (похмелье, после которого мудрости хватило)');
+  stdout.write('  ${'мудр'.padLeft(4)}  ${'что даёт'.padRight(40)}');
+  for (final m in marathons) {
+    stdout.write(m.result.style.name.padLeft(10));
+  }
+  stdout.writeln('');
+  for (final v in kBalance.wisdomMilestones) {
+    stdout.write('  ${v.wisdom.toString().padLeft(4)}  ${milestoneText(v.effect).padRight(40)}');
+    for (final m in marathons) {
+      final i = m.result.hangoverWisdom.indexWhere((w) => w >= v.wisdom);
+      stdout.write((i < 0 ? '—' : formatClock(m.result.hangovers[i])).padLeft(10));
+    }
+    stdout.writeln('');
+  }
+  stdout.writeln('');
 }
 
 /// Цели из lib/sim/balance_targets.dart — то же, что проверяет
 /// test/balance_test.dart, но с числами, а не только «прошёл / нет».
-void _printTargets() {
+void _printTargets(Score s) {
   _header('ЦЕЛИ — то же, что проверяет test/balance_test.dart');
-  final s = scoreBalance(kBalance);
   final curve = firstWisdomFromCurve(kBalance);
   String mark(bool ok) => ok ? '  ' : '✗ ';
   bool within(Duration? d, Duration lo, Duration hi) => d != null && d >= lo && d <= hi;
@@ -288,6 +320,22 @@ void _printTargets() {
       'рывок: 2-й заход до той же точки — ${rerun == null ? '—' : '${(rerun * 100).toStringAsFixed(1)} %'} первого');
   stdout.writeln('${mark(within(s.tier12At, BalanceTargets.tier12Min, BalanceTargets.tier12Max))}'
       '12-я ступень, «считает»: ${formatDuration(s.tier12At)}');
+  final m = s.marathon!;
+  stdout.writeln('${mark(within(s.portalAt, BalanceTargets.portalMin, BalanceTargets.portalMax))}'
+      'коллайдер, «считает»: ${formatClock(s.portalAt)}');
+  final casual = s.portalAtCasual;
+  stdout.writeln('${mark(casual == null || casual >= BalanceTargets.portalCasualMin)}'
+      'коллайдер, «обычный»: ${casual == null ? 'не за ${BalanceTargets.portalCasualMin.inHours} ч' : formatClock(casual)}');
+  final h = m.hangoversBeforePortal;
+  stdout.writeln('${mark(h >= BalanceTargets.hangoversMin && h <= BalanceTargets.hangoversMax)}'
+      'похмелий до портала: $h');
+  final longest = m.longestRunBeforePortal;
+  stdout.writeln('${mark(longest != null && longest <= BalanceTargets.longestRunMax)}'
+      'самый длинный заход до портала: ${formatDuration(longest)}');
+  final worst = s.milestoneRunsWorst;
+  stdout.writeln('${mark(!s.milestonesRunOut && (worst ?? 0) <= BalanceTargets.milestoneRunsMax)}'
+      'следующая веха — не дальше ${worst == null ? '—' : '$worst ${Fmt.plural(worst, 'захода', 'заходов', 'заходов')}'}'
+      '${s.milestonesRunOut ? ', но дорожка кончилась раньше портала' : ''}');
   stdout.writeln('${mark(s.overnightTab != null && s.overnightTab! >= BalanceTargets.overnightTabMin)}'
       'ночь открытой вкладки даёт мудрость после ${s.overnightTab?.inMinutes} мин игры');
   final d20 = s.dailyFirstWisdomDay, d20c = s.dailyFirstWisdomDayCasual;

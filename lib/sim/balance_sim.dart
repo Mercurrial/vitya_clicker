@@ -31,6 +31,7 @@ import 'dart:math' as math;
 import '../content/buyers.dart';
 import '../content/game_content.dart';
 import '../content/sorts.dart';
+import '../core/formatters.dart';
 import '../core/game_serializer.dart';
 import '../engine/game_engine.dart';
 import '../engine/market.dart';
@@ -95,7 +96,11 @@ class WisdomGrowthRule extends PrestigeRule {
 /// раньше идеала — как и живой игрок, который не знает будущего.
 ///
 /// Множитель берётся из самого [PrestigeState], а не своей формулой: иначе
-/// правка веса мудрости не дошла бы до правила.
+/// правка веса мудрости не дошла бы до правила. Вместе с вехами «всё ×N»:
+/// следующую веху игрок видит на вкладке мудрости и дождётся её, если она
+/// того стоит. Вехи ступеней правило не учитывает — сколько они дадут,
+/// зависит от того, какая ступень гонит, и живой игрок этого тоже не
+/// сосчитает.
 class PaybackRule extends PrestigeRule {
   const PaybackRule();
 
@@ -104,11 +109,11 @@ class PaybackRule extends PrestigeRule {
     final p = state.prestige;
     if (!p.canPrestige || runSeconds <= 0) return false;
 
-    final base = p.globalMultiplier;
-    final now = p.claimAll().globalMultiplier / base;
+    final base = p.productionMultiplier;
+    final now = p.claimAll().productionMultiplier / base;
     // Чуть выше порога: иначе округление log2 внизу отдаёт ту же мудрость.
     final nextAt = p.nextWisdomAtMl * (1 + 1e-9);
-    final next = p.copyWith(claimedMl: nextAt).globalMultiplier / base;
+    final next = p.copyWith(claimedMl: nextAt).productionMultiplier / base;
     if (now <= 1) return false;
 
     final wait = rate > 0 ? (nextAt - p.totalEverEarned) / rate : double.infinity;
@@ -267,6 +272,10 @@ class SimResult {
   /// Когда игрок ложился спать — от начала партии, вместе с отсутствием.
   final List<Duration> hangovers;
 
+  /// Мудрость сразу после каждого похмелья — по нему видно, когда
+  /// бралась какая веха.
+  final List<int> hangoverWisdom;
+
   /// Сколько игрок провёл в игре. Без отсутствия совпадает с длиной партии.
   final Duration played;
 
@@ -283,6 +292,7 @@ class SimResult {
     required this.firstPrestige,
     required this.sales,
     required this.hangovers,
+    required this.hangoverWisdom,
     required this.played,
     required this.finalState,
     required this.overflowedMl,
@@ -359,6 +369,7 @@ class SimParty {
   final Map<String, Duration> firstBuy = {};
   final Map<String, Duration> upgradeBought = {};
   final List<Duration> hangovers = [];
+  final List<int> hangoverWisdom = [];
   Duration? firstPrestige;
   int sales = 0;
   double overflowedMl = 0;
@@ -385,6 +396,7 @@ class SimParty {
         ..firstBuy.addAll(firstBuy)
         ..upgradeBought.addAll(upgradeBought)
         ..hangovers.addAll(hangovers)
+        ..hangoverWisdom.addAll(hangoverWisdom)
         ..firstPrestige = firstPrestige
         ..sales = sales
         ..overflowedMl = overflowedMl
@@ -405,6 +417,7 @@ class SimParty {
         firstPrestige: firstPrestige,
         sales: sales,
         hangovers: List.unmodifiable(hangovers),
+        hangoverWisdom: List.unmodifiable(hangoverWisdom),
         played: played,
         finalState: state,
         overflowedMl: overflowedMl,
@@ -520,7 +533,7 @@ class BalanceSim {
       state = engine.advanceSort(
         state,
         style.attention > 0.3 && style.heat > 1.05
-            ? kSortGainPerSecond * style.attention * dt
+            ? kSortGainPerSecond * state.prestige.bonuses.sortSpeed * style.attention * dt
             : -kSortDecayPerSecond * dt,
       );
 
@@ -565,6 +578,7 @@ class BalanceSim {
           )) {
         p.state = engine.prestige(state, kGenerators, kUpgrades, now);
         p.hangovers.add(elapsed);
+        p.hangoverWisdom.add(p.state.prestige.wisdom);
         p.runPlayed = Duration.zero;
       }
 
@@ -806,18 +820,13 @@ String formatClock(Duration? d) {
   return '${d.inHours}:$m:$s';
 }
 
-/// Компактная запись больших чисел для таблиц.
+/// Компактная запись больших чисел для таблиц — теми же суффиксами, что в
+/// игре. Свой список обрывался на секстиллионах, и за порталом отчёт писал
+/// «1234.5Скс».
 String formatBig(double v) {
   if (!v.isFinite) return '∞';
   if (v < 1000) return v.toStringAsFixed(v < 10 ? 2 : 0);
-  const suffixes = ['', 'К', 'М', 'Б', 'Т', 'Квд', 'Квт', 'Скс'];
-  var i = 0;
-  var x = v;
-  while (x >= 1000 && i < suffixes.length - 1) {
-    x /= 1000;
-    i++;
-  }
-  return '${x.toStringAsFixed(x < 10 ? 2 : 1)}${suffixes[i]}';
+  return Fmt.short(v, trim: false);
 }
 
 /// Медиана — устойчивее среднего к одиночным выбросам.

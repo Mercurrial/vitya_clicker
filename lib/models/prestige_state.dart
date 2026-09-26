@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:equatable/equatable.dart';
 
 import '../content/balance.dart';
+import '../content/wisdom_milestones.dart';
 
 /// ПОХМЕЛЬЕ — престиж-слой.
 ///
@@ -81,6 +82,58 @@ class PrestigeState extends Equatable {
   static double multiplierFor(int wisdom) => wisdom <= 0
       ? 1.0
       : 1.0 + firstWisdomBonus + bonusPerWisdom * (wisdom - 1);
+
+  /// Вехи мира гаража, взятые этой мудростью. Не хранятся — вычисляются,
+  /// как и сама мудрость (см. `wisdom_milestones.dart`).
+  List<WisdomMilestone> get milestones => milestonesFor(wisdom);
+
+  /// Следующая веха — та, что ещё не взята. `null` — дорожка пройдена.
+  WisdomMilestone? get nextMilestone => nextMilestoneFor(wisdom);
+
+  /// Что дают взятые вехи.
+  MilestoneBonuses get bonuses => bonusesFor(wisdom);
+
+  /// Всё производство от мудрости вместе с вехами «всё ×N» — то, во сколько
+  /// раз быстрее пойдёт заход. Вехи ступеней сюда не входят: сколько они
+  /// дадут, зависит от того, какая ступень гонит.
+  double get productionMultiplier => globalMultiplier * bonuses.all;
+
+  static List<WisdomMilestone> milestonesFor(int wisdom, [World world = World.garage]) => [
+        for (final m in pathOf(world))
+          if (m.wisdom <= wisdom) m,
+      ];
+
+  /// Вся дорожка мира по порядку — взятые и те, что впереди.
+  static List<WisdomMilestone> pathOf([World world = World.garage]) => [
+        for (final m in Balance.current.wisdomMilestones)
+          if (m.world == world) m,
+      ]..sort((a, b) => a.wisdom.compareTo(b.wisdom));
+
+  static WisdomMilestone? nextMilestoneFor(int wisdom, [World world = World.garage]) {
+    WisdomMilestone? next;
+    for (final m in Balance.current.wisdomMilestones) {
+      if (m.world != world || m.wisdom <= wisdom) continue;
+      if (next == null || m.wisdom < next.wisdom) next = m;
+    }
+    return next;
+  }
+
+  /// Бонусы вех для такой мудрости.
+  ///
+  /// Спрашивают их на каждый пересчёт производства, а в симуляторе — на
+  /// каждую примерку покупки, поэтому они помнятся по мудрости, пока не
+  /// сменится баланс.
+  static MilestoneBonuses bonusesFor(int wisdom) {
+    final b = Balance.current;
+    if (!identical(_bonusesFor, b)) {
+      _bonuses.clear();
+      _bonusesFor = b;
+    }
+    return _bonuses[wisdom] ??= MilestoneBonuses.of(milestonesFor(wisdom));
+  }
+
+  static final Map<int, MilestoneBonuses> _bonuses = {};
+  static Balance? _bonusesFor;
 
   /// Сколько мудрости стоит такая история.
   ///

@@ -16,6 +16,7 @@ library;
 import '../content/game_content.dart';
 import '../core/game_serializer.dart';
 import '../engine/game_engine.dart';
+import '../models/prestige_state.dart';
 import 'balance_sim.dart';
 
 const _day = Duration(days: 1);
@@ -157,9 +158,20 @@ DailyResult daily(
   );
 }
 
+/// Через сколько заходов после похмелья берётся следующая веха.
+///
+/// [wisdom] — мудрость в начале захода, [next] — порог следующей вехи
+/// (`null` — дорожка кончилась), [runs] — через сколько похмелий мудрость
+/// до него дошла (`null` — партия кончилась раньше, чем стало ясно; не
+/// дошла вовсе — число оставшихся похмелий плюс один).
+typedef MilestoneReach = ({int wisdom, int? next, int? runs});
+
 /// Итог долгой игры с похмельями.
 class MarathonResult {
   final SimResult result;
+
+  /// Сколько длилась партия.
+  final Duration horizon;
 
   /// Длины заходов, от похмелья до похмелья. Последний, недоигранный, не
   /// входит: его длину решил конец прогона, а не игрок.
@@ -171,10 +183,46 @@ class MarathonResult {
   /// первых столько не нагнали.
   final double? rerunShare;
 
-  const MarathonResult({required this.result, required this.runs, required this.rerunShare});
+  /// Следующая веха от начала каждого захода до портала — первый заход
+  /// начинается с нуля мудрости.
+  final List<MilestoneReach> milestoneReach;
+
+  const MarathonResult({
+    required this.result,
+    required this.horizon,
+    required this.runs,
+    required this.rerunShare,
+    this.milestoneReach = const [],
+  });
 
   Duration? get longestRun =>
       runs.isEmpty ? null : runs.reduce((a, b) => a > b ? a : b);
+
+  /// Когда куплен коллайдер — портал в новый мир. `null` — не за партию.
+  Duration? get portalAt => result.firstBuy[kGeneratorNames.last.id];
+
+  /// Сколько раз игрок лёг спать до портала. Не дошёл — за всю партию.
+  int get hangoversBeforePortal {
+    final at = portalAt;
+    return at == null
+        ? result.hangovers.length
+        : result.hangovers.where((h) => h < at).length;
+  }
+
+  /// Самый длинный заход до портала — вместе с тем, в котором портал взят,
+  /// до самой покупки. Не дошёл — вместе с недоигранным последним: стена
+  /// перед порталом — это именно он.
+  Duration? get longestRunBeforePortal {
+    final end = portalAt ?? horizon;
+    var from = Duration.zero;
+    Duration? longest;
+    for (final h in [...result.hangovers.where((h) => h < end), end]) {
+      final run = h - from;
+      if (longest == null || run > longest) longest = run;
+      from = h;
+    }
+    return longest;
+  }
 
   /// Мудрость на отметке [at] — забранная, как на экране.
   int wisdomAt(Duration at) {
@@ -225,7 +273,45 @@ MarathonResult marathon(
     }
   }
 
-  return MarathonResult(result: p.result, runs: runs, rerunShare: share);
+  final r = p.result;
+  return MarathonResult(
+    result: r,
+    horizon: horizon,
+    runs: runs,
+    rerunShare: share,
+    milestoneReach: _milestoneReach(r),
+  );
+}
+
+/// Следующая веха от начала каждого захода до портала — через сколько
+/// похмелий она взята. Считается по действующему балансу, поэтому здесь, в
+/// прогоне, а не потом из результата.
+List<MilestoneReach> _milestoneReach(SimResult r) {
+  final portal = r.firstBuy[kGeneratorNames.last.id];
+  final after = r.hangoverWisdom;
+  final out = <MilestoneReach>[];
+  // Заход k начинается с нуля (k = 0) или после похмелья k − 1.
+  for (var k = 0; k <= after.length; k++) {
+    final startsAt = k == 0 ? Duration.zero : r.hangovers[k - 1];
+    if (portal != null && startsAt >= portal) break;
+    final wisdom = k == 0 ? 0 : after[k - 1];
+    final next = PrestigeState.nextMilestoneFor(wisdom)?.wisdom;
+    int? runs;
+    if (next != null) {
+      for (var j = k; j < after.length; j++) {
+        if (after[j] >= next) {
+          runs = j - k + 1;
+          break;
+        }
+      }
+      // Не дошёл за все оставшиеся похмелья — известно только, что больше.
+      // Если их хотя бы два, этого хватает для промаха; меньше — партия
+      // кончилась раньше, чем стало ясно.
+      if (runs == null && after.length - k >= 2) runs = after.length - k + 1;
+    }
+    out.add((wisdom: wisdom, next: next, runs: runs));
+  }
+  return out;
 }
 
 /// Итог вложений в поток: на какой день чего достиг.

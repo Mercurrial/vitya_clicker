@@ -12,6 +12,7 @@ import 'package:idle_game/ui/theme/garage.dart';
 import 'package:idle_game/ui/widgets/shop.dart';
 
 import 'support/moments.dart';
+import 'support/shelf_tabs.dart';
 
 /// Нижняя полка на узком экране: кнопка количества, вкладки и место под список.
 ///
@@ -101,7 +102,7 @@ void main() {
   Finder amount(String label) =>
       find.descendant(of: find.byType(Shelf), matching: find.text(label));
 
-  const tabs = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ЦЕЛИ', 'ВИТЯ'];
+  const tabs = ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'МУДРОСТЬ', 'ЦЕЛИ', 'ВИТЯ'];
 
   group('Кнопка количества', () {
     testWidgets('до «Целого литра» её нет', (tester) async {
@@ -115,12 +116,15 @@ void main() {
       await openOn(tester, stateWith(bulk: true), const Size(320, 640));
       expect(tester.takeException(), isNull);
 
+      // Со строкой, а не с последней вкладкой: на 320 точках вкладок больше,
+      // чем влезает, строка листается, и последней вкладки может не быть на
+      // экране.
       final button = rectOf(tester, amount('×1'));
-      final lastTab = rectOf(tester, find.text(tabs.last));
-      expect(button.left, greaterThan(lastTab.right),
+      final strip = rectOf(tester, shelfTabs);
+      expect(button.left, greaterThanOrEqualTo(strip.right),
           reason: 'кнопка должна стоять справа от вкладок');
-      expect((button.center.dy - lastTab.center.dy).abs(), lessThan(1),
-          reason: 'кнопка ушла из строки вкладок: $button против $lastTab');
+      expect((button.center.dy - strip.center.dy).abs(), lessThan(1),
+          reason: 'кнопка ушла из строки вкладок: $button против $strip');
 
       // Остальных режимов на экране нет: не ряд, а одна кнопка.
       for (final (_, label) in kBuyModes.skip(1)) {
@@ -174,7 +178,7 @@ void main() {
       await openOn(tester, stateWith(bulk: true), const Size(320, 640));
 
       for (final label in tabs) {
-        final text = find.text(label);
+        final text = await shelfTab(tester, label);
         final room = rectOf(
           tester,
           find.ancestor(of: text, matching: find.byType(FittedBox)).first,
@@ -208,7 +212,8 @@ void main() {
       await openOn(tester, stateWith(bulk: true), screen);
       expect(tester.takeException(), isNull);
 
-      final list = rectOf(tester, find.byType(ListView));
+      final list = rectOf(tester,
+          find.ancestor(of: find.byType(StillRow).first, matching: find.byType(ListView)).first);
       final whole = find.byType(StillRow).evaluate().where((e) {
         final box = e.renderObject! as RenderBox;
         final rect = box.localToGlobal(Offset.zero) & box.size;

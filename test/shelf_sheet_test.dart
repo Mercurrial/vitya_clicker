@@ -18,6 +18,7 @@ import 'package:idle_game/ui/widgets/shop.dart';
 import 'package:idle_game/ui/widgets/top_panel.dart';
 
 import 'support/moments.dart';
+import 'support/shelf_tabs.dart';
 
 /// Шторка магазина: два положения (docs/DECISIONS.md, «Главный экран»).
 ///
@@ -352,9 +353,11 @@ void main() {
         check(grabber, 'ручка шторки');
         check(find.byType(SellButton), 'продажа');
         check(find.byType(BuyButton), 'покупка аппарата');
-        for (final tab in ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'ЦЕЛИ', 'ВИТЯ']) {
+        for (final tab in ['АППАРАТЫ', 'УЛУЧШЕНИЯ', 'МУДРОСТЬ', 'ЦЕЛИ', 'ВИТЯ']) {
           check(
-            find.ancestor(of: find.text(tab), matching: find.byType(GestureDetector)).first,
+            find
+                .ancestor(of: await shelfTab(tester, tab), matching: find.byType(GestureDetector))
+                .first,
             'вкладка «$tab»',
           );
         }

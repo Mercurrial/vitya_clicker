@@ -24,6 +24,11 @@
 ///   мудрость у «считает» на 2–3-й день, у «обычного» не позже 4-го. Это
 ///   замысел владельца про поток времени. Промахивается — крутятся скорость
 ///   и копилка потока, а не экономика.
+/// * **Коллайдер — портал, и до него далеко:** у «считает» 24–30 часов, у
+///   обычного — не раньше 36. По дороге 10–16 похмелий, ни одного захода
+///   дольше 4 часов, и следующая веха мудрости не дальше двух заходов. Без
+///   вех после 12-й ступени вставала стена — вехи несут вторую половину
+///   игры, а цена коллайдера ставит портал в её конец.
 library;
 
 import 'dart:math' as math;
@@ -69,9 +74,42 @@ abstract final class BalanceTargets {
   static const tier12Min = Duration(hours: 10);
   static const tier12Max = Duration(hours: 14);
 
-  /// Длина партии с похмельями, на которой меряются окупаемость и 12-я
-  /// ступень: с запасом за верхней границей [tier12Max].
+  /// Отрезок партии с похмельями, на котором меряется окупаемость: с запасом
+  /// за верхней границей [tier12Max].
+  ///
+  /// Дальше 12-й ступени окупаемость не меряется. До портала лестница
+  /// кончается на орбитальной, и конец каждого позднего захода — ожидание
+  /// следующей мудрости: всё куплено, а следующая штука окупается часами.
+  /// Стену там ловит [longestRunMax] — длина захода, а не окупаемость.
   static const marathonLength = Duration(hours: 15);
+
+  /// Коллайдер — портал в новый мир — у того, кто считает. Раньше суток
+  /// игры нельзя: портал — цель второй половины игры, а не тринадцатая
+  /// ступень (docs/DECISIONS.md, «Экономика и мудрость»).
+  static const portalMin = Duration(hours: 24);
+  static const portalMax = Duration(hours: 30);
+
+  /// Коллайдер у обычного игрока — не раньше. «Недели через две по два
+  /// часа в день» — это и есть 36 часов с запасом на поток.
+  static const portalCasualMin = Duration(hours: 36);
+
+  /// Сколько раз «считает» ляжет спать до портала.
+  static const hangoversMin = 10;
+  static const hangoversMax = 16;
+
+  /// Самый длинный заход до портала. Длиннее — стена: игрок ждёт, а не
+  /// играет. Без вех заходы вырастали до 6–8 часов.
+  static const longestRunMax = Duration(hours: 4);
+
+  /// Следующая веха — не дальше стольких заходов от любого похмелья до
+  /// портала.
+  static const milestoneRunsMax = 2;
+
+  /// Длина партий, на которых меряется портал: у «считает» — с запасом за
+  /// [portalMax], чтобы после портала успели случиться похмелья и было видно,
+  /// через сколько заходов бралась последняя веха; у «обычного» — ровно
+  /// [portalCasualMin].
+  static const portalHorizon = Duration(hours: 32);
 
   /// Сколько надо сыграть, чтобы ночь (8 ч) открытой вкладки принесла первую
   /// мудрость, — не меньше.
@@ -108,6 +146,8 @@ abstract final class BalanceTargets {
   • ступеней к первой мудрости: $tiersAtFirstWisdomMin–$tiersAtFirstWisdomMax из 13
   • второй заход до той же точки: ${(rerunMin * 100).round()}–${(rerunMax * 100).round()} % первого
   • 12-я ступень у «считает»: ${tier12Min.inHours}–${tier12Max.inHours} ч
+  • коллайдер (портал): «считает» ${portalMin.inHours}–${portalMax.inHours} ч, «обычный» не раньше ${portalCasualMin.inHours} ч
+  • до портала у «считает»: похмелий $hangoversMin–$hangoversMax, заход не длиннее ${longestRunMax.inHours} ч, следующая веха не дальше $milestoneRunsMax заходов
   • ночь открытой вкладки даёт мудрость не раньше ${overnightTabMin.inMinutes} мин игры
   • ${dailySession.inMinutes} мин в день, остальное закрыто, весь поток тратит: первая мудрость у «считает» на $dailyFirstWisdomDayMin–$dailyFirstWisdomDayMax-й день, у «обычного» не позже $dailyFirstWisdomDayCasualMax-го
   • копилка потока на старте наполняется не дольше чем за ${fluxBankFillMax.inHours} ч AFK
@@ -194,6 +234,11 @@ class Score {
 
   final Duration maxTankBuffer;
 
+  /// Партии с похмельями до портала: «считает» на [BalanceTargets.portalHorizon],
+  /// «обычный» на [BalanceTargets.portalCasualMin]. `null` — быстрая оценка.
+  final MarathonResult? marathon;
+  final MarathonResult? marathonCasual;
+
   /// Ноль — попал во всё. Чем больше, тем хуже.
   final double penalty;
 
@@ -208,8 +253,29 @@ class Score {
     this.dailyFirstWisdomDay,
     this.dailyFirstWisdomDayCasual,
     required this.maxTankBuffer,
+    this.marathon,
+    this.marathonCasual,
     required this.penalty,
   });
+
+  /// Когда «считает» и «обычный» берут коллайдер. `null` — не за партию.
+  Duration? get portalAt => marathon?.portalAt;
+  Duration? get portalAtCasual => marathonCasual?.portalAt;
+
+  /// Самая дальняя следующая веха, в заходах, от похмелий до портала.
+  /// `null` — нечего мерить: быстрая оценка или партия кончилась раньше.
+  int? get milestoneRunsWorst {
+    int? worst;
+    for (final r in marathon?.milestoneReach ?? const <MilestoneReach>[]) {
+      final runs = r.runs;
+      if (runs != null && (worst == null || runs > worst)) worst = runs;
+    }
+    return worst;
+  }
+
+  /// Дорожка вех кончилась раньше портала — следующей вехи не видно.
+  bool get milestonesRunOut =>
+      marathon?.milestoneReach.any((r) => r.next == null) ?? false;
 
   bool get hitsTargets => penalty == 0;
 }
@@ -251,14 +317,18 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
     Duration? tier12;
     Duration? overnight;
     int? daily20, daily20Casual;
+    MarathonResult? m, mCasual;
     if (!quick) {
-      final m = marathon(sim, PlayStyle.tryhard, horizon: BalanceTargets.marathonLength);
-      runs.addAll(_paybackByRun(m.result));
+      // Одна партия на всё: её первые 15 часов — та же партия, что прежняя
+      // на 15 часов, поэтому окупаемость меряется по ним, как раньше.
+      m = marathon(sim, PlayStyle.tryhard, horizon: BalanceTargets.portalHorizon);
+      runs.addAll(_paybackByRun(m.result, upTo: BalanceTargets.marathonLength));
       rerun = m.rerunShare;
       tier12 = m.result.firstBuy[kGenerators[11].id];
       for (final c in m.result.timeline) {
         if (c.tankBuffer > maxTank) maxTank = c.tankBuffer;
       }
+      mCasual = marathon(sim, PlayStyle.casual, horizon: BalanceTargets.portalCasualMin);
       overnight = overnightThreshold(sim, PlayStyle.tryhard, Absence.tabOpen);
       daily20 = dailyWithFlux(sim, PlayStyle.tryhard).firstWisdomDay;
       daily20Casual = dailyWithFlux(sim, PlayStyle.casual).firstWisdomDay;
@@ -317,6 +387,34 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
         1,
         BalanceTargets.dailyFirstWisdomDayCasualMax.toDouble(),
       );
+      penalty += _miss(
+        m!.portalAt?.inSeconds.toDouble(),
+        BalanceTargets.portalMin.inSeconds.toDouble(),
+        BalanceTargets.portalMax.inSeconds.toDouble(),
+      );
+      // «Обычный» не взял портал за всю партию — это и есть попадание.
+      final casualPortal = mCasual!.portalAt;
+      if (casualPortal != null) {
+        penalty += _miss(
+          casualPortal.inSeconds.toDouble(),
+          BalanceTargets.portalCasualMin.inSeconds.toDouble(),
+          double.infinity,
+        );
+      }
+      penalty += _miss(
+        m.hangoversBeforePortal.toDouble(),
+        BalanceTargets.hangoversMin.toDouble(),
+        BalanceTargets.hangoversMax.toDouble(),
+      );
+      penalty += _ratio(
+          (m.longestRunBeforePortal ?? Duration.zero).inSeconds / BalanceTargets.longestRunMax.inSeconds);
+      for (final r in m.milestoneReach) {
+        if (r.next == null) {
+          penalty += 4.0; // дорожка кончилась раньше портала
+        } else if (r.runs != null) {
+          penalty += _ratio(r.runs! / BalanceTargets.milestoneRunsMax);
+        }
+      }
     }
 
     return Score(
@@ -330,6 +428,8 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
       dailyFirstWisdomDay: daily20,
       dailyFirstWisdomDayCasual: daily20Casual,
       maxTankBuffer: maxTank,
+      marathon: m,
+      marathonCasual: mCasual,
       penalty: penalty,
     );
   });
@@ -338,15 +438,18 @@ Score scoreBalance(Balance candidate, {bool quick = false}) {
 /// Окупаемость по заходам: от похмелья до похмелья, без первых
 /// [BalanceTargets.paybackSkip] каждого. Последний, недоигранный заход
 /// тоже входит — стена в нём так же видна игроку (см. [RunPayback.finished]).
-List<RunPayback> _paybackByRun(SimResult r) {
-  final bounds = [Duration.zero, ...r.hangovers];
+///
+/// [upTo] — считать партию кончившейся на этой отметке: заход, который её
+/// пересекает, — недоигранный последний.
+List<RunPayback> _paybackByRun(SimResult r, {required Duration upTo}) {
+  final bounds = [Duration.zero, ...r.hangovers.where((h) => h < upTo)];
   final out = <RunPayback>[];
   for (var i = 0; i < bounds.length; i++) {
     final from = bounds[i] + BalanceTargets.paybackSkip;
     final to = i + 1 < bounds.length ? bounds[i + 1] : null;
     final seconds = [
       for (final c in r.timeline)
-        if (c.at >= from && (to == null || c.at < to) && c.payback != null)
+        if (c.at >= from && c.at < (to ?? upTo) && c.payback != null)
           c.payback!.inMilliseconds / 1000.0,
     ];
     if (seconds.isEmpty) continue;
